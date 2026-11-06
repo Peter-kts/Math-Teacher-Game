@@ -195,7 +195,10 @@
     .card { width:calc((100vw - 16px - 5px * (var(--n, 4) - 1)) / var(--n, 4)); max-width:110px; height:clamp(112px, 19vh, 150px); font-size:clamp(16px, 5vw, 22px); padding:4px 3px; }
     .card .badge { font-size:12px; margin-bottom:3px; padding:0 6px; }
     .card small { font-size:clamp(9px, 2.7vw, 11px); margin-top:4px; }
-    #hand.many .card small { font-size:clamp(8px, 2.3vw, 11px); overflow-wrap:anywhere; }
+    /* 5 or 6 cards: two rows of 3 so each card stays wide enough to read and tap */
+    #hand.many { flex-wrap:wrap; row-gap:5px; }
+    #hand.many .card { width:calc((100vw - 16px - 10px) / 3); max-width:140px; height:clamp(80px, 12.5vh, 112px); }
+    #hand.many .card small { margin-top:2px; }
     .card:hover { transform:none; }
     .panel { padding:14px; gap:10px; }
     .panel h1 { font-size:21px; } .panel p { font-size:14px; } .panel .example { font-size:15px; }
@@ -1055,7 +1058,7 @@ function renderFoe() {
 function dealHand() { hand = (cur.act2 ? ACT2.makeHand : makeHand)(cur.state, cur.path[cur.step].move, fight.handSize); renderHand(); }
 
 function renderHand() {
-  const el = $('hand'); el.innerHTML = ''; el.style.setProperty('--n', String(Math.max(4, hand.length))); el.classList.toggle('many', hand.length >= 6);
+  const el = $('hand'); el.innerHTML = ''; el.style.setProperty('--n', String(Math.max(4, hand.length))); el.classList.toggle('many', hand.length >= 5);   // 5+ cards: two rows on phones
   hand.forEach((c, i) => {
     const d = document.createElement('div');
     d.className = 'card deal'; d.dataset.idx = i; d.style.animationDelay = `calc(${i * 70}ms * var(--k))`;
