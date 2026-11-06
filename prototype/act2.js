@@ -397,7 +397,8 @@
 
   // ---------------------------------------------------------------- animations
   // Each takes (card, before, after, ref). The operation is written under (or over) the term it acts
-  // on, the way you'd do it by hand. When it finishes, the equation is re-rendered from `after`.
+  // on, the way you'd do it by hand. Timing follows the game's pattern: the written operation appears fast,
+  // hold() (scaled by animation speed), the calculation runs fast (quick(), fixed), the result shows, hold(). When it finishes, the equation is re-rendered from `after`.
   const ANIMS = { dist: animDistribute, comb: animCombine, none: animDeclare, all: animDeclare, '+': animAddBoth, '-': animAddBoth };
   const animFor = c => ANIMS[c.op] || animScale;
   const kickClass = (el, cls) => { el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls); };
@@ -418,13 +419,13 @@
       const toks = sideToks(sd), tk = idx >= 0 ? tokAt(sd + idx) : toks[toks.length - 1];
       marks.push({ sd, idx, tk, n: note(chipT, [tk]) });
     }
-    await sleep(1100);
+    await hold();
     const cancels = marks.filter(m => m.idx >= 0 && fZero(fAdd(sideOf(s, m.sd)[m.idx].k, delta)));
     if (cancels.length) {
       const it = sideOf(s, cancels[0].sd)[cancels[0].idx];
       caption(`${plain(it)} and ${chipPlain} cancel out (they make 0)`);
       cancels.forEach(m => mark([m.tk, m.n], 'cancel'));
-      await sleep(1000);
+      await quick(400);
       cancels.forEach(m => dropNote(m.n));
       await removeTok(cancels.map(m => m.tk));
       ['L', 'R'].forEach(fixLeadingSign);
@@ -440,7 +441,7 @@
       }
     }
     if (hows.length) caption(hows.join(',  '));
-    await sleep(800);
+    await quick(350);
     for (const m of marks) {
       if (cancels.includes(m)) continue;
       dropNote(m.n);
@@ -454,7 +455,7 @@
         kickClass(m.tk, 'pop');
       }
     }
-    await sleep(700);
+    await hold();
   }
 
   // Multiply or divide both sides (also × −1, × reciprocal, × the common denominator).
@@ -467,9 +468,9 @@
     if (card.op === '/') {
       for (const sd of ['L', 'R']) ns_.push(note(paren(F(card.n)), sideToks(sd), { bar: true }));
     } else {
-      for (const t of $('equation').querySelectorAll('.tok.a2')) { ns_.push(note(chipHtml(card), [t])); await sleep(160); }
+      for (const t of $('equation').querySelectorAll('.tok.a2')) { ns_.push(note(chipHtml(card), [t])); await quick(60); }
     }
-    await sleep(1000);
+    await hold();
     // Captions: what happens to the x-term, and to the other side if it is one number.
     const sides = ['L', 'R'].map(sd => ({ sd, side: sideOf(s, sd), nside: sideOf(ns, sd) }));
     const fr = fracItems(s).length >= 2;
@@ -483,7 +484,7 @@
     let popped = false;
     for (const t of $('equation').querySelectorAll('.tok.a2 .den')) { t.classList.add('cancel'); popped = true; }
     for (const t of $('equation').querySelectorAll('.tok.a2 .cf')) if (card.op === '/' || card.op === 'frac') t.classList.add('cancel');
-    if (popped || card.op === '/') await sleep(800);
+    if (popped || card.op === '/') await quick(400);
     ns_.forEach(n => mark([n], 'merge'));
     for (const o of sides) {
       // Terms keep their positions when scaled, unless parentheses with a 1 in front opened up.
@@ -495,9 +496,9 @@
         kickClass(tk, card.op === 'neg' ? 'flip' : 'pop');
       });
     }
-    await sleep(500);
+    await hold();
     ns_.forEach(dropNote);
-    await sleep(500);
+    await quick(200);
   }
 
   // Distribute: arrows sweep from the number in front to each term inside, the products are written
@@ -526,18 +527,18 @@
     }
     $('equation').appendChild(svg);
     gm.classList.add('hot');
-    await sleep(1000);
+    await quick(600);
     const notesHere = gis.map((gi, j) => note(termStr(prods[j], j === 0 && i === 0, true), [gi]));
     caption(g.items.map((t, j) => { const f = termStr(t, true, false); return `${paren(g.m)} ${TIMES} ${t.k.n < 0 ? '(' + f + ')' : f} = ${plain(prods[j])}`; }).join(',  '));
-    await sleep(1300);
+    await hold();
     tk.querySelectorAll('.gp, .gm').forEach(el => el.classList.add('fade'));
     svg.classList.add('fade');
-    await sleep(500);
+    await quick(400);
     notesHere.forEach(n => mark([n], 'merge'));
     tk.innerHTML = `<span>${prods.map((t, j) => termStr(t, j === 0 && i === 0, true)).join(' ')}</span>`;
     kickClass(tk, 'pop');
     notesHere.forEach(dropNote);
-    await sleep(700);
+    await hold();
     svg.remove();
   }
 
@@ -551,17 +552,17 @@
     const sumT = { t: kindT, k: sum };
     caption(`Like terms: ${idxs.map((j, n) => termStr(side[j], n === 0, false)).join(' ')} = ${fZero(sum) ? '0' : plain(sumT)}`);
     mark(toks, 'like');
-    await sleep(900);
+    await hold();
     const r0 = relRect(toks[0]);
     toks.slice(1).forEach(t => { const r = relRect(t); t.style.transform = `translateX(${r0.x - r.x}px) scale(.6)`; t.style.opacity = '0'; });
-    await sleep(600);
+    await quick(450);
     toks.slice(1).forEach(t => t.remove());
     toks[0].classList.remove('like');
     fixLeadingSign(sd);
-    if (fZero(sum)) { mark([toks[0]], 'cancel'); await sleep(600); await removeTok([toks[0]]); return; }
+    if (fZero(sum)) { mark([toks[0]], 'cancel'); await quick(400); await removeTok([toks[0]]); return; }
     toks[0].innerHTML = termStr(sumT, idxs[0] === 0, true);
     kickClass(toks[0], 'pop');
-    await sleep(700);
+    await hold();
   }
 
   // Declare: a false statement (1 = 5) cracks and shatters; a true one (6 = 6) glows.
@@ -579,14 +580,14 @@
       svg.innerHTML = `<path d="${d}"/>`;
       $('equation').appendChild(svg);
       kickClass($('equation'), 'shake');
-      await sleep(900);
+      await quick(700);
       svg.remove();
       toks.forEach(t => { t.style.transform = `translate(${rand(-50, 50)}px, ${rand(60, 140)}px) rotate(${rand(-70, 70)}deg)`; t.style.opacity = '0'; });
-      await sleep(800);
+      await quick(700); await hold();
     } else {
       caption(`${eqText(s)} is always true, so every number works for x`);
       mark(toks, 'glow');
-      await sleep(1700);
+      await quick(800); await hold();
     }
   }
 
@@ -826,21 +827,21 @@
     .card .clong { font-size:.62em; white-space:nowrap; }
     .tok.a2 .xv { font-style:normal; color:var(--accent); }
     .tok.a2.k-g { max-width:none; }
-    .tok.a2 .gp, .tok.a2 .gm { display:inline-block; transition: opacity calc(.45s * var(--k)), transform calc(.45s * var(--k)), color calc(.3s * var(--k)); }
+    .tok.a2 .gp, .tok.a2 .gm { display:inline-block; transition: opacity .45s, transform .45s, color .3s; }
     .tok.a2 .gm.hot { color:#7bdff2; }
     .tok.a2 .fade { opacity:0; transform:scale(.4); }
     .tok.a2 .frac .den.cancel, .tok.a2 .cf.cancel { color:var(--bad); text-decoration:line-through; }
     .tok.a2.like { color:#7bdff2; background:#7bdff222; border-color:#7bdff2; }
     .tok.a2.k-result { color:var(--good); font-size:.7em; max-width:none; white-space:normal; }
-    .tok.glow { animation: a2glow calc(.8s * var(--k)) ease-in-out 2; color:var(--good); }
+    .tok.glow { animation: a2glow .8s ease-in-out 2; color:var(--good); }
     @keyframes a2glow { 50% { text-shadow: 0 0 22px #06d6a0, 0 0 6px #fff; transform: scale(1.08); } }
     .a2arrows { position:absolute; pointer-events:none; overflow:visible; color:#7bdff2; z-index:2; }
-    .a2arrows path { fill:none; stroke:currentColor; stroke-width:4; stroke-linecap:round; stroke-dasharray:400; stroke-dashoffset:400; animation: a2draw calc(.7s * var(--k)) ease-out forwards; }
-    .a2arrows.fade { opacity:0; transition: opacity calc(.4s * var(--k)); }
+    .a2arrows path { fill:none; stroke:currentColor; stroke-width:4; stroke-linecap:round; stroke-dasharray:400; stroke-dashoffset:400; animation: a2draw .7s ease-out forwards; }
+    .a2arrows.fade { opacity:0; transition: opacity .4s; }
     @keyframes a2draw { to { stroke-dashoffset:0; } }
     .a2crack { position:absolute; pointer-events:none; overflow:visible; z-index:2; }
-    .a2crack path { fill:none; stroke:var(--bad); stroke-width:5; stroke-linejoin:bevel; stroke-dasharray:1200; stroke-dashoffset:1200; animation: a2draw calc(.6s * var(--k)) ease-in forwards; }
-    .tok.a2 { transition: background .15s, border-color .15s, max-width calc(.45s * var(--k)), min-width calc(.45s * var(--k)), padding calc(.45s * var(--k)), opacity calc(.6s * var(--k)), transform calc(.6s * var(--k)), color calc(.3s * var(--k)); }
+    .a2crack path { fill:none; stroke:var(--bad); stroke-width:5; stroke-linejoin:bevel; stroke-dasharray:1200; stroke-dashoffset:1200; animation: a2draw .6s ease-in forwards; }
+    .tok.a2 { transition: background .15s, border-color .15s, max-width .45s, min-width .45s, padding .45s, opacity .6s, transform .6s, color .3s; }
   `;
   document.head.appendChild(css);
 
