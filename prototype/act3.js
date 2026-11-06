@@ -10,7 +10,9 @@
 //   single  Act 2's equation model plus a relation: { L, R, result: null, rel: '<'|'≤'|'>'|'≥'|'=', owe }
 //           Act 2's engine does the algebra (apply, the expected path, hands, animations); this file adds the sign.
 //   chain   a three-part compound: { chain: true, lo, rel1, coef, b, constFirst, rel2, hi, owe }
-//   abs     before the split: { abs: true, m, a, b, c, rel, d }  meaning  m|ax + b| + c  rel  d
+//   abs     before the split: { abs: true, m, a, b, c, rel, d, result }  meaning  m|ax + b| + c  rel  d
+//           Once the bars are alone: Split (=), Between (< ≤) or Outside (> ≥) if d > 0; if d < 0, the
+//           verdict No solution (= < ≤) or All x (> ≥), which sets result.
 //   board   two cases joined by "or": { board: true, join: 'or', branches: [single, single], active }
 //
 // The flip is its own move. Multiplying or dividing by a negative leaves the sign as it was and marks
@@ -162,7 +164,7 @@
   function flipNegTrap(correct, before, after, parts3) {
     const by = byText(correct);
     return { op: 'trap', trap: 'flip negative', scaleOp: correct.op, n: correct.n, d: correct.d, parts3,
-      text: `${scaleText({ ...correct, parts3 })} and flip (the number is negative)`,
+      text: `${correct.op === '/' ? 'Divide' : 'Multiply'} by ${by} and flip (a number is negative)`,
       why: `<p>Only multiplying or dividing by a <b>negative</b> number flips the sign. Here you ${correct.op === '*' ? 'multiply' : 'divide'} by ${by}, which is positive, so the sign stays: ${before} becomes ${after}. A negative number on the other side doesn't matter: x &lt; ${MINUS}4 is a perfectly good answer.</p>` };
   }
   // plain: a case on a board (one x-term, one number each side), where Act 2's Combine, Distribute and
