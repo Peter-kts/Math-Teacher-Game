@@ -189,7 +189,7 @@
 
   // ---------------------------------------------------------------- rendering
   function render(e) {
-    const el = $('equation'); if (typeof clearNotes === 'function') clearNotes(); el.innerHTML = '';
+    const el = $('equation'); if (typeof clearNotes === 'function') clearNotes(); el.innerHTML = ''; el.classList.add('a2');
     // Long equations (lots of terms) get a smaller font so they stay on one or two lines on phones.
     el.classList.toggle('a2long', e.L.length + e.R.length > 4 || [...e.L, ...e.R].some(i => i.t === 'g') && e.L.length + e.R.length > 2);
     if (e.result) { el.appendChild(mkTok(e.result === 'none' ? 'No solution' : 'Every number works', 'Lr', 'result')); return; }
@@ -199,7 +199,30 @@
       side.forEach((it, i) => el.appendChild(mkTok(termStr(it, i === 0, true), s + i, it.t)));
       if (s === 'L') { const q = document.createElement('div'); q.className = 'tok eq'; q.dataset.role = 'eq'; q.textContent = '='; el.appendChild(q); }
     }
+    fitEq(true);
   }
+  // Act 2 equations stay on one line: if they don't fit the width, shrink the equation's font
+  // (via its own --eqSize) until they do. A fresh render starts from full size; refits during an
+  // animation (tokens added or removed) only ever shrink, so the equation doesn't jump around.
+  function fitEq(reset) {
+    const el = $('equation'); if (!el || !el.classList.contains('a2')) return;
+    if (reset) el.style.removeProperty('--eqSize');
+    const base = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--eqSize')) || 56;
+    let size = parseFloat(el.style.getPropertyValue('--eqSize')) || base;
+    el.classList.add('fitting');   // no transitions while measuring, or widths lag behind the new size
+    for (let i = 0; i < 8; i++) {
+      const avail = el.clientWidth, need = el.scrollWidth;
+      if (!avail || need <= avail + 1) break;
+      size = Math.max(12, Math.floor(size * Math.min(.97, avail / need)));
+      el.style.setProperty('--eqSize', size + 'px');
+      if (size <= 12) break;
+    }
+    el.classList.remove('fitting');
+  }
+  let fitTimer = 0;
+  const refit = () => { requestAnimationFrame(() => fitEq(false)); clearTimeout(fitTimer); fitTimer = setTimeout(() => fitEq(false), 320); };
+  addEventListener('resize', () => fitEq(true));
+  { const el = document.getElementById('equation'); if (el) new MutationObserver(refit).observe(el, { childList: true }); }
   function mkTok(html, ref, kind) {
     const d = document.createElement('div');
     d.className = 'tok term a2 k-' + kind;
@@ -822,6 +845,9 @@
   const css = document.createElement('style');
   css.textContent = `
     #equation.a2long { font-size: calc(var(--eqSize) * .78); }
+    #equation.a2 { flex-wrap: nowrap; max-width: 100%; }
+    #equation.a2 .tok { flex-shrink: 0; }
+    #equation.fitting .tok { transition: none !important; }
     @media (max-width: 640px) { .tok.a2 { min-width:0; padding-left:3px; padding-right:3px; } }
     .card .ltag { display:block; font-size:.45em; letter-spacing:1px; color:#7a5c00; }
     .card .clong { font-size:.62em; white-space:nowrap; }

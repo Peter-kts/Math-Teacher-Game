@@ -671,7 +671,7 @@ function tokEl(t) {
   return el;
 }
 function renderEquation(s) {
-  $('equation').classList.remove('a2long');
+  $('equation').classList.remove('a2long', 'a2'); $('equation').style.removeProperty('--eqSize');
   if (s.L) return ACT2.render(s);   // Act 2 equation model (act2.js)
   const el = $('equation'); if (typeof clearNotes === 'function') clearNotes(); el.innerHTML = '';
   tokensFor(s).forEach(t => el.appendChild(tokEl(t)));
