@@ -792,21 +792,21 @@
     }
     return e;
   }
-  function applyDifficulty2(g, regen, opts = {}) {   // opts.noXadd: no x-term added to both sides (Act 3 uses it to keep a needed flip)
+  function applyDifficulty2(g, regen, opts = {}) {   // opts (Act 3): noXadd = no x-term added to both sides (it would hide a needed flip); negOK / fracOK = negative / fraction answers allowed on every level
     const D = difficulty;
     for (let tries = 0; tries < 40; tries++, g = regen()) {
       let e = clone(g.eq);
       const f = D.level >= 2 ? rand(2, 4) : D.level === 1 ? rand(1, 2) : 1;
       e = scaleNums(e, f * (D.neg && Math.random() < 0.5 ? -1 : 1));
       let end = pathFrom(e).end;
-      if (!end.result && !D.neg && makeEquation2(e).answer.n < 0) { e = scaleNums(e, -1); end = pathFrom(e).end; }
+      if (!end.result && !D.neg && !opts.negOK && makeEquation2(e).answer.n < 0) { e = scaleNums(e, -1); end = pathFrom(e).end; }
       if (D.fracAnswers && !end.result) { const sd = numSide(e); if (sd) { const side = sideOf(e, sd); let k; do k = fAdd(side[0].k, F(nonZero(-5, 5))); while (fZero(k)); side[0] = N(k); } }
       // Review fix (line above): the nudge used to cancel the number to 0 sometimes, leaving "3x + 0" and a "+0" card.
       if (D.steps) e = addSteps(e, D.steps, opts);
       const c = makeEquation2(e);
       if (c.path.length >= 12 || allNums(e).some(k => Math.abs(k.n) > D.max * 2)) continue;
-      if (!c.end.result && !D.fracAnswers && c.answer.d !== 1) continue;
-      if (!c.end.result && !D.neg && c.answer.n < 0) continue;
+      if (!c.end.result && !D.fracAnswers && !opts.fracOK && c.answer.d !== 1) continue;
+      if (!c.end.result && !D.neg && !opts.negOK && c.answer.n < 0) continue;
       if (!c.end.result && D.fracAnswers && c.answer.d === 1 && Math.random() < 0.6) continue;
       return { ...g, eq: e };
     }
