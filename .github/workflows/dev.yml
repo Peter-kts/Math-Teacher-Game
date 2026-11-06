@@ -1,0 +1,13 @@
+# Pushing to dev triggers this, and its completion triggers "Deploy site" on main,
+# which republishes the site with dev under /dev/.
+name: Dev branch updated
+
+on:
+  push:
+    branches: [dev]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "dev updated at ${{ github.sha }}"

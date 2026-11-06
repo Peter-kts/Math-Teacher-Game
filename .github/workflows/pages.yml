@@ -1,0 +1,58 @@
+# Publishes the site with GitHub Pages:
+#   main -> https://peter-kts.github.io/Math-Teacher-Game/
+#   dev  -> https://peter-kts.github.io/Math-Teacher-Game/dev/
+# Runs on every push to main, and (through "Dev branch updated") on every push to dev.
+# Requires Settings > Pages > Source = "GitHub Actions".
+name: Deploy site
+
+on:
+  push:
+    branches: [main]
+  workflow_run:
+    workflows: [Dev branch updated]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: main
+      - name: Check out dev
+        id: dev
+        continue-on-error: true
+        uses: actions/checkout@v4
+        with:
+          ref: dev
+          path: dev
+      - name: Assemble site
+        run: |
+          mkdir -p _site
+          rsync -a --exclude .git --exclude .github main/ _site/
+          if [ -d dev/prototype ]; then
+            mkdir -p _site/dev
+            rsync -a --exclude .git --exclude .github dev/ _site/dev/
+          fi
+          touch _site/.nojekyll
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4
