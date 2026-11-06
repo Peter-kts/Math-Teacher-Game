@@ -32,7 +32,7 @@ A run is a map of 11 nodes: normal fights, two elites and The Scale Keeper boss.
 
 Each stage has a mastery meter from 0 to 100, saved in the browser (`localStorage`) across runs:
 
-- +20 for solving an equation with no wrong moves, +5 for solving it at or under par (par = the fewest moves)
+- +25 for solving an equation with no wrong moves (par is the fewest moves, so this is also "at par")
 - −10 for each wrong move on that skill
 - −5 for each week the skill goes unpracticed, down to 60 once mastered
 - 80 = mastered, which unlocks the next stage's tutorial fight. Stages never lock again; a mastered skill that drops below 80 is marked "needs review".
