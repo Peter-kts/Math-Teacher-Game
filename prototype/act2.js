@@ -199,16 +199,17 @@
       side.forEach((it, i) => el.appendChild(mkTok(termStr(it, i === 0, true), s + i, it.t)));
       if (s === 'L') { const q = document.createElement('div'); q.className = 'tok eq'; q.dataset.role = 'eq'; q.textContent = '='; el.appendChild(q); }
     }
-    fitEq(true);
+    fitEq();
   }
   // Act 2 equations stay on one line: if they don't fit the width, shrink the equation's font
-  // (via its own --eqSize) until they do. A fresh render starts from full size; refits during an
-  // animation (tokens added or removed) only ever shrink, so the equation doesn't jump around.
-  function fitEq(reset) {
+  // (via its own --eqSize) until they do. Each render fits from full size. The equation is never
+  // resized while an operation animates (the operation is written above/below its term), so
+  // prefit() sizes it once beforehand, small enough for the result as well.
+  function fitEq() {
     const el = $('equation'); if (!el || !el.classList.contains('a2')) return;
-    if (reset) el.style.removeProperty('--eqSize');
+    el.style.removeProperty('--eqSize');
     const base = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--eqSize')) || 56;
-    let size = parseFloat(el.style.getPropertyValue('--eqSize')) || base;
+    let size = base;
     el.classList.add('fitting');   // no transitions while measuring, or widths lag behind the new size
     for (let i = 0; i < 8; i++) {
       const avail = el.clientWidth, need = el.scrollWidth;
@@ -219,10 +220,19 @@
     }
     el.classList.remove('fitting');
   }
-  let fitTimer = 0;
-  const refit = () => { requestAnimationFrame(() => fitEq(false)); clearTimeout(fitTimer); fitTimer = setTimeout(() => fitEq(false), 320); };
-  addEventListener('resize', () => fitEq(true));
-  { const el = document.getElementById('equation'); if (el) new MutationObserver(refit).observe(el, { childList: true }); }
+  const fontPx = () => parseFloat(getComputedStyle($('equation')).fontSize);
+  // Before an animation: lay out the result, note its font size, then lay the current equation back
+  // out no bigger than that. All in one task, so nothing flickers on screen.
+  function prefit(s, ns) {
+    if (!ns || ns.result) return;
+    render(ns); const after = fontPx();
+    render(s); const before = fontPx();
+    if (before > after + .5) {
+      const el = $('equation'), cur = parseFloat(el.style.getPropertyValue('--eqSize')) || parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--eqSize')) || 56;
+      el.style.setProperty('--eqSize', Math.floor(cur * after / before) + 'px');
+    }
+  }
+  addEventListener('resize', () => { if (!(typeof animating !== 'undefined' && animating)) fitEq(); });
   function mkTok(html, ref, kind) {
     const d = document.createElement('div');
     d.className = 'tok term a2 k-' + kind;
@@ -871,7 +881,7 @@
   `;
   document.head.appendChild(css);
 
-  window.ACT2 = { apply, canon, steps, isSolved, makeEquation: makeEquation2, refreshPath, render, eqText, makeHand: makeHand2,
+  window.ACT2 = { apply, canon, steps, isSolved, makeEquation: makeEquation2, refreshPath, render, prefit, eqText, makeHand: makeHand2,
     isCorrect, whyWrong, animFor, applyDifficulty: applyDifficulty2, label, text, kind, buildFight: buildFight2, genStacked: genStacked2,
     gens: { liketerms: genLike, distribute: genDist, xboth: genXBoth, clearfrac: genClearFrac, special: genSpecial } };
 })();
