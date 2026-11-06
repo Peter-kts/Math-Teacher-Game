@@ -1306,7 +1306,9 @@ function startDrag(e, el, card) {
     if (targeted) {
       // Forgiving hit test: within 40px of a box counts, closest box wins.
       let best = Infinity;
-      for (const t of document.querySelectorAll('#equation .tok:not(.eq), #equation .tok.rel')) {   // Act 3's Flip is dropped on the sign
+      // Act 3's Flip is dropped on the sign. Review fix: only Flip can target it; other ◎ cards used to snap onto it.
+      const sel = card.op === 'flip' ? '#equation .tok:not(.eq), #equation .tok.rel' : '#equation .tok:not(.eq):not(.rel)';
+      for (const t of document.querySelectorAll(sel)) {
         const b = t.getBoundingClientRect();
         const d = Math.hypot(Math.max(b.left - ev.clientX, 0, ev.clientX - b.right), Math.max(b.top - ev.clientY, 0, ev.clientY - b.bottom));
         const cd = Math.hypot(ev.clientX - (b.left + b.right) / 2, ev.clientY - (b.top + b.bottom) / 2);
@@ -1406,7 +1408,7 @@ function equationSolved() {
   const here = fresh.filter(id => actOf(id) === run.act), later = fresh.filter(id => actOf(id) > run.act);
   for (const id of here) run.nodes.splice(run.i + 1, 0, { type: 'tutorial', skill: id });
   if (newLevel && !fresh.length) $('unlock').textContent = `${newLevel.name} difficulty unlocked! Pick it at the start of your next run.`;
-  if (here.length) { renderMap(); $('unlock').textContent = `New stage unlocked: ${SKILL[here[0]].title.replace(/^Stage \d: /, '')}! Its tutorial fight is next.`; }
+  if (here.length) { renderMap(); $('unlock').textContent = `New stage unlocked: ${SKILL[here[0]].title.replace(/^Stage \d+: /, '')}! Its tutorial fight is next.`; }
   else if (later.length) $('unlock').textContent = `Act ${actOf(later[0])} unlocked! Start it from the title screen after this run.`;
 
   fight.phase++;
