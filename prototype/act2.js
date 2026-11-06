@@ -106,7 +106,7 @@
     if (isSolved(e)) return null;
     for (const s of ['L', 'R']) { const i = sideOf(e, s).findIndex(it => it.t === 'g'); if (i >= 0) return { op: 'dist', scope: 'part', ref: s + i }; }
     const fr = fracItems(e);
-    if (fr.length >= 2) return { op: '*', n: fr.reduce((a, it) => lcm(a, it.k.d), 1) };
+    if (fr.length >= 2) return { op: '*', n: fr.reduce((a, it) => lcm(a, it.k.d), 1), lcd: true };
     for (const kind of ['x', 'n']) for (const s of ['L', 'R']) {
       const idx = sideOf(e, s).map((it, j) => (it.t === kind ? j : -1)).filter(j => j >= 0);
       if (idx.length >= 2) return { op: 'comb', scope: 'part', ref: s + idx[0] };
@@ -146,7 +146,7 @@
     if (end.result === 'none') answerText = 'No solution';
     else if (end.result === 'all') answerText = 'Every number works';
     else { const other = end.L.length === 1 && end.L[0].t === 'x' ? end.R : end.L; answer = constOf(other); answerText = 'x = ' + fracText(answer); }
-    return { start: eq, path, answer, answerText, enemy, skills: [...new Set(path.map(p => p.skill))], act2: true };
+    return { start: eq, end, path, answer, answerText, enemy, skills: [...new Set(path.map(p => p.skill))], act2: true };
   }
   // After each move the rest of the path is worked out again, because a ◎ card can be played on any
   // valid part (e.g. combining the numbers before the x-terms), not only the one the path picked.
@@ -218,6 +218,8 @@
 
   // ---------------------------------------------------------------- cards
   function label(c) {
+    if (c.op === 'trap') return `<span class="clong">${c.label}</span>`;
+    if (c.lcd) return `${TIMES}${c.n}<span class="ltag">LCD</span>`;
     if (c.op === 'comb') return '<span class="clong">Combine</span>';
     if (c.op === 'dist') return '<span class="clong">Distribute</span>';
     if (c.op === 'none') return '<span class="clong">No solution</span>';
@@ -226,6 +228,8 @@
     return null;
   }
   function text(c) {
+    if (c.op === 'trap') return c.text;
+    if (c.lcd) return 'Both sides × the least common denominator';
     if (c.op === 'comb') return 'Combine like terms';
     if (c.op === 'dist') return 'Multiply into the parentheses';
     if (c.op === 'none') return 'Declare: no solution';
@@ -234,6 +238,8 @@
     return null;
   }
   function kind(c) {
+    if (c.op === 'trap') return 'Trap: ' + c.trap;
+    if (c.lcd) return 'Least common denominator';
     if (c.op === 'comb') return 'Combine';
     if (c.op === 'dist') return 'Distribute';
     if (isDeclare(c)) return 'Declare';
@@ -255,6 +261,52 @@
     if (!before || !after || !after.o.every(it => isInt(it.k))) return false;
     const size = f => Math.abs(f.n) * f.d;
     return size(after.k) < size(before.k) || (size(after.k) === size(before.k) && before.k.n < 0 && after.k.n > 0);
+  }
+  // Expert only: one trap card per hand when one fits. A trap looks like a real move but is a classic
+  // mistake (adding fractions straight across, distributing to the first term only, moving a term across
+  // without flipping its sign, combining unlike terms, losing a minus sign when dividing). Playing it is a
+  // wrong move, and its Why? explains the mistake.
+  function trapFor(e, correct) {
+    const T = (trap, lbl, txt, why) => ({ op: 'trap', trap, label: lbl, text: txt, why: `<p>${why}</p>` });
+    const xs = [...e.L, ...e.R].filter(i => i.t === 'x');
+    if (correct.lcd) {
+      const fr = xs.filter(i => i.k.d > 1).slice(0, 2);
+      if (fr.length === 2) {
+        const [a, b] = fr, top = a.k.n + b.k.n, bot = a.k.d + b.k.d, wrong = `${top === 1 ? '' : top}x/${bot}`;
+        return T('add across', 'Add across', `Add straight across: ${plain(a)} + ${plain(b)} = ${wrong}`,
+          `Fractions can't be added by adding the tops and the bottoms. ${plain(a)} + ${plain(b)} is not ${wrong}: try x = ${a.k.d * b.k.d} and the two sides come out different. Fractions need a common bottom number first, which is why multiplying both sides by the least common denominator (${correct.n}) clears them.`);
+      }
+    }
+    if (correct.op === 'dist') {
+      const [sd, i] = parseRef(correct.ref), g = sideOf(e, sd)[i], [t0, ...rest] = g.items;
+      const wrong = [{ t: t0.t, k: fMul(t0.k, g.m) }, ...rest].map((t, j) => termStr(t, j === 0, false)).join(' ');
+      return T('first term only', wrong, `Distribute: ${plain(g)} = ${wrong}`,
+        `The number in front of the parentheses multiplies <b>every</b> term inside, not just the first one. ${plain(g)} = ${g.items.map((t, j) => termStr({ t: t.t, k: fMul(t.k, g.m) }, j === 0, false)).join(' ')}.`);
+    }
+    if (correct.x) {
+      const k = correct.op === '-' ? correct.n : -correct.n, kx = (Math.abs(k) === 1 ? '' : Math.abs(k)) + 'x';
+      return T('no sign flip', `Move ${kx}`, `Move ${kx} to the other side as it is`,
+        `A term can't jump to the other side and keep its sign. Moving ${kx} across really means subtracting it from both sides, so it turns into ${k > 0 ? MINUS : '+'}${kx} over there. Use the card that subtracts (or adds) it on both sides.`);
+    }
+    if (correct.op === 'comb') {
+      for (const side of [e.L, e.R]) {
+        const x = side.find(i => i.t === 'x'), n = side.find(i => i.t === 'n');
+        if (x && n && isInt(x.k) && isInt(n.k)) {
+          const wrong = plain({ t: 'x', k: fAdd(x.k, n.k) });
+          return T('unlike terms', `Make ${wrong}`, `Combine ${plain(x)} and ${fracText(n.k)} into ${wrong}`,
+            `${plain(x)} and ${fracText(n.k)} are not like terms: one counts x's, the other is a plain number, so they can't be added together. Only x-terms combine with x-terms, and numbers with numbers.`);
+        }
+      }
+    }
+    if (correct.op === '/' && correct.n < 0) {
+      const other = [e.L, e.R].find(sd => sd.length === 1 && sd[0].t === 'n'), c = other ? other[0].k : null;
+      if (c) {
+        const wrong = fracText(fMul(c, F(1, -correct.n)));
+        return T('lost sign', `x = ${wrong}`, `Divide both sides: x = ${wrong}`,
+          `Dividing by a negative number flips the sign: ${fracText(c)} ÷ (${numText(correct.n)}) = ${fracText(fMul(c, F(1, correct.n)))}, not ${wrong}.`);
+      }
+    }
+    return null;
   }
   function makeHand2(e, correct, size) {
     const base = steps(e);
@@ -294,6 +346,8 @@
       return true;
     };
     const seen = new Set([cardLabel(correct)]), hand = [correct];
+    const trap = difficulty.level >= 3 ? trapFor(e, correct) : null;
+    if (trap && size > 2) { hand.push(trap); seen.add(cardLabel(trap)); }
     const fallback = shuffle([2, 3, 4, 5, 6, 7, 8, 9]).flatMap(n => [{ op: '+', n }, { op: '-', n }]);
     for (const c of [...shuffle(classic), ...shuffle(rest), ...fallback]) {
       if (hand.length >= size) break;
@@ -307,6 +361,7 @@
   const refOf = t => (t && t.dataset ? t.dataset.ref : t) || null;
   function isCorrect(cur, card, target) {
     const e = cur.state, ref = refOf(target);
+    if (card.op === 'trap') return false;
     if (isDeclare(card)) return isStatement(e) && (card.op === 'all') === statementTrue(e);
     if (isPart(card) && !legalPart(e, card, ref)) return false;
     const a = apply(e, card, ref);
@@ -314,6 +369,7 @@
   }
   function whyWrong(cur, card, target) {
     const e = cur.state, ref = refOf(target), want = cur.path[cur.step].move;
+    if (card.op === 'trap') return `That's a trap: it isn't true. Tap Why? to see why.`;
     if (isDeclare(card)) {
       if (!isStatement(e)) return 'x is still in the equation, so it is too early to declare. Keep solving.';
       return statementTrue(e) ? `${eqText(e)} is always true, so every number works.` : `${eqText(e)} is never true, so no number works.`;
@@ -341,7 +397,8 @@
 
   // ---------------------------------------------------------------- animations
   // Each takes (card, before, after, ref). The operation is written under (or over) the term it acts
-  // on, the way you'd do it by hand. When it finishes, the equation is re-rendered from `after`.
+  // on, the way you'd do it by hand. Timing follows the game's pattern: the written operation appears fast,
+  // hold() (scaled by animation speed), the calculation runs fast (quick(), fixed), the result shows, hold(). When it finishes, the equation is re-rendered from `after`.
   const ANIMS = { dist: animDistribute, comb: animCombine, none: animDeclare, all: animDeclare, '+': animAddBoth, '-': animAddBoth };
   const animFor = c => ANIMS[c.op] || animScale;
   const kickClass = (el, cls) => { el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls); };
@@ -362,13 +419,13 @@
       const toks = sideToks(sd), tk = idx >= 0 ? tokAt(sd + idx) : toks[toks.length - 1];
       marks.push({ sd, idx, tk, n: note(chipT, [tk]) });
     }
-    await sleep(1100);
+    await hold();
     const cancels = marks.filter(m => m.idx >= 0 && fZero(fAdd(sideOf(s, m.sd)[m.idx].k, delta)));
     if (cancels.length) {
       const it = sideOf(s, cancels[0].sd)[cancels[0].idx];
       caption(`${plain(it)} and ${chipPlain} cancel out (they make 0)`);
       cancels.forEach(m => mark([m.tk, m.n], 'cancel'));
-      await sleep(1000);
+      await quick(400);
       cancels.forEach(m => dropNote(m.n));
       await removeTok(cancels.map(m => m.tk));
       ['L', 'R'].forEach(fixLeadingSign);
@@ -384,7 +441,7 @@
       }
     }
     if (hows.length) caption(hows.join(',  '));
-    await sleep(800);
+    await quick(350);
     for (const m of marks) {
       if (cancels.includes(m)) continue;
       dropNote(m.n);
@@ -398,7 +455,7 @@
         kickClass(m.tk, 'pop');
       }
     }
-    await sleep(700);
+    await hold();
   }
 
   // Multiply or divide both sides (also × −1, × reciprocal, × the common denominator).
@@ -411,9 +468,9 @@
     if (card.op === '/') {
       for (const sd of ['L', 'R']) ns_.push(note(paren(F(card.n)), sideToks(sd), { bar: true }));
     } else {
-      for (const t of $('equation').querySelectorAll('.tok.a2')) { ns_.push(note(chipHtml(card), [t])); await sleep(160); }
+      for (const t of $('equation').querySelectorAll('.tok.a2')) { ns_.push(note(chipHtml(card), [t])); await quick(60); }
     }
-    await sleep(1000);
+    await hold();
     // Captions: what happens to the x-term, and to the other side if it is one number.
     const sides = ['L', 'R'].map(sd => ({ sd, side: sideOf(s, sd), nside: sideOf(ns, sd) }));
     const fr = fracItems(s).length >= 2;
@@ -427,7 +484,7 @@
     let popped = false;
     for (const t of $('equation').querySelectorAll('.tok.a2 .den')) { t.classList.add('cancel'); popped = true; }
     for (const t of $('equation').querySelectorAll('.tok.a2 .cf')) if (card.op === '/' || card.op === 'frac') t.classList.add('cancel');
-    if (popped || card.op === '/') await sleep(800);
+    if (popped || card.op === '/') await quick(400);
     ns_.forEach(n => mark([n], 'merge'));
     for (const o of sides) {
       // Terms keep their positions when scaled, unless parentheses with a 1 in front opened up.
@@ -439,9 +496,9 @@
         kickClass(tk, card.op === 'neg' ? 'flip' : 'pop');
       });
     }
-    await sleep(500);
+    await hold();
     ns_.forEach(dropNote);
-    await sleep(500);
+    await quick(200);
   }
 
   // Distribute: arrows sweep from the number in front to each term inside, the products are written
@@ -470,18 +527,18 @@
     }
     $('equation').appendChild(svg);
     gm.classList.add('hot');
-    await sleep(1000);
+    await quick(600);
     const notesHere = gis.map((gi, j) => note(termStr(prods[j], j === 0 && i === 0, true), [gi]));
     caption(g.items.map((t, j) => { const f = termStr(t, true, false); return `${paren(g.m)} ${TIMES} ${t.k.n < 0 ? '(' + f + ')' : f} = ${plain(prods[j])}`; }).join(',  '));
-    await sleep(1300);
+    await hold();
     tk.querySelectorAll('.gp, .gm').forEach(el => el.classList.add('fade'));
     svg.classList.add('fade');
-    await sleep(500);
+    await quick(400);
     notesHere.forEach(n => mark([n], 'merge'));
     tk.innerHTML = `<span>${prods.map((t, j) => termStr(t, j === 0 && i === 0, true)).join(' ')}</span>`;
     kickClass(tk, 'pop');
     notesHere.forEach(dropNote);
-    await sleep(700);
+    await hold();
     svg.remove();
   }
 
@@ -495,17 +552,17 @@
     const sumT = { t: kindT, k: sum };
     caption(`Like terms: ${idxs.map((j, n) => termStr(side[j], n === 0, false)).join(' ')} = ${fZero(sum) ? '0' : plain(sumT)}`);
     mark(toks, 'like');
-    await sleep(900);
+    await hold();
     const r0 = relRect(toks[0]);
     toks.slice(1).forEach(t => { const r = relRect(t); t.style.transform = `translateX(${r0.x - r.x}px) scale(.6)`; t.style.opacity = '0'; });
-    await sleep(600);
+    await quick(450);
     toks.slice(1).forEach(t => t.remove());
     toks[0].classList.remove('like');
     fixLeadingSign(sd);
-    if (fZero(sum)) { mark([toks[0]], 'cancel'); await sleep(600); await removeTok([toks[0]]); return; }
+    if (fZero(sum)) { mark([toks[0]], 'cancel'); await quick(400); await removeTok([toks[0]]); return; }
     toks[0].innerHTML = termStr(sumT, idxs[0] === 0, true);
     kickClass(toks[0], 'pop');
-    await sleep(700);
+    await hold();
   }
 
   // Declare: a false statement (1 = 5) cracks and shatters; a true one (6 = 6) glows.
@@ -523,14 +580,14 @@
       svg.innerHTML = `<path d="${d}"/>`;
       $('equation').appendChild(svg);
       kickClass($('equation'), 'shake');
-      await sleep(900);
+      await quick(700);
       svg.remove();
       toks.forEach(t => { t.style.transform = `translate(${rand(-50, 50)}px, ${rand(60, 140)}px) rotate(${rand(-70, 70)}deg)`; t.style.opacity = '0'; });
-      await sleep(800);
+      await quick(700); await hold();
     } else {
       caption(`${eqText(s)} is always true, so every number works for x`);
       mark(toks, 'glow');
-      await sleep(1700);
+      await quick(800); await hold();
     }
   }
 
@@ -645,6 +702,81 @@
     return { phases, handSize: difficulty.hand, enemy: 'archivist' };
   }
 
+
+  // ---------------------------------------------------------------- difficulty
+  // Act 2 generators are written for Easy. Other levels adjust the equation they return, keeping its shape:
+  //   bigger numbers: every number is multiplied by f (so the answer is multiplied by f too and stays whole),
+  //   negatives: Easy flips every number's sign when the answer comes out negative, other levels flip at random,
+  //   steps: extra steps, made by splitting a number into two (one more Combine) or adding the same x-term to
+  //          both sides (one more x-on-both-sides move), only with cards the player has already met,
+  //   fracAnswers (Expert): the lone number on the side without x is nudged, so the answer is often a fraction.
+  function scaleNums(e, f) {
+    const s = it => (it.t === 'n' ? { t: 'n', k: fMul(it.k, F(f)) } : it.t === 'g' ? { ...it, items: it.items.map(s) } : it);
+    return { ...e, L: e.L.map(s), R: e.R.map(s) };
+  }
+  const allNums = e => [...e.L, ...e.R].flatMap(it => (it.t === 'n' ? [it.k] : it.t === 'g' ? it.items.filter(t => t.t === 'n').map(t => t.k) : []));
+  const numSide = e => ['L', 'R'].find(sd => { const side = sideOf(e, sd); return side.length === 1 && side[0].t === 'n'; });
+  function addSteps(e, k) {
+    e = clone(e); const split = new Set(), seen = { xadd: 0 };   // at most one split per side and one x-term added
+    for (let i = 0; i < k; i++) {
+      const opts = [];
+      if (known('liketerms')) for (const sd of ['L', 'R'].filter(sd => !split.has(sd))) sideOf(e, sd).forEach((it, j) => { if (it.t === 'n' && Math.abs(it.k.n) >= 4 && isInt(it.k)) opts.push(['split', sd, j]); });
+      if (known('xboth') && !seen.xadd && !fracItems(e).some(it => it.t === 'x')) opts.push(['xadd']);   // not on x/3: 13x/3 is no fun
+      if (!opts.length) break;
+      const o = pick(opts);
+      if (o[0] === 'split') {
+        const side = sideOf(e, o[1]), c = side[o[2]].k.n, a = Math.sign(c) * rand(2, Math.abs(c) - 2);
+        side.splice(o[2], 1, N(a), N(c - a)); split.add(o[1]);
+      } else {
+        const j = rand(1, 3); seen.xadd = 1;
+        for (const side of [e.L, e.R]) { const xi = side.findIndex(it => it.t === 'x'); if (xi >= 0) side[xi] = X(fAdd(side[xi].k, F(j))); else side.unshift(X(j)); }
+      }
+    }
+    return e;
+  }
+  function applyDifficulty2(g, regen) {
+    const D = difficulty;
+    for (let tries = 0; tries < 40; tries++, g = regen()) {
+      let e = clone(g.eq);
+      const f = D.level >= 2 ? rand(2, 4) : D.level === 1 ? rand(1, 2) : 1;
+      e = scaleNums(e, f * (D.neg && Math.random() < 0.5 ? -1 : 1));
+      let end = pathFrom(e).end;
+      if (!end.result && !D.neg && makeEquation2(e).answer.n < 0) { e = scaleNums(e, -1); end = pathFrom(e).end; }
+      if (D.fracAnswers && !end.result) { const sd = numSide(e); if (sd) { const side = sideOf(e, sd); side[0] = N(fAdd(side[0].k, F(nonZero(-5, 5)))); } }
+      if (D.steps) e = addSteps(e, D.steps);
+      const c = makeEquation2(e);
+      if (c.path.length >= 12 || allNums(e).some(k => Math.abs(k.n) > D.max * 2)) continue;
+      if (!c.end.result && !D.fracAnswers && c.answer.d !== 1) continue;
+      if (!c.end.result && !D.neg && c.answer.n < 0) continue;
+      if (!c.end.result && D.fracAnswers && c.answer.d === 1 && Math.random() < 0.6) continue;
+      return { ...g, eq: e };
+    }
+    return g;
+  }
+
+  // ---------------------------------------------------------------- "Why?" explanations
+  const eqH = e => `<span class="whyEq"><span>${e.result ? eqText(e) : sideStr(e.L, true)}</span>${e.result ? '' : `<span>=</span><span>${sideStr(e.R, true)}</span>`}</span>`;
+  function explain2({ state: e, card, correct, ref }) {
+    if (!e || !e.L || !card || !correct) return null;
+    const P = t => `<p>${t}</p>`, out = [];
+    if (card.op === 'comb') out.push(P('Like terms have the same letter part: x-terms (3x, −x, x/2) combine with x-terms, and plain numbers combine with plain numbers. Combine needs two of the same kind on the same side, outside any parentheses.'));
+    else if (card.op === 'dist') out.push(P('Distribute multiplies the number in front of a pair of parentheses into every term inside, so it has to be dropped on the parentheses.'));
+    else if (isDeclare(card)) out.push(P(isStatement(e) ? `Once x is gone, check the statement that's left. ${eqH(e)} is ${statementTrue(e) ? 'always true, so every number works for x' : 'never true, so no number works: there is no solution'}.` : 'You can only declare once every x-term has cancelled and just numbers are left. x is still here, so keep solving.'));
+    else out.push(P(`${cardText(card)} is allowed, but it turns the equation into ${eqH(apply(e, card, ref))}, which is no closer to x alone.`));
+    const m = correct;
+    let how;
+    if (m.op === 'dist') how = 'Clear the parentheses first. Multiply the number in front into each term inside, and then the terms are free to move and combine.';
+    else if (m.op === 'comb') how = 'Two like terms are sitting on the same side. Combine them first so there are fewer pieces to move.';
+    else if (m.x) how = `x is on both sides. ${text(m)}: it cancels on one side and combines on the other, so x is left on only one side.`;
+    else if (m.op === '*' && fracItems(e).length >= 2) how = `There are several fractions. ${m.n} is a number every bottom number goes into, so multiplying every term by ${m.n} clears them all at once.`;
+    else if (isDeclare(m)) how = `x has cancelled completely. ${eqH(e)} is ${statementTrue(e) ? 'always true, so play All x' : 'never true, so play No solution'}.`;
+    else if (m.op === '+' || m.op === '-') how = `x is only on one side now. Undo the number added to it first: ${cardText(m).toLowerCase()} makes it 0.`;
+    else how = `x is alone apart from the number in front of it. ${cardText(m)} turns that number into 1.`;
+    out.push(P(`<b>What works here:</b> ${how}`));
+    return out.join('');
+  }
+  if (typeof registerWhy === 'function') registerWhy(explain2);
+
   // ---------------------------------------------------------------- skills and enemies
   SKILLS.push(
     { id: 'liketerms', stage: 4, act: 2, name: 'Like terms', gen: () => genLike(),
@@ -691,28 +823,29 @@
   css.textContent = `
     #equation.a2long { font-size: calc(var(--eqSize) * .78); }
     @media (max-width: 640px) { .tok.a2 { min-width:0; padding-left:3px; padding-right:3px; } }
+    .card .ltag { display:block; font-size:.45em; letter-spacing:1px; color:#7a5c00; }
     .card .clong { font-size:.62em; white-space:nowrap; }
     .tok.a2 .xv { font-style:normal; color:var(--accent); }
     .tok.a2.k-g { max-width:none; }
-    .tok.a2 .gp, .tok.a2 .gm { display:inline-block; transition: opacity calc(.45s * var(--k)), transform calc(.45s * var(--k)), color calc(.3s * var(--k)); }
+    .tok.a2 .gp, .tok.a2 .gm { display:inline-block; transition: opacity .45s, transform .45s, color .3s; }
     .tok.a2 .gm.hot { color:#7bdff2; }
     .tok.a2 .fade { opacity:0; transform:scale(.4); }
     .tok.a2 .frac .den.cancel, .tok.a2 .cf.cancel { color:var(--bad); text-decoration:line-through; }
     .tok.a2.like { color:#7bdff2; background:#7bdff222; border-color:#7bdff2; }
     .tok.a2.k-result { color:var(--good); font-size:.7em; max-width:none; white-space:normal; }
-    .tok.glow { animation: a2glow calc(.8s * var(--k)) ease-in-out 2; color:var(--good); }
+    .tok.glow { animation: a2glow .8s ease-in-out 2; color:var(--good); }
     @keyframes a2glow { 50% { text-shadow: 0 0 22px #06d6a0, 0 0 6px #fff; transform: scale(1.08); } }
     .a2arrows { position:absolute; pointer-events:none; overflow:visible; color:#7bdff2; z-index:2; }
-    .a2arrows path { fill:none; stroke:currentColor; stroke-width:4; stroke-linecap:round; stroke-dasharray:400; stroke-dashoffset:400; animation: a2draw calc(.7s * var(--k)) ease-out forwards; }
-    .a2arrows.fade { opacity:0; transition: opacity calc(.4s * var(--k)); }
+    .a2arrows path { fill:none; stroke:currentColor; stroke-width:4; stroke-linecap:round; stroke-dasharray:400; stroke-dashoffset:400; animation: a2draw .7s ease-out forwards; }
+    .a2arrows.fade { opacity:0; transition: opacity .4s; }
     @keyframes a2draw { to { stroke-dashoffset:0; } }
     .a2crack { position:absolute; pointer-events:none; overflow:visible; z-index:2; }
-    .a2crack path { fill:none; stroke:var(--bad); stroke-width:5; stroke-linejoin:bevel; stroke-dasharray:1200; stroke-dashoffset:1200; animation: a2draw calc(.6s * var(--k)) ease-in forwards; }
-    .tok.a2 { transition: background .15s, border-color .15s, max-width calc(.45s * var(--k)), min-width calc(.45s * var(--k)), padding calc(.45s * var(--k)), opacity calc(.6s * var(--k)), transform calc(.6s * var(--k)), color calc(.3s * var(--k)); }
+    .a2crack path { fill:none; stroke:var(--bad); stroke-width:5; stroke-linejoin:bevel; stroke-dasharray:1200; stroke-dashoffset:1200; animation: a2draw .6s ease-in forwards; }
+    .tok.a2 { transition: background .15s, border-color .15s, max-width .45s, min-width .45s, padding .45s, opacity .6s, transform .6s, color .3s; }
   `;
   document.head.appendChild(css);
 
   window.ACT2 = { apply, canon, steps, isSolved, makeEquation: makeEquation2, refreshPath, render, eqText, makeHand: makeHand2,
-    isCorrect, whyWrong, animFor, label, text, kind, buildFight: buildFight2, genStacked: genStacked2,
+    isCorrect, whyWrong, animFor, applyDifficulty: applyDifficulty2, label, text, kind, buildFight: buildFight2, genStacked: genStacked2,
     gens: { liketerms: genLike, distribute: genDist, xboth: genXBoth, clearfrac: genClearFrac, special: genSpecial } };
 })();
