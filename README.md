@@ -1,6 +1,6 @@
 # Math Teacher Game
 
-A Slay the Spire-style card game where algebra equations are the enemies. This repo holds a playable prototype of Acts 1 and 2, and the start of Act 3.
+A Slay the Spire-style card game where algebra equations are the enemies. This repo holds a playable prototype of Acts 1 to 3.
 
 ## Running the prototype
 
@@ -9,7 +9,7 @@ No install or build is needed. Open `prototype/index.html` in any modern browser
 ## How it plays
 
 - Each enemy is an equation. You get a hand of cards, each a legal move like "Subtract 3 from both sides", built from the numbers in the equation. Only one gets x closer to alone.
-- Cards marked ⇔ apply to both sides and can be dropped anywhere on the enemy. Cards marked ◎ change one part and must be dropped on that part of the equation. Act 1 only deals ⇔ cards; Act 2 adds the first ◎ cards (Combine, Distribute, and the two Declare cards).
+- Cards marked ⇔ apply to both sides and can be dropped anywhere on the enemy. Cards marked ◎ change one part and must be dropped on that part of the equation. Act 1 only deals ⇔ cards; Act 2 adds the first ◎ cards (Combine, Distribute, and the two Declare cards), and Act 3 adds Flip and Split.
 - A wrong move costs 10 of your 100 HP. At 0 HP the run ends, but your mastery is kept.
 - Every correct move plays its own animation: the operation is written under the term it acts on (division as a fraction bar under each side), the matching parts cancel, and the other side simplifies. Animation speed can be set to 0.5x, 1x or 2x.
 - After a solve there is a short celebration, and the game waits until you tap (or press Space/Enter). The next question slides in.
@@ -53,19 +53,22 @@ Stage 9 (formulas, d = rt) is not built yet.
 
 ## Act 3: The Leaning Stacks
 
-Act 3 opens once No solution / every x reaches 80 mastery. Its code lives in `prototype/act3.js`. It reuses Act 2's equation model with one more field, the relation (<, ≤, >, ≥), and lets Act 2's engine do the algebra.
+Act 3 opens once No solution / every x reaches 80 mastery. Its code lives in `prototype/act3.js`. It reuses Act 2's equation model with one more field, the relation (<, ≤, >, ≥), and adds its own models for chains, absolute value and two-case boards.
 
 | Stage | Example | New cards |
 |---|---|---|
-| 10. Inequalities | 2x + 1 < 9, −3x ≥ 12 | Multiply or divide both sides by a negative: the card says "flip ≥ to ≤". After the usual scale animation, the sign spins around and lands the other way |
+| 10. Inequalities | 2x + 1 < 9, −3x ≥ 12 | ◎ Flip: drop it on the sign. It is its own step: after multiplying or dividing both sides by a negative, the sign has to be flipped before anything else, and the sign spins around |
+| 11. Compound inequalities | −3 < 2x + 1 ≤ 7, x < −1 or x > 4 | None: every ⇔ card now hits all three parts ("Subtract 1 from all three parts"). The written operation splits into three and lands on each part. Flip turns both signs and the ends trade places so the smaller number comes first |
+| 12. Absolute value equations | \|x − 3\| = 5 | ◎ Split: drop it on the bars once they are alone. The bars glow and fade, and two cases drop in underneath (x − 3 = 5 or x − 3 = −5), solved one after the other |
+| 13. Absolute value inequalities | \|2x − 1\| < 7, \|x + 2\| ≥ 4 | Split again: "less than" becomes one chain (−7 < 2x − 1 < 7), "greater than" becomes two cases (2x − 1 ≤ −4 or 2x − 1 ≥ 4) |
 
-Stages 11 to 13 (compound inequalities, absolute value equations, absolute value inequalities) are not built yet.
-
-- **Number line**: when an inequality is solved, the answer is shaded on a number line under it (filled dot for ≤ and ≥, open dot for < and >). It draws any set of intervals, so the later stages can shade "between" and "outside" answers.
-- About half of the normal inequality fights need a flip. The shared variety system writes about half the other way round (9 > 2x + 1); the answer is read with x first (4 > x is x < 4).
-- Elites (Bound Warden) stack an inequality with an Act 2 move, for example −2(x − 3) < 10. The Leaning Tower boss has a no-flip phase, a flip phase and a stacked phase.
-- Difficulty uses Act 2's rules. Expert adds a trap card: the same × or ÷ by a negative, marked "keep ≥". Its Why? checks a number that fits the wrong answer and shows the original inequality coming out false.
-- Act 3 plugs into the shared variety system (`ENGINES.ineq`), so no inequality repeats within a run and shapes rotate.
+- **Flip card**: every inequality hand has one. Playing it when nothing needs flipping is a wrong move, and so is playing any other card while a flip is owed. On Easy and Normal the owed sign pulses red and a caption says why; on Hard and Expert there is no reminder.
+- **Number line**: when an inequality is solved, the answer is shaded on a number line under it (filled dot for ≤ and ≥, open dot for < and >). It shades "between" answers for chains and "outside" answers for two cases, and marks both points for an absolute value equation.
+- **Cases panel**: after a Split, both cases show under the equation. The one being solved is outlined, and a finished case turns green.
+- About half of the inequality fights need a flip, at every difficulty. The shared variety system writes about half the other way round (9 > 2x + 1); the answer is read with x first (4 > x is x < 4).
+- Elites (Bound Warden) stack an inequality with an Act 2 move (−2(x − 3) < 10), and later a chain or an absolute value with extra steps. The Leaning Tower boss has a no-flip phase, a flip phase, one phase per later stage, and a stacked phase.
+- Difficulty uses Act 2's rules, except that an inequality needing a flip never gets the extra x-term step (it would hide the flip). Expert adds trap cards: dividing by a positive number "and flipping because the number is negative", and dropping the bars without splitting.
+- Act 3 plugs into the shared variety system (`ENGINES.ineq`), so no question repeats within a run and shapes rotate.
 
 ## Mastery and stats
 
