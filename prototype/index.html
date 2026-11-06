@@ -641,7 +641,16 @@ function setSpeed(v) {
 }
 document.querySelectorAll('.speed button').forEach(b => b.addEventListener('click', () => setSpeed(+b.dataset.speed)));
 setSpeed(speed);
-const sleep = ms => new Promise(r => setTimeout(r, ms / speed));
+// sleep() waits between animation steps. A tap during an animation ends the current wait early,
+// so each tap skips ahead one step.
+const pendingSleeps = new Set();
+const sleep = ms => new Promise(r => {
+  const done = () => { clearTimeout(t); pendingSleeps.delete(done); r(); };
+  const t = setTimeout(done, ms / speed);
+  pendingSleeps.add(done);
+});
+const skipStep = () => [...pendingSleeps].forEach(done => done());
+let animating = false;
 const caption = t => { $('step').textContent = t; };
 const mark = (els, cls) => els.forEach(e => e && e.classList.add(cls));
 async function removeTok(els) { els = els.filter(Boolean); mark(els, 'gone'); await sleep(460); els.forEach(e => e.remove()); }
@@ -991,7 +1000,8 @@ async function doStep(card) {
   const additive = card.op === '+' || card.op === '-';
   const note = cur.path.length > 1 && cur.step === 0 && additive ? ` (undo + and ${MINUS} first, then ${TIMES} and ${DIV})` : '';
   const anim = OPERATION_ANIMATIONS[card.op];
-  if (anim) await anim(card, s, ns, note);
+  animating = true;
+  try { if (anim) await anim(card, s, ns, note); } finally { animating = false; }
   cur.state = ns; cur.step++;
   cur.lastT = performance.now();   // start the next move's clock after the animation, not before it
   renderEquation(ns);
@@ -1038,7 +1048,7 @@ function takeDamage(why) {
 }
 
 // After a solve: a short celebration, then the game waits until the player taps (or presses Space/Enter).
-let waiting = false, nextAction = null;
+let waiting = false, nextAction = null, waitingSince = 0;
 function celebrate() {
   const box = $('celebrate'), arena = $('arena').getBoundingClientRect(), eqR = $('equation').getBoundingClientRect();
   const cx = eqR.left + eqR.width / 2 - arena.left, cy = eqR.top + eqR.height / 2 - arena.top;
@@ -1053,6 +1063,7 @@ function celebrate() {
 }
 function waitForNext(action) {
   busy = true; nextAction = action; waiting = true;
+  waitingSince = performance.now();
   celebrate();
   $('next').classList.add('show');
 }
@@ -1069,7 +1080,19 @@ async function goNext() {
   $('celebrate').innerHTML = ''; $('equation').classList.remove('solved');
   a();
 }
-window.addEventListener('click', e => { if (waiting && !e.target.closest('.speed, button, #over')) goNext(); });
+// Taps: on the result screen a tap moves to the next question; during an animation it skips a step.
+// Uses pointer events rather than click, because iOS Safari doesn't send click for taps on plain
+// page areas. A press that moves more than a few pixels (a card drag) doesn't count as a tap.
+let tapStart = null;
+window.addEventListener('pointerdown', e => { tapStart = { x: e.clientX, y: e.clientY, id: e.pointerId }; });
+window.addEventListener('pointerup', e => {
+  const t = tapStart; tapStart = null;
+  if (!t || t.id !== e.pointerId || Math.hypot(e.clientX - t.x, e.clientY - t.y) > 12) return;
+  if (e.target.closest('.speed, button, #over, #dbgBtn')) return;
+  // A short grace period stops a burst of skip taps from also skipping the result screen.
+  if (waiting) { if (performance.now() - waitingSince > 500) goNext(); }
+  else if (animating) skipStep();
+});
 window.addEventListener('keydown', e => { if (waiting && (e.key === ' ' || e.key === 'Enter') && !$('over').classList.contains('show')) { e.preventDefault(); goNext(); } });
 
 // =====================================================================
