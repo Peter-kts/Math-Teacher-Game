@@ -304,10 +304,14 @@
     const xs = [...e.L, ...e.R].filter(i => i.t === 'x');
     if (correct.lcd) {
       const fr = xs.filter(i => i.k.d > 1).slice(0, 2);
-      if (fr.length === 2) {
-        const [a, b] = fr, top = a.k.n + b.k.n, bot = a.k.d + b.k.d, wrong = `${top === 1 ? '' : top}x/${bot}`;
-        return T('add across', 'Add across', `Add straight across: ${plain(a)} + ${plain(b)} = ${wrong}`,
-          `Fractions can't be added by adding the tops and the bottoms. ${plain(a)} + ${plain(b)} is not ${wrong}: try x = ${a.k.d * b.k.d} and the two sides come out different. Fractions need a common bottom number first, which is why multiplying both sides by the least common denominator (${correct.n}) clears them.`);
+      // Review fix: a difference like x/2 − x/6 used to read "x/2 + −x/6 = 0x/8". The trap is now skipped
+      // when the tops cancel, and the second term keeps its own sign ("x/2 − x/6").
+      const [a, b] = fr, top = fr.length === 2 ? a.k.n + b.k.n : 0;
+      if (top !== 0) {
+        const bot = a.k.d + b.k.d, wrong = `${top < 0 ? MINUS : ''}${Math.abs(top) === 1 ? '' : Math.abs(top)}x/${bot}`;
+        const sum = `${plain(a)} ${termStr(b, false, false)}`;
+        return T('add across', 'Add across', `Add straight across: ${sum} = ${wrong}`,
+          `Fractions can't be added by adding the tops and the bottoms. ${sum} is not ${wrong}: try x = ${a.k.d * b.k.d} and the two sides come out different. Fractions need a common bottom number first, which is why multiplying both sides by the least common denominator (${correct.n}) clears them.`);
       }
     }
     if (correct.op === 'dist') {
@@ -324,7 +328,8 @@
     if (correct.op === 'comb') {
       for (const side of [e.L, e.R]) {
         const x = side.find(i => i.t === 'x'), n = side.find(i => i.t === 'n');
-        if (x && n && isInt(x.k) && isInt(n.k)) {
+        // Review fix: skip sides where the two cancel (8x − 8), which made the card say "Make 0x".
+        if (x && n && isInt(x.k) && isInt(n.k) && !fZero(fAdd(x.k, n.k))) {
           const wrong = plain({ t: 'x', k: fAdd(x.k, n.k) });
           return T('unlike terms', `Make ${wrong}`, `Combine ${plain(x)} and ${fracText(n.k)} into ${wrong}`,
             `${plain(x)} and ${fracText(n.k)} are not like terms: one counts x's, the other is a plain number, so they can't be added together. Only x-terms combine with x-terms, and numbers with numbers.`);
@@ -379,7 +384,10 @@
       return true;
     };
     const seen = new Set([cardLabel(correct)]), hand = [correct];
-    const trap = difficulty.level >= 3 ? trapFor(e, correct) : null;
+    // Review fix: tutorials skip the difficulty transform, so they skip traps too (they used to take one of
+    // the two wrong-card slots in a first-time learner's 3-card hand on Expert).
+    const inTutorial = typeof fight !== 'undefined' && fight && fight.node && fight.node.type === 'tutorial';
+    const trap = difficulty.level >= 3 && !inTutorial ? trapFor(e, correct) : null;
     if (trap && size > 2) { hand.push(trap); seen.add(cardLabel(trap)); }
     const fallback = shuffle([2, 3, 4, 5, 6, 7, 8, 9]).flatMap(n => [{ op: '+', n }, { op: '-', n }]);
     for (const c of [...shuffle(classic), ...shuffle(rest), ...fallback]) {
@@ -792,7 +800,8 @@
       e = scaleNums(e, f * (D.neg && Math.random() < 0.5 ? -1 : 1));
       let end = pathFrom(e).end;
       if (!end.result && !D.neg && makeEquation2(e).answer.n < 0) { e = scaleNums(e, -1); end = pathFrom(e).end; }
-      if (D.fracAnswers && !end.result) { const sd = numSide(e); if (sd) { const side = sideOf(e, sd); side[0] = N(fAdd(side[0].k, F(nonZero(-5, 5)))); } }
+      if (D.fracAnswers && !end.result) { const sd = numSide(e); if (sd) { const side = sideOf(e, sd); let k; do k = fAdd(side[0].k, F(nonZero(-5, 5))); while (fZero(k)); side[0] = N(k); } }
+      // Review fix (line above): the nudge used to cancel the number to 0 sometimes, leaving "3x + 0" and a "+0" card.
       if (D.steps) e = addSteps(e, D.steps);
       const c = makeEquation2(e);
       if (c.path.length >= 12 || allNums(e).some(k => Math.abs(k.n) > D.max * 2)) continue;
