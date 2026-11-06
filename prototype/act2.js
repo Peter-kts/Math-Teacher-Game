@@ -749,7 +749,9 @@
         const side = sideOf(e, o[1]), c = side[o[2]].k.n, a = Math.sign(c) * rand(2, Math.abs(c) - 2);
         side.splice(o[2], 1, N(a), N(c - a)); split.add(o[1]);
       } else {
-        const j = rand(1, 3); seen.xadd = 1;
+        // Review fix: j is re-picked if it would cancel an existing x-term (−x + 1x left a "0x" term).
+        const cancels = j => [e.L, e.R].some(sd => { const x = sd.find(it => it.t === 'x'); return x && fZero(fAdd(x.k, F(j))); });
+        let j; do j = rand(1, 3); while (cancels(j)); seen.xadd = 1;
         for (const side of [e.L, e.R]) { const xi = side.findIndex(it => it.t === 'x'); if (xi >= 0) side[xi] = X(fAdd(side[xi].k, F(j))); else side.unshift(X(j)); }
       }
     }
