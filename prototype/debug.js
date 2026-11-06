@@ -33,13 +33,22 @@
   function jump(act, node) {
     unlockAll();
     resetScreen();
-    (typeof startRun === "function" ? startRun : newRun)(act);
+    (typeof startRun === "function" ? startRun : newRun)(act, typeof difficulty !== 'undefined' ? difficulty.level : undefined);
     resetScreen();
     run.nodes = layout().map(type => ({ type }));
     if (node.type === 'tutorial') { run.nodes.unshift(node); run.i = 0; }
     else run.i = Math.max(0, run.nodes.findIndex(n => n.type === node.type));
     hp = MAX_HP; updateHud();
     startNode();
+  }
+  // Closing the debug menu goes back to the title if no run is going yet, so the screen isn't left empty.
+  const close = () => { if (run) hideOverlay(); else showTitle(); };
+  // Sets the difficulty for debug jumps and the next run (and unlocks it).
+  function setLevel(lvl) {
+    progress.levelUnlocked = Math.max(progress.levelUnlocked, lvl); saveProgress();
+    difficulty = DIFFICULTIES[lvl];
+    try { localStorage.setItem('algebraCards.difficulty', String(lvl)); } catch (e) {}
+    open();
   }
   function autoSolve() {
     if (!cur || (typeof waiting !== 'undefined' && waiting)) return;
@@ -56,15 +65,18 @@
           <button data-a="${a}" data-t="elite">Elite</button>
           <button data-a="${a}" data-t="boss">Boss</button></div>`;
     }).join('');
+    const diffRow = typeof DIFFICULTIES === 'undefined' ? '' : `<h2>Difficulty for jumps</h2><div class="grid">` +
+      DIFFICULTIES.map(d => `<button data-lvl="${d.level}" class="${d.level === difficulty.level ? '' : 'ghost'}">${d.name}</button>`).join('') + '</div>';
     showOverlay(`<div id="dbgPanel"><h1>Debug</h1>
-      <p>Jumping unlocks every stage and starts a new run at that spot. Auto-solve counts as a clean solve, so it also raises mastery.</p>
-      ${rows}</div>`, [
+      <p>Jumping unlocks every stage and starts a new run at that spot, at the difficulty picked here. Auto-solve counts as a clean solve, so it also raises mastery.</p>
+      ${diffRow}${rows}</div>`, [
       ['Auto-solve this fight', autoSolve],
-      ['Unlock all difficulties', () => { progress.levelUnlocked = 3; saveProgress(); hideOverlay(); }, true],
-      ['Refill HP', () => { hp = MAX_HP; updateHud(); hideOverlay(); }, true],
-      ['Close', hideOverlay, true],
+      ['Unlock all difficulties', () => { progress.levelUnlocked = 3; saveProgress(); close(); }, true],
+      ['Refill HP', () => { hp = MAX_HP; updateHud(); close(); }, true],
+      ['Close', close, true],
     ]);
     $('dbgPanel').addEventListener('click', e => {
+      const l = e.target.closest('button[data-lvl]'); if (l) return setLevel(+l.dataset.lvl);
       const b = e.target.closest('button[data-t]'); if (!b) return;
       jump(+b.dataset.a, b.dataset.t === 'tutorial' ? { type: 'tutorial', skill: b.dataset.s } : { type: b.dataset.t });
     });
