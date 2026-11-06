@@ -69,6 +69,12 @@
   @keyframes flip { 0% { transform: rotateX(0); } 50% { transform: rotateX(90deg); } 100% { transform: rotateX(0); } }
   .tok.spin { animation: spin calc(.9s * var(--k)) ease-in-out; }
   @keyframes spin { 0% { transform: rotateY(0); } 100% { transform: rotateY(360deg); } }
+  /* difficulty picker */
+  .diff { display:flex; flex-direction:column; gap:6px; }
+  .diff input[type=range] { width:100%; accent-color:var(--accent); height:32px; touch-action:pan-x; }
+  .diffLabels { display:flex; justify-content:space-between; font-size:14px; font-weight:bold; }
+  .diffLabels .lockd { color:var(--muted); font-weight:normal; }
+  .diffTag { font-size:11px; padding:1px 6px; border:1px solid var(--muted); border-radius:3px; }
   /* operations written under a term */
   .unote { position:absolute; transform:translateX(-50%); margin-top:.1em; font-size:.42em; color:#7bdff2; white-space:nowrap; pointer-events:none; z-index:2;
            display:flex; align-items:center; line-height:1.1; text-shadow:0 2px 0 #000;
@@ -135,6 +141,14 @@
   /* overlays: title, tutorial intro, run end, stats */
   #over { position:fixed; inset:0; background:#000d; display:none; align-items:flex-start; justify-content:center; z-index:20; padding:16px; overflow-y:auto; touch-action:pan-y; }
   #over.show { display:flex; }
+  #why { position:fixed; inset:0; background:#000b; display:none; align-items:flex-start; justify-content:center; z-index:25; padding:16px; overflow-y:auto; }
+  #why.show { display:flex; }
+  #why .panel { margin:auto; max-width:520px; }
+  #why h2 { margin:0 0 6px; color:var(--accent, #ffd166); font-size:20px; }
+  #whyBody p { margin:8px 0; line-height:1.45; }
+  .whyEq { display:inline-flex; align-items:center; gap:.3em; font-weight:bold; white-space:nowrap; background:#0003; padding:1px 8px; border-radius:4px; }
+  .whyEq .frac { font-size:.85em; }
+  .whyBtn { margin-left:6px; font:inherit; font-size:.85em; padding:1px 10px; border:2px solid currentColor; background:transparent; color:inherit; cursor:pointer; border-radius:4px; }
   .panel { background:var(--panel); border:3px solid #000; max-width:640px; width:100%; margin:auto; padding:20px 22px; display:flex; flex-direction:column; gap:12px; }
   .panel h1 { margin:0; font-size:26px; color:var(--accent); }
   .panel h2 { margin:0; font-size:18px; color:var(--muted); font-weight:normal; }
@@ -178,9 +192,10 @@
     .key { font-size:11px; gap:10px; }
     .key .badge { font-size:12px; }
     #hand { gap:5px; flex-wrap:nowrap; min-height:0; padding-bottom:0; }
-    .card { width:calc((100vw - 16px - 15px) / 4); max-width:110px; height:clamp(112px, 19vh, 150px); font-size:clamp(16px, 5vw, 22px); padding:4px 3px; }
+    .card { width:calc((100vw - 16px - 5px * (var(--n, 4) - 1)) / var(--n, 4)); max-width:110px; height:clamp(112px, 19vh, 150px); font-size:clamp(16px, 5vw, 22px); padding:4px 3px; }
     .card .badge { font-size:12px; margin-bottom:3px; padding:0 6px; }
     .card small { font-size:clamp(9px, 2.7vw, 11px); margin-top:4px; }
+    #hand.many .card small { font-size:clamp(8px, 2.3vw, 11px); overflow-wrap:anywhere; }
     .card:hover { transform:none; }
     .panel { padding:14px; gap:10px; }
     .panel h1 { font-size:21px; } .panel p { font-size:14px; } .panel .example { font-size:15px; }
@@ -252,6 +267,7 @@
   <div id="hand"></div>
 </div>
 <div id="over"><div class="panel" id="overPanel"></div></div>
+<div id="why"><div class="panel"><h2>Why that didn't work</h2><div id="whyBody"></div><div class="buttons"><button id="whyClose">Got it</button></div></div></div>
 <script>
 // =====================================================================
 //  Small helpers
@@ -373,6 +389,54 @@ function genStacked(skills) {
 }
 
 // =====================================================================
+//  Difficulty
+// =====================================================================
+// Picked at the start of each run (like ascension levels). Easy is the original game. The same
+// stages get harder numbers, more cards in the hand, and bigger mastery gains. Act 2 generators can
+// read `difficulty` too: steps (extra steps), highlight ('on' | 'afterWrong' | 'off') are for them,
+// since Act 1's one- and two-step shapes have no room for extra steps.
+const DIFFICULTIES = [
+  { level: 0, name: 'Easy',   max: 12, neg: false, fracAnswers: false, hand: 4, gain: 1,    steps: 0, highlight: 'on',
+    desc: 'Whole numbers 1 to 12 with positive answers.' },
+  { level: 1, name: 'Normal', max: 20, neg: true,  fracAnswers: false, hand: 4, gain: 1.25, steps: 1, highlight: 'on',
+    desc: 'Numbers up to 20, negative numbers and answers. Mastery ×1.25.' },
+  { level: 2, name: 'Hard',   max: 50, neg: true,  fracAnswers: false, hand: 5, gain: 1.5,  steps: 2, highlight: 'afterWrong',
+    desc: 'Numbers up to 50 and 5 cards to choose from. Mastery ×1.5.' },
+  { level: 3, name: 'Expert', max: 50, neg: true,  fracAnswers: true,  hand: 6, gain: 2,    steps: 3, highlight: 'off',
+    desc: 'Answers can be fractions (x = −7/3) and 6 cards to choose from. Mastery ×2.' },
+];
+let difficulty = DIFFICULTIES[0];
+try { difficulty = DIFFICULTIES[+localStorage.getItem('algebraCards.difficulty')] || DIFFICULTIES[0]; } catch (e) {}
+
+// Re-rolls an Act 1 equation's numbers for the current difficulty, keeping its shape (which terms
+// exist, where x is, the coefficient), so the stage's concept stays the same. Easy leaves it as is.
+function applyDifficulty(s) {
+  const D = difficulty;
+  if (!D.level) return s;
+  const N = D.max, a = s.coef;
+  for (let tries = 0; tries < 300; tries++) {
+    const r = { ...s };
+    if (s.b.n !== 0) {
+      const b = D.neg ? nonZero(-N, N) : rand(1, N);
+      if (isInt(a) && Math.abs(a.n) > 1 && b % a.n === 0) continue;   // keep "undo + or − first" a real lesson
+      r.b = F(b);
+    }
+    if (D.fracAnswers) {
+      r.c = F(nonZero(-N, N));                                          // the answer falls out, often a fraction
+      const x = fMul(fAdd(r.c, F(-r.b.n, r.b.d)), F(a.d, a.n));
+      if (x.n === 0 || (isInt(x) && Math.random() < 0.6)) continue;
+    } else {
+      const k = Math.max(1, Math.floor(N / a.d));
+      const x = (D.neg ? nonZero(-k, k) : rand(1, k)) * a.d;          // x/q needs x to be a multiple of q
+      r.c = fAdd(fMul(a, F(x)), r.b);
+      if (!isInt(r.c) || Math.abs(r.c.n) > N || r.c.n === 0 || r.c.n === r.b.n) continue;
+    }
+    return r;
+  }
+  return s;
+}
+
+// =====================================================================
 //  Skills, stages and saved progress
 // =====================================================================
 const SKILLS = [
@@ -423,6 +487,7 @@ function loadProgress() {
   const ids = SKILLS.map(s => s.id);
   p.unlocked = Array.isArray(p.unlocked) ? p.unlocked.filter(id => ids.includes(id)) : [];
   if (!p.unlocked.includes('onestep')) p.unlocked.unshift('onestep');
+  p.levelUnlocked = Math.max(0, Math.min(3, Math.floor(+p.levelUnlocked) || 0));
   p.tutorialsDone = Array.isArray(p.tutorialsDone) ? p.tutorialsDone.filter(id => ids.includes(id)) : [];
   applyDecay(p);
   return p;
@@ -550,7 +615,7 @@ function makeHand(s, correct, size) {
   const size_ = f => Math.abs(f.n) * f.d;
   const useful = c => {
     const a = applyCard(s, c);
-    if (!isInt(a.b) || !isInt(a.c)) return false;
+    if (!isInt(a.b)) return false;
     if (stepsLeft(a) < stepsLeft(s)) return true;
     if (s.b.n !== 0) return false;   // with a + or − term left, × or ÷ first stays a teachable order mistake
     return size_(a.coef) < size_(s.coef) || (size_(a.coef) === size_(s.coef) && s.coef.n < 0 && a.coef.n > 0);
@@ -619,6 +684,76 @@ function appliedText(s, card) {
 }
 
 // =====================================================================
+//  "Why?" explanations for wrong moves
+// =====================================================================
+// A wrong move shows a short message plus a "Why?" button that opens a longer explanation.
+// Explainers are tried newest first; each gets (ctx) = { state, card, correct } and returns
+// HTML, or null to pass. A card can also carry its own: card.why (a string or a function of ctx).
+// Act 2 and later register theirs with registerWhy(fn).
+const WHY_EXPLAINERS = [];
+function registerWhy(fn) { WHY_EXPLAINERS.unshift(fn); }
+function explainWhy(ctx) {
+  const own = ctx.card && ctx.card.why;
+  if (own) return typeof own === 'function' ? own(ctx) : own;
+  for (const fn of WHY_EXPLAINERS) { const h = fn(ctx); if (h) return h; }
+  return null;
+}
+function eqHtml(s) {
+  const toks = tokensFor(s), parts = [];
+  toks.forEach((t, i) => { const h = t.html || t.text; if (t.role === 'x' && toks[i - 1] && toks[i - 1].role === 'coef') parts[parts.length - 1] += h; else parts.push(h); });
+  return '<span class="whyEq">' + parts.map(h => `<span>${h}</span>`).join('') + '</span>';
+}
+
+// Act 1: coef·x + b = c
+function explainAct1({ state: s, card, correct }) {
+  if (!s || !s.coef || !card) return null;
+  const P = t => `<p>${t}</p>`, after = applyCard(s, card);
+  const result = P(`${cardText(card)} turns it into ${eqHtml(after)}`);
+  const { n, d } = s.coef, b = s.b;
+  const descCoef = f => f.d === 1 ? (f.n === -1 ? `has a minus sign in front (it's ${TIMES} ${MINUS}1)` : `is multiplied by ${numText(f.n)}`)
+    : Math.abs(f.n) === 1 ? `is divided by ${f.d}${f.n < 0 ? ' and has a minus sign' : ''}` : `is multiplied by ${fracText(f)}`;
+  const coefDesc = descCoef(s.coef);
+  const additive = card.op === '+' || card.op === '-';
+  const amount = c => F(c.op === '+' ? c.n : -c.n);
+  if (b.n !== 0) {                                   // a number is still added to the x term
+    const bt = `${b.n > 0 ? '+' : MINUS} ${fracText(fAbs(b))}`;
+    const fix = `${correct.op === '+' ? 'add' : 'subtract'} ${correct.n}, because ${fracText(b)} ${correct.op === '+' ? '+' : MINUS} ${correct.n} = 0`;
+    if (!additive && !fIs(s.coef, 1) && sameCard(card, correctMove({ ...s, b: F(0) })))
+      return P(`In ${eqHtml(s)} two things happen to x: first it ${coefDesc}, then ${bt} is added on.`) +
+        P(`To get x alone you undo them in reverse order, like taking off your shoes before your socks. The last thing done was ${bt}, so that comes off first.`) +
+        result + P(`It ${card.op === '/' ? 'divided' : 'multiplied'} the ${fracText(fAbs(b))} as well, so the numbers got messier and x still isn't alone.`) +
+        P(`<b>Instead:</b> ${fix}. Then ${cardText(card).replace(/^./, ch => ch.toLowerCase())}.`);
+    if (additive && amount(card).n === b.n * 1 && amount(card).d === b.d)
+      return P(`x has ${bt} next to it. ${cardText(card)} does the same thing again instead of undoing it.`) + result +
+        P(`<b>The idea:</b> to cancel a number, use its opposite. So ${fix}.`);
+    if (additive)
+      return P(`x has ${bt} next to it. To cancel it, the number you add or take away has to match it exactly.`) + result +
+        P(`The number next to x is now ${fracText(after.b)}, not 0, so x still isn't alone.`) + P(`<b>Instead:</b> ${fix}.`);
+    return P(`x has ${bt} added to it. Multiplying or dividing doesn't remove an added number, it only makes it bigger or smaller.`) + result +
+      P(`<b>Instead:</b> undo adding with subtracting (and subtracting with adding). Here, ${fix}.`);
+  }
+  // Only a coefficient is left: x ${coefDesc}
+  const idea = ({ '/': `divide by ${numText(correct.n)}, because ${numText(correct.n)} ${DIV} ${paren(F(correct.n))} = 1`,
+    '*': `multiply by ${numText(correct.n)}, because dividing by ${Math.abs(correct.n)} and then multiplying by ${Math.abs(correct.n)} cancel out`,
+    neg: `multiply by ${MINUS}1, because ${MINUS}1 ${TIMES} ${MINUS}1 = 1`,
+    frac: `multiply by the flipped fraction ${fracText(F(correct.n, correct.d))}, because ${fracText(s.coef)} ${TIMES} ${paren(F(correct.n, correct.d))} = 1` })[correct.op];
+  if (additive)
+    return P(`Here x ${coefDesc}. Adding or subtracting can't undo that: it only changes the number on the other side.`) + result +
+      P(`<b>The idea:</b> undo multiplying with dividing, and dividing with multiplying. Here, ${idea}.`);
+  return P(`Here x ${coefDesc}. To get x alone, that has to be undone so it's just 1x.`) + result +
+    P(fIs(after.coef, 1) ? `x is alone, but this skipped a step.` : `Now x ${descCoef(after.coef)}, so it still isn't alone.`) + P(`<b>Instead:</b> ${idea}.`);
+}
+registerWhy(explainAct1);
+
+function showWhy(html) {
+  const box = $('why'); $('whyBody').innerHTML = html; box.classList.add('show');
+}
+function hideWhy() { $('why').classList.remove('show'); }
+$('whyClose').addEventListener('click', hideWhy);
+$('why').addEventListener('click', e => { if (e.target.id === 'why') hideWhy(); });
+window.addEventListener('keydown', e => { if (e.key === 'Escape') hideWhy(); });
+
+// =====================================================================
 //  Operation animations
 // =====================================================================
 // Each operation plays its own animation on the equation when it's the correct move.
@@ -645,7 +780,16 @@ function setSpeed(v) {
 }
 document.querySelectorAll('.speed button').forEach(b => b.addEventListener('click', () => setSpeed(+b.dataset.speed)));
 setSpeed(speed);
-const sleep = ms => new Promise(r => setTimeout(r, ms / speed));
+// sleep() waits between animation steps. A tap during an animation ends the current wait early,
+// so each tap skips ahead one step.
+const pendingSleeps = new Set();
+const sleep = ms => new Promise(r => {
+  const done = () => { clearTimeout(t); pendingSleeps.delete(done); r(); };
+  const t = setTimeout(done, ms / speed);
+  pendingSleeps.add(done);
+});
+const skipStep = () => [...pendingSleeps].forEach(done => done());
+let animating = false;
 const caption = t => { $('step').textContent = t; };
 const mark = (els, cls) => els.forEach(e => e && e.classList.add(cls));
 async function removeTok(els) { els = els.filter(Boolean); mark(els, 'gone'); await sleep(460); els.forEach(e => e.remove()); }
@@ -807,7 +951,29 @@ const ACT1_LAYOUT = ['fight', 'fight', 'fight', 'elite', 'fight', 'fight', 'figh
 const NODE_ICON = { tutorial: '★', fight: '⚔', elite: '☠', boss: '♛' };
 let hp = MAX_HP, run = null, fight = null, cur = null, hand = [], busy = true;
 
-function newRun(act = 1) {
+// Starting a run first asks for a difficulty.
+function newRun(act) {
+  act = typeof act === 'number' ? act : 1;
+  busy = true;
+  const max = progress.levelUnlocked;
+  const labels = DIFFICULTIES.map(d => `<span class="${d.level > max ? 'lockd' : ''}">${d.level > max ? '🔒 ' : ''}${d.name}</span>`).join('');
+  showOverlay(`<h2>New run</h2><h1>Choose difficulty</h1>
+    <div class="diff"><input type="range" id="diffRange" min="0" max="3" step="1" value="${Math.min(difficulty.level, max)}">
+    <div class="diffLabels">${labels}</div></div>
+    <p id="diffDesc"></p>
+    <p class="help">Each level opens after a clean solve on a mastered stage at the level below.</p>`,
+    [['Start', () => { const lvl = Math.min(+$('diffRange').value, max); startRun(act, lvl); }], ['Back', showTitle, true]]);
+  const range = $('diffRange');
+  const show = () => {
+    if (+range.value > max) range.value = max;
+    const d = DIFFICULTIES[+range.value];
+    $('diffDesc').innerHTML = `<b>${d.name}:</b> ${d.desc}`;
+  };
+  range.addEventListener('input', show); show();
+}
+function startRun(act = 1, level = difficulty.level) {
+  difficulty = DIFFICULTIES[level] || DIFFICULTIES[0];
+  try { localStorage.setItem('algebraCards.difficulty', String(difficulty.level)); } catch (e) {}
   hp = MAX_HP;
   run = { act, nodes: ACT1_LAYOUT.map(type => ({ type })), i: 0 };
   // Any unlocked stage of this act whose tutorial hasn't been played yet goes first.
@@ -832,19 +998,19 @@ function pickFightSkill() {
 function buildFight(node) {
   const list = runSkills();
   if (node.type === 'tutorial') return { phases: SKILL[node.skill].tutorial, handSize: 3, rank: 'Tutorial' };
-  if (node.type === 'fight') { const id = pickFightSkill(); return { phases: [SKILL[id].gen], handSize: 4 }; }
+  if (node.type === 'fight') { const id = pickFightSkill(); return { phases: [SKILL[id].gen], handSize: difficulty.hand }; }
   if (run.act === 2) return ACT2.buildFight(node, list);
   if (node.type === 'elite') {
     const recent = list.slice(-2);
     const swapped = () => { const g = genOneStep(); g.s.xLeft = false; return g; };
     const phases = recent.length > 1 ? [() => genStacked(recent)] : [() => genOneStep(), swapped];   // one stage only: two equations back to back
-    return { phases, handSize: 4, enemy: 'stacker' };
+    return { phases, handSize: difficulty.hand, enemy: 'stacker' };
   }
   // Boss: one phase per unlocked stage (sides swap from phase 2), then everything at once.
   const phases = list.map((id, i) => () => { const g = SKILL[id].gen(); if (i > 0) g.s.xLeft = false; return g; });
   phases.push(() => { const g = list.length > 1 ? genStacked(list.slice(-2)) : genOneStep(); g.s.xLeft = Math.random() < 0.5; return g; });
   if (list.length === 1) phases.splice(1, 0, () => { const g = genOneStep(); g.s.xLeft = false; return g; });
-  return { phases, handSize: 4, enemy: 'scalekeeper' };
+  return { phases, handSize: difficulty.hand, enemy: 'scalekeeper' };
 }
 
 function startNode() {
@@ -857,6 +1023,7 @@ function startNode() {
 
 function startPhase() {
   const g = fight.phases[fight.phase]();
+  if (g.s && fight.node.type !== 'tutorial') g.s = applyDifficulty(g.s);
   const enemy = fight.enemy || g.enemy;
   // Act 2 generators return { eq } (act2.js's equation model); Act 1 ones return { s }.
   cur = g.eq ? ACT2.makeEquation(g.eq, enemy) : makeEquation(g.s, enemy);
@@ -881,7 +1048,7 @@ function renderFoe() {
 function dealHand() { hand = (cur.act2 ? ACT2.makeHand : makeHand)(cur.state, cur.path[cur.step].move, fight.handSize); renderHand(); }
 
 function renderHand() {
-  const el = $('hand'); el.innerHTML = '';
+  const el = $('hand'); el.innerHTML = ''; el.style.setProperty('--n', String(Math.max(4, hand.length))); el.classList.toggle('many', hand.length >= 6);
   hand.forEach((c, i) => {
     const d = document.createElement('div');
     d.className = 'card deal'; d.dataset.idx = i; d.style.animationDelay = `calc(${i * 70}ms * var(--k))`;
@@ -895,7 +1062,7 @@ function renderHand() {
 
 function renderMap() {
   $('map').innerHTML = `<span class="lbl">Act ${run.act} · ${ACTS[run.act].name}</span>&nbsp;` + run.nodes.map((n, i) =>
-    `${i ? '<span class="link"></span>' : ''}<span class="node ${n.type} ${i < run.i ? 'done' : ''} ${i === run.i ? 'cur' : ''}" title="${n.type === 'tutorial' ? 'Tutorial: ' + SKILL[n.skill].name : n.type}">${NODE_ICON[n.type]}</span>`).join('');
+    `${i ? '<span class="link"></span>' : ''}<span class="node ${n.type} ${i < run.i ? 'done' : ''} ${i === run.i ? 'cur' : ''}" title="${n.type === 'tutorial' ? 'Tutorial: ' + SKILL[n.skill].name : n.type}">${NODE_ICON[n.type]}</span>`).join('') + `&nbsp;<span class="diffTag">${difficulty.name}</span>`;
 }
 
 function renderSkills(deltas = []) {
@@ -914,7 +1081,11 @@ function updateHud() {
   $('hpfill').style.width = (hp / MAX_HP * 100) + '%';
   $('hptext').textContent = `${hp} / ${MAX_HP}`;
 }
-function setMsg(t, cls = '') { const m = $('msg'); m.textContent = t; m.className = cls; }
+function setMsg(t, cls = '', why = null) {
+  const m = $('msg'); m.textContent = t; m.className = cls;
+  if (why) { const b = document.createElement('button'); b.className = 'whyBtn'; b.textContent = 'Why?';
+    b.addEventListener('click', e => { e.stopPropagation(); showWhy(why); }); m.append(' ', b); }
+}
 
 // ---------- Drag & drop (pointer events: mouse + touch) ----------
 // Two kinds of cards:
@@ -998,17 +1169,18 @@ function playCard(card, target) {
   const why = s.b.n !== 0 && !fIs(s.coef, 1) && sameCard(card, undo)
     ? `That's allowed, but undo the + or ${MINUS} part first, then the ${TIMES} or ${DIV}.`
     : `That's allowed, but x still isn't alone: ${appliedText(s, card)}`;
-  takeDamage(why);
+  takeDamage(why, explainWhy({ state: s, card, correct: step.move }));
 }
 
 async function doStep(card, target) {
-  busy = true; setMsg('');
+  busy = true; setMsg(''); hideWhy();
   const ref = target && target.dataset ? target.dataset.ref : target;
   const s = cur.state, ns = cur.act2 ? ACT2.apply(s, card, ref) : applyCard(s, card);
   const additive = card.op === '+' || card.op === '-';
   const note = cur.path.length > 1 && cur.step === 0 && additive ? ` (undo + and ${MINUS} first, then ${TIMES} and ${DIV})` : '';
   const anim = cur.act2 ? ACT2.animFor(card) : OPERATION_ANIMATIONS[card.op];
-  if (anim) await anim(card, s, ns, cur.act2 ? ref : note);
+  animating = true;
+  try { if (anim) await anim(card, s, ns, cur.act2 ? ref : note); } finally { animating = false; }
   cur.state = ns; cur.step++;
   if (cur.act2) ACT2.refreshPath(cur);
   cur.lastT = performance.now();   // start the next move's clock after the animation, not before it
@@ -1023,17 +1195,22 @@ function equationSolved() {
   for (const id of cur.skills) {
     const sk = progress.skills[id];
     sk.solved++; sk.parDiffTotal += cur.moves - par; sk.parCount++;
-    const d = clean ? MASTERY.clean : 0;
+    const d = clean ? Math.round(MASTERY.clean * difficulty.gain) : 0;
     if (d) changeMastery(id, d);
     deltas.push([id, d]);
   }
   const fresh = checkUnlocks();
+  // A clean solve on a mastered stage opens the next difficulty.
+  let newLevel = null;
+  if (clean && difficulty.level === progress.levelUnlocked && progress.levelUnlocked < 3 &&
+      cur.skills.some(id => progress.skills[id].mastery >= MASTERED)) newLevel = DIFFICULTIES[++progress.levelUnlocked];
   saveProgress(); renderSkills(deltas);
   const gains = deltas.filter(d => d[1]).map(d => `${SKILL[d[0]].name} +${d[1]}`).join(', ');
   setMsg(`Solved! ${cur.answerText || 'x = ' + fracText(cur.answer)}${gains ? ' · ' + gains : ''}`, 'good');
   // A stage of this act gets its tutorial fight next; a stage of a later act opens that act on the title screen.
   const here = fresh.filter(id => actOf(id) === run.act), later = fresh.filter(id => actOf(id) > run.act);
   for (const id of here) run.nodes.splice(run.i + 1, 0, { type: 'tutorial', skill: id });
+  if (newLevel && !fresh.length) $('unlock').textContent = `${newLevel.name} difficulty unlocked! Pick it at the start of your next run.`;
   if (here.length) { renderMap(); $('unlock').textContent = `New stage unlocked: ${SKILL[here[0]].title.replace(/^Stage \d: /, '')}! Its tutorial fight is next.`; }
   else if (later.length) $('unlock').textContent = `Act ${actOf(later[0])} unlocked! Start it from the title screen after this run.`;
 
@@ -1051,15 +1228,16 @@ function equationSolved() {
   waitForNext(startNode);
 }
 
-function takeDamage(why) {
+// why: the short reason shown under the equation. more: HTML for the "Why?" button (optional).
+function takeDamage(why, more = null) {
   hp = Math.max(0, hp - DAMAGE); updateHud();
-  setMsg(`-${DAMAGE} HP. ${why}`, 'bad');
+  setMsg(`-${DAMAGE} HP. ${why}`, 'bad', more);
   const a = $('arena'); a.classList.remove('flash', 'shake'); void a.offsetWidth; a.classList.add('flash', 'shake');
   if (hp <= 0) { busy = true; setTimeout(runLost, 600); }
 }
 
 // After a solve: a short celebration, then the game waits until the player taps (or presses Space/Enter).
-let waiting = false, nextAction = null;
+let waiting = false, nextAction = null, waitingSince = 0;
 function celebrate() {
   const box = $('celebrate'), arena = $('arena').getBoundingClientRect(), eqR = $('equation').getBoundingClientRect();
   const cx = eqR.left + eqR.width / 2 - arena.left, cy = eqR.top + eqR.height / 2 - arena.top;
@@ -1074,6 +1252,7 @@ function celebrate() {
 }
 function waitForNext(action) {
   busy = true; nextAction = action; waiting = true;
+  waitingSince = performance.now();
   celebrate();
   $('next').classList.add('show');
 }
@@ -1090,7 +1269,19 @@ async function goNext() {
   $('celebrate').innerHTML = ''; $('equation').classList.remove('solved');
   a();
 }
-window.addEventListener('click', e => { if (waiting && !e.target.closest('.speed, button, #over')) goNext(); });
+// Taps: on the result screen a tap moves to the next question; during an animation it skips a step.
+// Uses pointer events rather than click, because iOS Safari doesn't send click for taps on plain
+// page areas. A press that moves more than a few pixels (a card drag) doesn't count as a tap.
+let tapStart = null;
+window.addEventListener('pointerdown', e => { tapStart = { x: e.clientX, y: e.clientY, id: e.pointerId }; });
+window.addEventListener('pointerup', e => {
+  const t = tapStart; tapStart = null;
+  if (!t || t.id !== e.pointerId || Math.hypot(e.clientX - t.x, e.clientY - t.y) > 12) return;
+  if (e.target.closest('.speed, button, #over, #why, #dbgBtn')) return;
+  // A short grace period stops a burst of skip taps from also skipping the result screen.
+  if (waiting) { if (performance.now() - waitingSince > 500) goNext(); }
+  else if (animating) skipStep();
+});
 window.addEventListener('keydown', e => { if (waiting && (e.key === ' ' || e.key === 'Enter') && !$('over').classList.contains('show')) { e.preventDefault(); goNext(); } });
 
 // =====================================================================

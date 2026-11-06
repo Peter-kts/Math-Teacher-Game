@@ -637,12 +637,12 @@
   // Act 2 elite and boss fights. list = the unlocked skills this run can use, oldest first.
   function buildFight2(node, list) {
     const act2 = list.filter(id => (SKILL[id].act || 1) === 2);
-    if (node.type === 'elite') return { phases: [() => genStacked2(list.slice(-2))], handSize: 4, enemy: 'bracketknight' };
+    if (node.type === 'elite') return { phases: [() => genStacked2(list.slice(-2))], handSize: difficulty.hand, enemy: 'bracketknight' };
     // Boss: one phase per Act 2 stage (sides swap from phase 2), then two concepts at once.
     const phases = act2.map((id, i) => () => { const g = SKILL[id].gen(); if (i > 0) g.eq = swapSides(g.eq); return g; });
     phases.push(() => { const g = genStacked2(list.slice(-2)); if (Math.random() < 0.5) g.eq = swapSides(g.eq); return g; });
     if (act2.length === 1) phases.splice(1, 0, () => { const g = genStacked2(list.slice(-2)); return g; });
-    return { phases, handSize: 4, enemy: 'archivist' };
+    return { phases, handSize: difficulty.hand, enemy: 'archivist' };
   }
 
   // ---------------------------------------------------------------- skills and enemies
