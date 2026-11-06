@@ -18,13 +18,13 @@
   #arena { flex:1; background:var(--panel); border:3px solid #000; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px; position:relative; min-height:260px; }
   #enemy { width:96px; height:96px; image-rendering:pixelated; transition: transform calc(.3s * var(--k)), opacity calc(.5s * var(--k)); }
   #enemy.dead { transform: scale(0) rotate(90deg); opacity:0; }
-  #equation { display:flex; align-items:center; gap:14px; font-size:60px; font-weight:bold; flex-wrap:wrap; justify-content:center; }
-  .tok { padding:20px 26px; border:4px dashed transparent; border-radius:10px; min-width:100px; min-height:110px; display:flex; align-items:center; justify-content:center; text-align:center; max-width:320px; transition: background .15s, border-color .15s, max-width calc(.45s * var(--k)), min-width calc(.45s * var(--k)), padding calc(.45s * var(--k)), opacity calc(.45s * var(--k)), transform calc(.45s * var(--k)), color calc(.3s * var(--k)); }
+  #equation { display:flex; align-items:center; gap:6px; font-size:60px; font-weight:bold; flex-wrap:wrap; justify-content:center; }
+  .tok { padding:20px 16px; border:4px dashed transparent; border-radius:10px; min-width:80px; white-space:pre; min-height:110px; display:flex; align-items:center; justify-content:center; text-align:center; max-width:320px; transition: background .15s, border-color .15s, max-width calc(.45s * var(--k)), min-width calc(.45s * var(--k)), padding calc(.45s * var(--k)), opacity calc(.45s * var(--k)), transform calc(.45s * var(--k)), color calc(.3s * var(--k)); }
   #arena.targeting .tok:not(.eq) { border-color: var(--muted); background:#ffffff0d; }
   #arena.anywhere { outline:4px dashed var(--muted); outline-offset:-10px; }
   #arena.anywhere.hover { outline-color: var(--accent); background:#2f2b4a; }
   .tok.hover { border-color: var(--accent); background:#ffd16633; }
-  .tok.eq { color:var(--muted); min-width:40px; padding:20px 4px; }
+  .tok.eq { color:var(--muted); min-width:0; padding:20px 10px; }
   .tok.var { color:var(--accent); }
   /* operation animation states */
   .tok.op-new { color:#7bdff2; }
@@ -108,7 +108,7 @@ function rollLevel1() {
   let side, a, b, correct;
   if (type === 'add') {        // x + a = b
     a = rand(1, 12); b = x + a;
-    side = [{text:'x', kind:'var'}, {text:'+' + a, kind:'term', target:true}];
+    side = [{text:'x', kind:'var'}, {text:'+ ' + a, kind:'term', target:true}];
     correct = {op:'-', n:a};
   } else if (type === 'addFront') { // a + x = b
     a = rand(1, 12); b = x + a;
@@ -117,7 +117,7 @@ function rollLevel1() {
   } else if (type === 'sub') { // x - a = b
     a = rand(1, 12); b = x - a;
     if (b < 0) { a = rand(1, x); b = x - a; }
-    side = [{text:'x', kind:'var'}, {text:MINUS + a, kind:'term', target:true}];
+    side = [{text:'x', kind:'var'}, {text:MINUS + ' ' + a, kind:'term', target:true}];
     correct = {op:'+', n:a};
   } else if (type === 'mul') { // a x = b
     a = rand(2, 10); b = a * x;
@@ -125,7 +125,7 @@ function rollLevel1() {
     correct = {op:'/', n:a};
   } else {                     // x / a = b
     a = rand(2, 10); const xx = a * rand(1, 10); b = xx / a;
-    side = [{text:'x', kind:'var'}, {text:DIV + a, kind:'term', target:true}];
+    side = [{text:'x', kind:'var'}, {text:DIV + ' ' + a, kind:'term', target:true}];
     correct = {op:'*', n:a};
     return finish(side, b, correct, xx, a);
   }
@@ -324,7 +324,8 @@ async function cancelAndCombine(card) {
 
   // 1. Apply the card to both sides.
   caption(cardText(card));
-  const left = chip(sym), right = chip(sym);
+  const spaced = opSym(card.op) + ' ' + card.n;  // equation terms read "÷ 3", cards read "÷3"
+  const left = chip(spaced), right = chip(spaced);
   el.insertBefore(left, eqEl); el.appendChild(right);
   await sleep(1000);
 
