@@ -137,7 +137,7 @@
     const by = byText(correct);
     return { op: 'trap', trap: 'flip negative', scaleOp: correct.op, n: correct.n, d: correct.d, parts3,
       text: `${scaleText({ ...correct, parts3 })} and flip (the number is negative)`,
-      why: `<p>Only multiplying or dividing by a <b>negative</b> number flips the sign. Here you divide by ${by}, which is positive, so the sign stays: ${before} becomes ${after}. A negative number on the other side doesn't matter: x &lt; ${MINUS}4 is a perfectly good answer.</p>` };
+      why: `<p>Only multiplying or dividing by a <b>negative</b> number flips the sign. Here you ${correct.op === '*' ? 'multiply' : 'divide'} by ${by}, which is positive, so the sign stays: ${before} becomes ${after}. A negative number on the other side doesn't matter: x &lt; ${MINUS}4 is a perfectly good answer.</p>` };
   }
   // plain: a case on a board (one x-term, one number each side), where Act 2's Combine, Distribute and
   // x-term decoys make no sense; number cards fill in instead.
@@ -164,7 +164,7 @@
       return `Nothing has flipped the order yet. Only multiplying or dividing by a negative number does that.`;
     }
     if (e.owe) return `You ${'multiplied or divided'} by a negative, so the sign has to flip first. Play Flip on the sign.`;
-    if (card.op === 'trap') return `That's a trap: dividing by a positive number never flips the sign. Tap Why? to see why.`;
+    if (card.op === 'trap') return `That's a trap: ${card.scaleOp === '*' ? 'multiplying' : 'dividing'} by a positive number never flips the sign. Tap Why? to see why.`;
     if (isDeclare(card)) return 'x is still here, so keep solving.';
     if (card.op === 'dist' || card.op === 'comb') return A2.whyWrong({ state: e, path: [{ move: want }], step: 0 }, card, target);
     const ref = target && target.dataset ? target.dataset.ref : target;
@@ -253,12 +253,15 @@
     const a = Math.round(mid) - half, b = Math.round(mid) + half;
     const W = 360, H = 62, pad = 18, y = 30;
     const px = v => pad + ((Math.max(a - 0.6, Math.min(b + 0.6, v)) - a) / (b - a)) * (W - 2 * pad);
-    const step = b - a > 16 ? 2 : 1, endVals = ends.map(v => Math.round(v * 1000));
+    // Review fix: wide chains (spread 36+ on Hard) used to get a label every 2 units and turn into a smear.
+    // The label step now keeps it to about 12 labels, and small ticks thin out the same way.
+    const step = [1, 2, 5, 10, 20, 50, 100].find(k => (b - a) / k <= 12) || 200, tickStep = b - a > 40 ? step / (step % 5 === 0 ? 5 : 2) : 1, endVals = ends.map(v => Math.round(v * 1000));
     let svg = `<svg viewBox="0 0 ${W} ${H}" class="${animate ? 'anim' : ''}" role="img" aria-label="Number line">`;
     svg += `<defs><marker id="nlA" viewBox="0 0 10 10" refX="5" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker>
       <marker id="nlS" viewBox="0 0 10 10" refX="4" refY="5" markerUnits="userSpaceOnUse" markerWidth="16" markerHeight="16" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="nlShadeHead"/></marker></defs>`;
     svg += `<line class="nlAxis" x1="4" y1="${y}" x2="${W - 4}" y2="${y}" marker-start="url(#nlA)" marker-end="url(#nlA)"/>`;
     for (let v = a; v <= b; v++) {
+      if (v % tickStep !== 0) continue;
       const x = px(v), labelled = v % step === 0 && !endVals.includes(v * 1000);
       svg += `<line class="nlTick" x1="${x}" y1="${y - 5}" x2="${x}" y2="${y + 5}"/>`;
       if (labelled) svg += `<text class="nlNum" x="${x}" y="${y + 20}">${numText(v)}</text>`;
@@ -324,7 +327,10 @@
   // thing to all three parts. A × or ÷ by a negative leaves the signs alone (so for a moment the chain is
   // false: 3 < x ≤ 1); Flip then turns both signs around and the chain is read from the other end:
   //   1 ≤ 7 − 2x < 5  ->  −7  ->  −6 ≤ −2x < −2  ->  ÷(−2)  ->  3 ≤ x < 1  ->  Flip  ->  1 < x ≤ 3
-  const CH = (lo, rel1, coef, b, rel2, hi, constFirst = false) => ({ chain: true, lo: F(lo), rel1, coef: typeof coef === 'number' ? F(coef) : coef, b: F(b), rel2, hi: F(hi), constFirst: constFirst && b !== 0 });
+  // Review fix: CH also takes fractions as they are. The split of |ax + b| < d passed d.n / d.d as a float,
+  // so a fraction d on Expert (e.g. 29/3) became a float-based fraction like 2720924774869675/281474976710656.
+  const toF = v => (typeof v === 'number' ? F(v) : v);
+  const CH = (lo, rel1, coef, b, rel2, hi, constFirst = false) => ({ chain: true, lo: toF(lo), rel1, coef: toF(coef), b: toF(b), rel2, hi: toF(hi), constFirst: constFirst && toF(b).n !== 0 });
   const toS = e => ({ coef: e.coef, b: e.b, c: F(0), xLeft: true, constFirst: e.constFirst });
   const chainSteps = e => (e.owe ? 1 : 0) + (e.b.n !== 0 ? 1 : 0) + (fIs(e.coef, 1) ? 0 : 1);
   function chainApply(e, c) {
@@ -401,7 +407,7 @@
   function chainWhyWrong(e, card) {
     if (isFlip(card)) return e.owe ? 'Right card: drop Flip on one of the signs.' : 'Nothing has flipped the order yet. Only multiplying or dividing by a negative number does that.';
     if (e.owe) return 'You divided or multiplied by a negative, so both signs have to flip first. Play Flip on a sign.';
-    if (card.op === 'trap') return `That's a trap: dividing by a positive number never flips the signs. Tap Why? to see why.`;
+    if (card.op === 'trap') return `That's a trap: ${card.scaleOp === '*' ? 'multiplying' : 'dividing'} by a positive number never flips the signs. Tap Why? to see why.`;
     if (e.b.n !== 0 && SCALE_OPS.includes(card.op)) return `That's allowed, but undo the + or ${MINUS} part first, then the ${TIMES} or ${DIV}.`;
     return `That's allowed, but x still isn't alone: ${chainText(chainApply(e, card))}`;
   }
@@ -509,9 +515,12 @@
     const r = { ...e };
     if (c.op === 'split') {
       const u = innerSide(e), d = e.d, nd = fMul(d, F(-1));
-      if (e.rel === '=') return { board: true, join: 'or', active: 0, branches: [I(u, [N(d)], '='), I(clone(u), [N(nd)], '=')] };
-      if (e.rel === '<' || e.rel === '≤') return CH(nd.n / nd.d, e.rel, e.a, e.b.n / e.b.d, e.rel, d.n / d.d);
-      return { board: true, join: 'or', active: 0, branches: [I(u, [N(nd)], FLIP[e.rel]), I(clone(u), [N(d)], e.rel)] };
+      // Review fix: with nothing added inside the bars (|x| > 3), both cases are already solved. The board
+      // used to stay on case 1, so the fight ended showing only "x < −3" and no number line.
+      const skipSolved = bd => { while (bd.active < bd.branches.length && isSolved(bd.branches[bd.active])) bd.active++; return bd; };
+      if (e.rel === '=') return skipSolved({ board: true, join: 'or', active: 0, branches: [I(u, [N(d)], '='), I(clone(u), [N(nd)], '=')] });
+      if (e.rel === '<' || e.rel === '≤') return CH(nd, e.rel, e.a, e.b, e.rel, d);
+      return skipSolved({ board: true, join: 'or', active: 0, branches: [I(u, [N(nd)], FLIP[e.rel]), I(clone(u), [N(d)], e.rel)] });
     }
     if (c.op === '+' || c.op === '-') { const a = F(c.op === '+' ? c.n : -c.n); r.c = fAdd(e.c, a); r.d = fAdd(e.d, a); }
     else if (SCALE_OPS.includes(c.op)) {
@@ -665,7 +674,10 @@
     mark(bars, 'glow'); await quick(500);
     mark(bars, 'fade'); await quick(350);
     await hold();
-    if (ns.board) {
+    if (ns.board && boardSolved(ns)) {     // review fix: both cases solved by the split itself
+      renderBoard(ns); caption(`Both cases are already solved: ${boardAnswer(ns)}`);
+      drawLine(boardSegs(ns), true); await quick(1100); await hold();
+    } else if (ns.board) {
       drawCases(ns, true);
       $('equation').classList.add('absSplitOut'); await quick(450); $('equation').classList.remove('absSplitOut');
       caption('Two cases: solve each one');
@@ -704,15 +716,17 @@
       return { a, b, d };
     }
   }
-  function genAbsWith(rel, type) {
-    const tut = !!type, D = tut || isTutorial() ? DIFFICULTIES[0] : difficulty;
+  // Review fix: the shape and the tutorial flag are separate. Elites ask for the 'both' shape, and that used
+  // to force Easy numbers on every difficulty.
+  function genAbsWith(rel, type, tut = !!type) {
+    const D = tut || isTutorial() ? DIFFICULTIES[0] : difficulty;
     const { a, b, d } = absCore(D);
     const t = type || pick(D.level ? ['plain', 'front', 'times', 'both', 'both'] : ['plain', 'plain', 'front', 'times']);
     const m = t === 'times' || t === 'both' ? rand(2, D.level >= 2 ? 5 : 3) : 1, c = t === 'front' || t === 'both' ? nonZero(-9, 9) * (D.level >= 2 ? 2 : 1) : 0;
     return AB(m, a, b, c, rel, m * d + c);
   }
-  const genAbsEq = type => ({ ineq: { ...genAbsWith('=', type), skill: 'absval' }, enemy: 'mirrorling' });
-  const genAbsIneq = (type, rel) => ({ ineq: { ...genAbsWith(rel || pick(RELS), type), skill: 'absineq' }, enemy: 'mirrorling' });
+  const genAbsEq = (type, tut) => ({ ineq: { ...genAbsWith('=', type, tut), skill: 'absval' }, enemy: 'mirrorling' });
+  const genAbsIneq = (type, rel, tut) => ({ ineq: { ...genAbsWith(rel || pick(RELS), type, tut), skill: 'absineq' }, enemy: 'mirrorling' });
   // Stage 11 also gets "or" compounds now that boards exist: 2x + 1 < −3 or 3x − 2 > 7.
   function genOrCompound() {
     const p = rand(-6, 1), q = p + rand(2, 6), a1 = rand(1, 4), b1 = nonZero(-8, 8), a2 = rand(1, 4), b2 = nonZero(-8, 8);
@@ -758,7 +772,7 @@
   function genStacked3() {
     // Once compound inequalities are open, some elites are a chain that needs a flip, with bigger numbers.
     if (isUnlocked('compound') && Math.random() < 0.35) { const g = genCompound(pick(FLIPS_C)); return { ...g, enemy: 'boundwarden' }; }
-    if (isUnlocked('absval') && Math.random() < 0.35) { const g = (isUnlocked('absineq') && Math.random() < 0.5 ? genAbsIneq : genAbsEq)('both'); return { ...g, enemy: 'boundwarden' }; }
+    if (isUnlocked('absval') && Math.random() < 0.35) { const g = isUnlocked('absineq') && Math.random() < 0.5 ? genAbsIneq('both', undefined, false) : genAbsEq('both', false); return { ...g, enemy: 'boundwarden' }; }
     for (;;) {
       const t = pick(['distneg', 'distneg', 'dist', 'like', 'xboth']);
       const x = nonZero(-6, 8), rel = pick(RELS);
@@ -802,7 +816,8 @@
       const f = D.level >= 2 ? rand(2, 3) : D.level === 1 ? rand(1, 2) : 1;
       e.lo = fMul(e.lo, F(f)); e.hi = fMul(e.hi, F(f)); e.b = fMul(e.b, F(f));
       if (D.neg && Math.random() < 0.5) e = { ...e, lo: fMul(e.hi, F(-1)), hi: fMul(e.lo, F(-1)), b: fMul(e.b, F(-1)), rel1: e.rel2, rel2: e.rel1, constFirst: e.constFirst && Math.random() < 0.5 };
-      if (D.fracAnswers) e[pick(['lo', 'hi'])] = fAdd(e[pick(['lo', 'hi'])], F(nonZero(-2, 2)));
+      // Review fix: pick the end once. Picking twice set lo = hi ± k half the time, collapsing the chain to a sliver.
+      if (D.fracAnswers) { const end = pick(['lo', 'hi']); e[end] = fAdd(e[end], F(nonZero(-2, 2))); }
       if (e.b.n === 0) e.constFirst = false;
       let end = e; for (const p of chainPath(e, 'compound')) end = chainApply(end, p.move);
       if (!fLess(end.lo, end.hi)) continue;                  // the ends must stay in order
