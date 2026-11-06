@@ -188,6 +188,13 @@
     return line;
   }
   function clearLine() { const l = $('numline'); if (l) { l.innerHTML = ''; l.dataset.key = ''; l.classList.remove('show'); } }
+  // Act 2 sizes the equation once before an animation by laying out the result and then the current
+  // equation again (its own render, which writes "="), so the sign is put back afterwards.
+  function prefit(s, ns) {
+    A2.prefit(s, ns);
+    const q = $('equation').querySelector('.tok.eq');
+    if (q) { q.textContent = s.rel; q.classList.add('rel'); }
+  }
   function render(e) {
     A2.render(e);
     const q = $('equation').querySelector('.tok.eq');
@@ -399,7 +406,7 @@
   `;
   document.head.appendChild(css);
 
-  window.ACT3 = { apply, isSolved, solution, segmentsOf, drawLine, clearLine, makeEquation: makeEquation3, refreshPath, render,
+  window.ACT3 = { apply, isSolved, solution, segmentsOf, drawLine, clearLine, makeEquation: makeEquation3, refreshPath, render, prefit,
     eqText, makeHand: makeHand3, isCorrect, whyWrong, animFor, applyDifficulty: applyDifficulty3, label, text, kind,
     buildFight: buildFight3, genStacked: genStacked3, gens: { ineq: genIneq } };
 })();

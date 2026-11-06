@@ -189,6 +189,10 @@
     .tok { min-height:calc(var(--eqSize) * 1.7); min-width:calc(var(--eqSize) * 1.1); padding:6px 5px; border-width:3px; }
     .tok.eq { padding:6px 3px; }
     #step, #msg, #unlock { font-size:13px; }
+    /* In the flow on phones, so it sits under the solve message instead of on top of it. */
+    #next { position:static; font-size:12px; }
+    #arena:has(#next.show) #foe, #arena:has(#next.show) #enemyBox { display:none; }
+    #equation.solved { padding-bottom:0; } #equation.solved .tok { min-height:0; }
     .key { font-size:11px; gap:10px; }
     .key .badge { font-size:12px; }
     #hand { gap:5px; flex-wrap:nowrap; min-height:0; padding-bottom:0; }
@@ -228,7 +232,9 @@
     .tok { min-height:calc(var(--eqSize) * 1.6); min-width:calc(var(--eqSize) * 1.1); padding:4px 5px; border-width:3px; }
     .tok.eq { padding:4px 3px; }
     #step, #msg, #unlock { font-size:12px; min-height:0; }
-    #next { bottom:4px; font-size:12px; }
+    #next { position:static; font-size:12px; }
+    #arena:has(#next.show) #foe, #arena:has(#next.show) #enemyBox { display:none; }
+    #equation.solved { padding-bottom:0; } #equation.solved .tok { min-height:0; }
     .key { grid-column:2; grid-row:2 / 4; flex-direction:column; align-items:flex-start; gap:0; font-size:10px; justify-content:center; }
     .key b { display:none; }
     .key .badge { font-size:11px; }
@@ -679,7 +685,7 @@ function tokEl(t) {
   return el;
 }
 function renderEquation(s) {
-  $('equation').classList.remove('a2long');
+  $('equation').classList.remove('a2long', 'a2'); $('equation').style.removeProperty('--eqSize');
   if (window.ACT3) ACT3.clearLine();   // the number line only shows under a solved inequality
   if (s.L) return (s.rel ? ACT3 : ACT2).render(s);   // Act 2 equation model (act2.js); with a relation, Act 3's inequalities (act3.js)
   const el = $('equation'); if (typeof clearNotes === 'function') clearNotes(); el.innerHTML = '';
@@ -1246,6 +1252,7 @@ async function doStep(card, target) {
   const additive = card.op === '+' || card.op === '-';
   const note = cur.path.length > 1 && cur.step === 0 && additive ? ` (undo + and ${MINUS} first, then ${TIMES} and ${DIV})` : '';
   const anim = cur.act2 ? eng().animFor(card) : OPERATION_ANIMATIONS[card.op];
+  if (cur.act2) eng().prefit(s, ns);   // size the equation once, before the animation
   animating = true;
   try { if (anim) await anim(card, s, ns, cur.act2 ? ref : note); } finally { animating = false; }
   cur.state = ns; cur.step++;
