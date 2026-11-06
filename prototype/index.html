@@ -686,8 +686,9 @@ function tokEl(t) {
 }
 function renderEquation(s) {
   $('equation').classList.remove('a2long', 'a2'); $('equation').style.removeProperty('--eqSize');
-  if (window.ACT3) ACT3.clearLine();   // the number line only shows under a solved inequality
-  if (s.L) return (s.rel ? ACT3 : ACT2).render(s);   // Act 2 equation model (act2.js); with a relation, Act 3's inequalities (act3.js)
+  if (window.ACT3) ACT3.clearLine();   // Act 3's number line and cases panel only show for its own states
+  const act3 = s.rel || s.chain || s.abs || s.board;
+  if (s.L || act3) return (act3 ? ACT3 : ACT2).render(s);   // Act 2 equation model (act2.js); with a relation, Act 3's inequalities (act3.js)
   const el = $('equation'); if (typeof clearNotes === 'function') clearNotes(); el.innerHTML = '';
   tokensFor(s).forEach(t => el.appendChild(tokEl(t)));
 }
@@ -1189,7 +1190,7 @@ function startDrag(e, el, card) {
     if (targeted) {
       // Forgiving hit test: within 40px of a box counts, closest box wins.
       let best = Infinity;
-      for (const t of document.querySelectorAll('#equation .tok:not(.eq)')) {
+      for (const t of document.querySelectorAll('#equation .tok:not(.eq), #equation .tok.rel')) {   // Act 3's Flip is dropped on the sign
         const b = t.getBoundingClientRect();
         const d = Math.hypot(Math.max(b.left - ev.clientX, 0, ev.clientX - b.right), Math.max(b.top - ev.clientY, 0, ev.clientY - b.bottom));
         const cd = Math.hypot(ev.clientX - (b.left + b.right) / 2, ev.clientY - (b.top + b.bottom) / 2);
@@ -1336,7 +1337,7 @@ async function goNext() {
   $('next').classList.remove('show');
   const a = nextAction; nextAction = null;
   // The finished question slides out before the next one slides in.
-  const parts = ['foe', 'enemyBox', 'equation', 'numline', 'step', 'msg', 'unlock', 'celebrate'].map($).filter(Boolean);
+  const parts = ['foe', 'enemyBox', 'equation', 'cases', 'numline', 'step', 'msg', 'unlock', 'celebrate'].map($).filter(Boolean);
   parts.forEach(p => p.classList.add('leave'));
   await sleep(350);
   parts.forEach(p => p.classList.remove('leave'));
@@ -1418,7 +1419,7 @@ function actCleared() {
     ? `The Scale Keeper is balanced at last. ${isUnlocked('liketerms') ? 'Act 2, the Bracket Halls, is open.' : 'Act 2, the Bracket Halls, opens when Negatives & fractions reaches 80 mastery.'}`
     : run.act === 2
     ? `The Archivist's shelves are back in order. ${isUnlocked('ineq') ? 'Act 3, the Leaning Stacks, is open.' : 'Act 3, the Leaning Stacks, opens when No solution / every x reaches 80 mastery.'}`
-    : 'The Leaning Tower stands straight again. More of Act 3 (compound inequalities and absolute value) is on the way. Until then, run Act 3 again to keep your skills sharp.';
+    : 'The Leaning Tower stands straight again. Act 4 is still to be built, so run Act 3 again to keep your skills sharp.';
   showOverlay(`<h1>Act ${run.act} cleared!</h1><p>${text}</p>${skillSummaryHtml()}`,
     [['New run', () => newRun(run.act)], ['Title screen', showTitle, true], ['Skills & stats', () => showStats(actCleared), true]]);
 }
