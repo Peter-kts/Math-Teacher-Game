@@ -139,13 +139,15 @@
       text: `${scaleText({ ...correct, parts3 })} and flip (the number is negative)`,
       why: `<p>Only multiplying or dividing by a <b>negative</b> number flips the sign. Here you divide by ${by}, which is positive, so the sign stays: ${before} becomes ${after}. A negative number on the other side doesn't matter: x &lt; ${MINUS}4 is a perfectly good answer.</p>` };
   }
-  function sHand(e, correct, size) {
+  // plain: a case on a board (one x-term, one number each side), where Act 2's Combine, Distribute and
+  // x-term decoys make no sense; number cards fill in instead.
+  function sHand(e, correct, size, plain) {
     const tut = isTutorial();
-    if (e.rel === '=') return A2.makeHand(e, correct, size).filter(c => !isDeclare(c) && c.op !== 'trap');
+    const keep = c => !isDeclare(c) && c.op !== 'trap' && !(plain && (c.op === 'comb' || c.op === 'dist' || c.x));
     if (e.owe) return shuffle([FLIP_CARD, ...decoys(numsOf(e), size - 1, [FLIP_CARD])]);
-    let hand = A2.makeHand(e, correct, size - 1).filter(c => !isDeclare(c) && c.op !== 'trap');
-    hand.push(FLIP_CARD);
-    if (!tut && difficulty.level >= 3 && SCALE_OPS.includes(correct.op) && !negScale(correct) && !correct.lcd) {
+    let hand = A2.makeHand(e, correct, e.rel === '=' ? size : size - 1).filter(keep);
+    if (e.rel !== '=') hand.push(FLIP_CARD);
+    if (!tut && e.rel !== '=' && difficulty.level >= 3 && SCALE_OPS.includes(correct.op) && !negScale(correct) && !correct.lcd) {
       const after = sApply(e, correct), sol = solution(after);
       if (sol && sol.v.n < 0) hand.push(flipNegTrap(correct, eqText(e), eqText(after), false));
     }
@@ -193,7 +195,7 @@
     if (m.op === 'dist') how = 'Clear the parentheses first: multiply the number in front into each term inside.';
     else if (m.op === 'comb') how = 'Two like terms are on the same side. Combine them first.';
     else if (m.x) how = `x is on both sides. ${A2.text(m)} so x is left on one side only. Adding or subtracting never flips the sign.`;
-    else if (m.op === '+' || m.op === '-') how = `Undo the number added to x first: ${cardText(m).toLowerCase()}. Adding or subtracting the same number on both sides keeps the sign as it is.`;
+    else if (m.op === '+' || m.op === '-') how = `Get the x-term alone first: ${cardText(m).toLowerCase()}. Adding or subtracting the same number on both sides keeps the sign as it is.`;
     else if (negScale(m)) how = `x has a negative number in front of it. ${scaleText(m)}, then play Flip on the sign: ${FLIP_IDEA}.`;
     else how = `x is alone apart from the number in front of it. ${cardText(m)} turns it into 1. It's a positive number, so the sign stays ${e.rel}.`;
     out.push(P(`<b>What works here:</b> ${how}`));
@@ -229,6 +231,11 @@
     const k = kindOf(s);
     if (k === 'single' && kindOf(ns) === 'single') { A2.prefit(s, ns); markSign(s); }
     else if (k === 'board' && kindOf(ns) === 'board' && !boardSolved(ns)) { A2.prefit(boardActive(s), ns.branches[s.active]); markSign(boardActive(s)); }
+    else if ((k === 'chain' || k === 'abs') && kindOf(ns) === k) {   // same idea as Act 2: never bigger than the result
+      const px = () => parseFloat(getComputedStyle($('equation')).fontSize);
+      render(ns); const after = px(); render(s); const before = px();
+      if (before > after + .5) $('equation').style.setProperty('--eqSize', Math.floor(parseFloat($('equation').style.getPropertyValue('--eqSize') || getComputedStyle(document.documentElement).getPropertyValue('--eqSize')) * after / before) + 'px');
+    }
   }
 
   // Draws a set of intervals on a number line. segs: [{ lo, hi, loC, hiC, loF, hiF }] where lo/hi are
@@ -361,6 +368,8 @@
     const lo = fracText(e.lo), hi = fracText(e.hi), inc = (v, c) => `${v} ${c ? 'counts (filled dot)' : `doesn't (open dot)`}`;
     return `Every number between ${lo} and ${hi} works: ${inc(lo, e.rel1 === '≤')}, ${inc(hi, e.rel2 === '≤')}`;
   }
+  // Chains, bars and finished boards are laid out on one line and shrunk to fit, like Act 2 equations.
+  const fit = () => { $('equation').classList.add('a2'); if (A2.fitEq) A2.fitEq(); };
   function renderChain(e) {
     const el = $('equation'); if (typeof clearNotes === 'function') clearNotes(); el.innerHTML = '';
     const relTok = (r, role) => { const q = document.createElement('div'); q.className = 'tok eq rel' + (e.owe && showHint() ? ' owed' : ''); q.dataset.role = role; q.textContent = r; return q; };
@@ -369,7 +378,7 @@
     midTokens(e).forEach(t => el.appendChild(tokEl(t)));
     el.appendChild(relTok(e.rel2, 'rel2'));
     el.appendChild(tokEl({ role: 'hi', text: fracText(e.hi), html: fracHtml(e.hi) }));
-    clearCases();
+    clearCases(); fit();
     if (chainSteps(e) === 0) drawLine(chainSegs(e), false); else clearLine();
   }
   // Hand: Act 1's hand builder fits, since the middle is an Act 1 x side, plus the Flip card. Every
@@ -563,7 +572,7 @@
     if (e.c.n !== 0) el.appendChild(tokEl({ role: 'const', text: `${e.c.n < 0 ? MINUS : '+'} ${fracText(fAbs(e.c))}`, html: `${e.c.n < 0 ? MINUS : '+'} ${fracHtml(fAbs(e.c))}` }));
     const q = document.createElement('div'); q.className = 'tok eq rel'; q.dataset.role = 'eq'; q.textContent = e.rel; el.appendChild(q);
     el.appendChild(tokEl({ role: 'other', text: fracText(e.d), html: fracHtml(e.d) }));
-    clearLine(); clearCases();
+    clearLine(); clearCases(); fit();
   }
   function renderBoard(e) {
     if (boardSolved(e)) {
@@ -573,7 +582,7 @@
         const s = solution(b), t = tokEl({ role: 'other', text: `x ${s.rel} ${fracText(s.v)}`, html: `<i class="xv">x</i> ${s.rel} ${fracHtml(s.v)}` });
         el.appendChild(t);
       });
-      clearCases(); drawLine(boardSegs(e), false);
+      clearCases(); fit(); drawLine(boardSegs(e), false);
       return;
     }
     renderSingle(boardActive(e), true);
@@ -859,7 +868,7 @@
   }
   function makeHand3(e, correct, size) {
     switch (kindOf(e)) {
-      case 'board': return sHand(boardActive(e), correct, size);
+      case 'board': return sHand(boardActive(e), correct, size, true);
       case 'abs': return absHand(e, correct, size);
       case 'chain': return chainHand(e, correct, size);
       default: return sHand(e, correct, size);
@@ -926,8 +935,17 @@
     if (k !== 'single') return g;
     const asEq = r => { const { ineq, ...rest } = r; return { ...rest, eq: ineq }; };
     const again = () => { for (let i = 0; i < 20; i++) { const r = regen(); if (kindOf(r.ineq) === 'single') return asEq(r); } return asEq(g); };
-    const { eq, ...rest } = A2.applyDifficulty(asEq(g), again);
-    return { ...rest, ineq: { ...eq, rel: eq.rel || g.ineq.rel } };
+    // Act 2's extra x-term step hides the flip (Act 2 always removes the smaller x-term, which leaves a
+    // positive x), so an inequality that needs a flip only gets the other extra steps, and keeps its flip.
+    const flips = e => pathOf(e, 'ineq').some(p => isFlip(p.move));
+    const want = flips(g.ineq);
+    let out;
+    for (let i = 0; i < 25; i++) {
+      const { eq, ...rest } = A2.applyDifficulty(asEq(g), again, { noXadd: want });
+      out = { ...rest, ineq: { ...eq, rel: eq.rel || g.ineq.rel } };
+      if (!want || flips(out.ineq)) return out;
+    }
+    return out;
   }
 
   // Act 3 elite and boss fights. list = the unlocked skills this run can use, oldest first.

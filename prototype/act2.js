@@ -770,12 +770,12 @@
   }
   const allNums = e => [...e.L, ...e.R].flatMap(it => (it.t === 'n' ? [it.k] : it.t === 'g' ? it.items.filter(t => t.t === 'n').map(t => t.k) : []));
   const numSide = e => ['L', 'R'].find(sd => { const side = sideOf(e, sd); return side.length === 1 && side[0].t === 'n'; });
-  function addSteps(e, k) {
+  function addSteps(e, k, how = {}) {
     e = clone(e); const split = new Set(), seen = { xadd: 0 };   // at most one split per side and one x-term added
     for (let i = 0; i < k; i++) {
       const opts = [];
       if (known('liketerms')) for (const sd of ['L', 'R'].filter(sd => !split.has(sd))) sideOf(e, sd).forEach((it, j) => { if (it.t === 'n' && Math.abs(it.k.n) >= 4 && isInt(it.k)) opts.push(['split', sd, j]); });
-      if (known('xboth') && !seen.xadd && !fracItems(e).some(it => it.t === 'x')) opts.push(['xadd']);   // not on x/3: 13x/3 is no fun
+      if (known('xboth') && !how.noXadd && !seen.xadd && !fracItems(e).some(it => it.t === 'x')) opts.push(['xadd']);   // not on x/3: 13x/3 is no fun
       if (!opts.length) break;
       const o = pick(opts);
       if (o[0] === 'split') {
@@ -792,7 +792,7 @@
     }
     return e;
   }
-  function applyDifficulty2(g, regen) {
+  function applyDifficulty2(g, regen, opts = {}) {   // opts.noXadd: no x-term added to both sides (Act 3 uses it to keep a needed flip)
     const D = difficulty;
     for (let tries = 0; tries < 40; tries++, g = regen()) {
       let e = clone(g.eq);
@@ -802,7 +802,7 @@
       if (!end.result && !D.neg && makeEquation2(e).answer.n < 0) { e = scaleNums(e, -1); end = pathFrom(e).end; }
       if (D.fracAnswers && !end.result) { const sd = numSide(e); if (sd) { const side = sideOf(e, sd); let k; do k = fAdd(side[0].k, F(nonZero(-5, 5))); while (fZero(k)); side[0] = N(k); } }
       // Review fix (line above): the nudge used to cancel the number to 0 sometimes, leaving "3x + 0" and a "+0" card.
-      if (D.steps) e = addSteps(e, D.steps);
+      if (D.steps) e = addSteps(e, D.steps, opts);
       const c = makeEquation2(e);
       if (c.path.length >= 12 || allNums(e).some(k => Math.abs(k.n) > D.max * 2)) continue;
       if (!c.end.result && !D.fracAnswers && c.answer.d !== 1) continue;
@@ -909,7 +909,7 @@
   `;
   document.head.appendChild(css);
 
-  window.ACT2 = { apply, canon, steps, isSolved, sideStr, makeEquation: makeEquation2, refreshPath, render, prefit, eqText, makeHand: makeHand2,
+  window.ACT2 = { apply, canon, steps, isSolved, sideStr, fitEq, makeEquation: makeEquation2, refreshPath, render, prefit, eqText, makeHand: makeHand2,
     isCorrect, whyWrong, animFor, applyDifficulty: applyDifficulty2, label, text, kind, buildFight: buildFight2, genStacked: genStacked2,
     gens: { liketerms: genLike, distribute: genDist, xboth: genXBoth, clearfrac: genClearFrac, special: genSpecial } };
 })();
