@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Algebra Cards</title>
 <style>
-  :root { --bg:#1d1b2a; --panel:#2a2740; --ink:#f1ecff; --muted:#a59fc4; --accent:#ffd166; --bad:#ef476f; --good:#06d6a0; --card:#f7f1e3; --cardInk:#2a2740; }
+  :root { --k:1; --bg:#1d1b2a; --panel:#2a2740; --ink:#f1ecff; --muted:#a59fc4; --accent:#ffd166; --bad:#ef476f; --good:#06d6a0; --card:#f7f1e3; --cardInk:#2a2740; }
   * { box-sizing: border-box; }
   html, body { margin:0; height:100%; }
   body { background:var(--bg); color:var(--ink); font-family: "Courier New", ui-monospace, monospace; user-select:none; -webkit-user-select:none; overflow:hidden; touch-action:none; }
@@ -16,10 +16,10 @@
   .hpfill { height:100%; background:var(--bad); transition:width .3s; }
   .hptext { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:bold; }
   #arena { flex:1; background:var(--panel); border:3px solid #000; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px; position:relative; min-height:260px; }
-  #enemy { width:96px; height:96px; image-rendering:pixelated; transition: transform .3s, opacity .5s; }
+  #enemy { width:96px; height:96px; image-rendering:pixelated; transition: transform calc(.3s * var(--k)), opacity calc(.5s * var(--k)); }
   #enemy.dead { transform: scale(0) rotate(90deg); opacity:0; }
   #equation { display:flex; align-items:center; gap:14px; font-size:60px; font-weight:bold; flex-wrap:wrap; justify-content:center; }
-  .tok { padding:20px 26px; border:4px dashed transparent; border-radius:10px; min-width:100px; min-height:110px; display:flex; align-items:center; justify-content:center; text-align:center; max-width:320px; transition: background .15s, border-color .15s, max-width .45s, min-width .45s, padding .45s, opacity .45s, transform .45s, color .3s; }
+  .tok { padding:20px 26px; border:4px dashed transparent; border-radius:10px; min-width:100px; min-height:110px; display:flex; align-items:center; justify-content:center; text-align:center; max-width:320px; transition: background .15s, border-color .15s, max-width calc(.45s * var(--k)), min-width calc(.45s * var(--k)), padding calc(.45s * var(--k)), opacity calc(.45s * var(--k)), transform calc(.45s * var(--k)), color calc(.3s * var(--k)); }
   #arena.targeting .tok:not(.eq) { border-color: var(--muted); background:#ffffff0d; }
   #arena.anywhere { outline:4px dashed var(--muted); outline-offset:-10px; }
   #arena.anywhere.hover { outline-color: var(--accent); background:#2f2b4a; }
@@ -28,12 +28,12 @@
   .tok.var { color:var(--accent); }
   /* operation animation states */
   .tok.op-new { color:#7bdff2; }
-  .tok.enter { animation: enter .55s cubic-bezier(.2,1.6,.4,1); }
+  .tok.enter { animation: enter calc(.55s * var(--k)) cubic-bezier(.2,1.6,.4,1); }
   @keyframes enter { from { transform: translateY(-60px) scale(.2); opacity:0; } }
   .tok.cancel { color:var(--bad); text-decoration: line-through; transform: scale(1.12); }
   .tok.gone { opacity:0; max-width:0; min-width:0; padding-left:0; padding-right:0; transform: scale(.3); overflow:hidden; border-width:0; }
   .tok.merge { color:var(--good); transform: scale(1.1); }
-  .tok.pop { animation: pop .5s; color:var(--good); }
+  .tok.pop { animation: pop calc(.5s * var(--k)); color:var(--good); }
   @keyframes pop { 0% { transform: scale(.4); } 60% { transform: scale(1.3); } 100% { transform: scale(1); } }
   #equation.collapse { gap:0; }
   #step { font-size:22px; color:var(--muted); min-height:28px; text-align:center; }
@@ -50,6 +50,12 @@
   .card:hover { transform: translateY(-6px); }
   .card.dragging { position:fixed; z-index:10; cursor:grabbing; transform: rotate(-4deg) scale(1.08); pointer-events:none; }
   .card.placeholder { visibility:hidden; }
+  .speed { display:flex; align-items:center; gap:6px; font-size:14px; color:var(--muted); }
+  .speed button { font-size:14px; padding:4px 10px; background:var(--panel); color:var(--ink); border:2px solid #000; }
+  .speed button.on { background:var(--accent); color:#000; }
+  #next { position:absolute; bottom:14px; left:0; right:0; text-align:center; color:var(--muted); font-size:14px; display:none; }
+  #next.show { display:block; animation: blink 1.2s infinite; }
+  @keyframes blink { 50% { opacity:.4; } }
   .shake { animation: shake .35s; }
   @keyframes shake { 0%,100%{transform:translateX(0)} 20%{transform:translateX(-10px)} 40%{transform:translateX(10px)} 60%{transform:translateX(-6px)} 80%{transform:translateX(6px)} }
   .flash { animation: flash .35s; }
@@ -63,6 +69,7 @@
 <div id="app">
   <header>
     <div class="hpwrap">HP <div class="hpbar"><div class="hpfill" id="hpfill"></div><div class="hptext" id="hptext"></div></div></div>
+    <div class="speed">Animation speed <button data-speed="0.5">0.5x</button><button data-speed="1">1x</button><button data-speed="2">2x</button></div>
     <div>Defeated: <span id="score">0</span></div>
   </header>
   <div id="arena">
@@ -75,6 +82,7 @@
     <div id="equation"></div>
     <div id="step"></div>
     <div id="msg"></div>
+    <div id="next">Click anywhere for the next equation</div>
     <div id="over"><div id="overText">Defeated!</div><button id="restart">Play again</button></div>
   </div>
   <div class="help">Pick the move that gets x alone. Wrong move = 10 damage.</div>
@@ -282,7 +290,18 @@ const OPERATION_ANIMATIONS = {
   '/': cancelAndCombine,
 };
 
-const sleep = ms => new Promise(r => setTimeout(r, ms));
+// Animation speed: 1 = normal, 2 = twice as fast, 0.5 = half speed. Scales both sleep() and the CSS (--k).
+let speed = 1;
+try { speed = +localStorage.getItem('animSpeed') || 1; } catch (e) {}
+function setSpeed(v) {
+  speed = v;
+  document.documentElement.style.setProperty('--k', String(1 / v));
+  document.querySelectorAll('.speed button').forEach(b => b.classList.toggle('on', +b.dataset.speed === v));
+  try { localStorage.setItem('animSpeed', String(v)); } catch (e) {}
+}
+document.querySelectorAll('.speed button').forEach(b => b.addEventListener('click', () => setSpeed(+b.dataset.speed)));
+setSpeed(speed);
+const sleep = ms => new Promise(r => setTimeout(r, ms / speed));
 const caption = t => { $('step').textContent = t; };
 function chip(text, cls = 'term op-new') {   // a new token that drops in
   const s = document.createElement('div'); s.className = 'tok ' + cls + ' enter'; s.textContent = text; return s;
@@ -333,9 +352,23 @@ async function solve(card) {
   setMsg(`Solved! x = ${eq.answer}`, 'good');
   $('enemy').classList.add('dead');
   score++; updateHud();
-  setTimeout(nextEnemy, 1300);
+  waitForNext();
 }
 
+// After a solve, hold the result for 3 seconds, or skip ahead with a click anywhere.
+const NEXT_DELAY_MS = 3000;
+let nextTimer = null;
+function waitForNext() {
+  $('next').classList.add('show');
+  nextTimer = setTimeout(goNext, NEXT_DELAY_MS);
+}
+function goNext() {
+  if (!nextTimer) return;
+  clearTimeout(nextTimer); nextTimer = null;
+  $('next').classList.remove('show');
+  nextEnemy();
+}
+window.addEventListener('click', e => { if (nextTimer && !e.target.closest('.speed')) goNext(); });
 $('restart').addEventListener('click', start);
 start();
 </script>
