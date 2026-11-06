@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Algebra Cards</title>
+<style>
+  :root { --bg:#1d1b2a; --panel:#2a2740; --ink:#f1ecff; --muted:#a59fc4; --accent:#ffd166; --bad:#ef476f; --good:#06d6a0; --card:#f7f1e3; --cardInk:#2a2740; }
+  * { box-sizing: border-box; }
+  html, body { margin:0; height:100%; }
+  body { background:var(--bg); color:var(--ink); font-family: "Courier New", ui-monospace, monospace; user-select:none; -webkit-user-select:none; overflow:hidden; touch-action:none; }
+  #app { max-width:900px; margin:0 auto; height:100%; display:flex; flex-direction:column; padding:16px; gap:12px; }
+  header { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
+  .hpwrap { display:flex; align-items:center; gap:10px; }
+  .hpbar { width:220px; height:20px; background:#000a; border:2px solid var(--ink); position:relative; }
+  .hpfill { height:100%; background:var(--bad); transition:width .3s; }
+  .hptext { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:bold; }
+  #arena { flex:1; background:var(--panel); border:3px solid #000; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px; position:relative; min-height:260px; }
+  #enemy { width:96px; height:96px; image-rendering:pixelated; transition: transform .3s, opacity .5s; }
+  #enemy.dead { transform: scale(0) rotate(90deg); opacity:0; }
+  #equation { display:flex; align-items:center; gap:14px; font-size:60px; font-weight:bold; flex-wrap:wrap; justify-content:center; }
+  .tok { padding:20px 26px; border:4px dashed transparent; border-radius:10px; min-width:100px; min-height:110px; display:flex; align-items:center; justify-content:center; text-align:center; transition: background .15s, border-color .15s; }
+  #arena.targeting .tok:not(.eq) { border-color: var(--muted); background:#ffffff0d; }
+  #arena.anywhere { outline:4px dashed var(--muted); outline-offset:-10px; }
+  #arena.anywhere.hover { outline-color: var(--accent); background:#2f2b4a; }
+  .tok.hover { border-color: var(--accent); background:#ffd16633; }
+  .tok.eq { color:var(--muted); min-width:40px; padding:20px 4px; }
+  .tok.var { color:var(--accent); }
+  #step { font-size:22px; color:var(--muted); min-height:28px; text-align:center; }
+  #msg { font-size:18px; min-height:24px; text-align:center; }
+  #msg.bad { color:var(--bad); } #msg.good { color:var(--good); }
+  #hand { display:flex; justify-content:center; gap:12px; min-height:130px; flex-wrap:wrap; padding-bottom:8px; }
+  .card { width:132px; height:160px; padding:8px; text-align:center; background:var(--card); color:var(--cardInk); border:3px solid #000; border-radius:8px; display:flex; flex-direction:column; align-items:center; justify-content:center; font-size:30px; font-weight:bold; cursor:grab; box-shadow: 0 4px 0 #000; touch-action:none; }
+  .card .badge { font-size:18px; font-weight:bold; margin-bottom:8px; padding:0 10px; line-height:1.4; border-radius:4px; border:2px solid #000; }
+  .key { display:flex; justify-content:center; align-items:center; gap:18px; flex-wrap:wrap; font-size:13px; color:var(--muted); }
+  .key .badge { font-size:15px; font-weight:bold; padding:0 8px; border-radius:4px; border:2px solid #000; margin-right:4px; }
+  .badge.both { background:#cfe8ff; color:#1d3b5c; }
+  .badge.part { background:#ffd166; color:#5c3b00; }
+  .card small { font-size:14px; font-weight:bold; margin-top:10px; color:#4a4470; line-height:1.25; }
+  .card:hover { transform: translateY(-6px); }
+  .card.dragging { position:fixed; z-index:10; cursor:grabbing; transform: rotate(-4deg) scale(1.08); pointer-events:none; }
+  .card.placeholder { visibility:hidden; }
+  .shake { animation: shake .35s; }
+  @keyframes shake { 0%,100%{transform:translateX(0)} 20%{transform:translateX(-10px)} 40%{transform:translateX(10px)} 60%{transform:translateX(-6px)} 80%{transform:translateX(6px)} }
+  .flash { animation: flash .35s; }
+  @keyframes flash { 0%{box-shadow: inset 0 0 0 999px #ef476f66} 100%{box-shadow: inset 0 0 0 999px transparent} }
+  #over { position:absolute; inset:0; background:#000c; display:none; flex-direction:column; align-items:center; justify-content:center; gap:16px; font-size:28px; }
+  button { font-family:inherit; font-size:18px; padding:10px 18px; background:var(--accent); border:3px solid #000; cursor:pointer; font-weight:bold; }
+  .help { color:var(--muted); font-size:13px; text-align:center; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="hpwrap">HP <div class="hpbar"><div class="hpfill" id="hpfill"></div><div class="hptext" id="hptext"></div></div></div>
+    <div>Defeated: <span id="score">0</span></div>
+  </header>
+  <div id="arena">
+    <!-- stand-in enemy art (swap for a PNG later) -->
+    <svg id="enemy" viewBox="0 0 16 16" shape-rendering="crispEdges">
+      <rect x="3" y="5" width="10" height="9" fill="#7b5cff"/><rect x="2" y="7" width="12" height="7" fill="#7b5cff"/>
+      <rect x="4" y="4" width="8" height="1" fill="#7b5cff"/><rect x="5" y="7" width="2" height="2" fill="#fff"/><rect x="9" y="7" width="2" height="2" fill="#fff"/>
+      <rect x="6" y="8" width="1" height="1" fill="#000"/><rect x="10" y="8" width="1" height="1" fill="#000"/><rect x="6" y="11" width="4" height="1" fill="#000"/>
+    </svg>
+    <div id="equation"></div>
+    <div id="step"></div>
+    <div id="msg"></div>
+    <div id="over"><div id="overText">Defeated!</div><button id="restart">Play again</button></div>
+  </div>
+  <div class="help">Pick the move that gets x alone. Wrong move = 10 damage.</div>
+  <div class="key"><b>Key</b> <span><span class="badge both">⇔</span> both sides: drop anywhere on the enemy</span> <span><span class="badge part">◎</span> one part: drop on that part of the equation</span></div>
+  <div id="hand"></div>
+</div>
+<script>
+// ---------- Level 1 equation generator ----------
+// One-step linear equations with whole-number answers.
+const rand = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
+const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+const shuffle = arr => { for (let i = arr.length - 1; i > 0; i--) { const j = rand(0, i); [arr[i], arr[j]] = [arr[j], arr[i]]; } return arr; };
+const MINUS = '−', TIMES = '×', DIV = '÷';
+
+// A card is {op: '+','-','*','/', n}. Tokens: {text, kind, target?}
+function generateLevel1() {
+  // Re-roll equations whose two numbers match or are tiny, so there are enough distinct moves for a hand.
+  let e; do { e = rollLevel1(); } while (e.a === e.b || e.b < 2); return e;
+}
+function rollLevel1() {
+  const x = rand(1, 12);
+  const type = pick(['add', 'addFront', 'sub', 'mul', 'div']);
+  let side, a, b, correct;
+  if (type === 'add') {        // x + a = b
+    a = rand(1, 12); b = x + a;
+    side = [{text:'x', kind:'var'}, {text:'+' + a, kind:'term', target:true}];
+    correct = {op:'-', n:a};
+  } else if (type === 'addFront') { // a + x = b
+    a = rand(1, 12); b = x + a;
+    side = [{text:String(a), kind:'term', target:true}, {text:'+ x', kind:'var'}];
+    correct = {op:'-', n:a};
+  } else if (type === 'sub') { // x - a = b
+    a = rand(1, 12); b = x - a;
+    if (b < 0) { a = rand(1, x); b = x - a; }
+    side = [{text:'x', kind:'var'}, {text:MINUS + a, kind:'term', target:true}];
+    correct = {op:'+', n:a};
+  } else if (type === 'mul') { // a x = b
+    a = rand(2, 10); b = a * x;
+    side = [{text:String(a), kind:'term', target:true}, {text:'x', kind:'var'}];
+    correct = {op:'/', n:a};
+  } else {                     // x / a = b
+    a = rand(2, 10); const xx = a * rand(1, 10); b = xx / a;
+    side = [{text:'x', kind:'var'}, {text:DIV + a, kind:'term', target:true}];
+    correct = {op:'*', n:a};
+    return finish(side, b, correct, xx, a);
+  }
+  return finish(side, b, correct, x, a);
+
+  function finish(side, b, correct, answer, a) {
+    const other = [{text:String(b), kind:'term'}];
+    const flip = Math.random() < 0.3; // sometimes x is on the right
+    const eqTok = {text:'=', kind:'eq'};
+    const tokens = flip ? [...other, eqTok, ...side] : [...side, eqTok, ...other];
+    return { tokens, correct, answer, a, b };
+  }
+}
+
+const opSym = op => ({'+':'+', '-':MINUS, '*':TIMES, '/':DIV})[op];
+const cardLabel = c => opSym(c.op) + c.n;
+const cardText = c => ({'+':`Add ${c.n} to both sides`, '-':`Subtract ${c.n} from both sides`, '*':`Multiply both sides by ${c.n}`, '/':`Divide both sides by ${c.n}`})[c.op];
+// Writes out what the equation looks like after applying a card to both sides.
+function appliedText(card) {
+  const left = [], right = []; let onRight = false;
+  for (const t of eq.tokens) { if (t.kind === 'eq') { onRight = true; continue; } (onRight ? right : left).push(t.text); }
+  const wrap = s => s.length > 1 ? `(${s.join(' ')})` : s[0];
+  const sym = cardLabel(card);
+  return `${wrap(left)} ${sym}  =  ${wrap(right)} ${sym}`;
+}
+
+function makeHand(eq) {
+  // Every card is a legal "do the same thing to both sides" move, built only from
+  // numbers that appear in the equation. Only one of them gets x by itself.
+  const {correct, a, b} = eq;
+  const opposite = {'+':'-', '-':'+', '*':'/', '/':'*'}[correct.op];
+  const ok = c => !('*/'.includes(c.op) && c.n < 2);
+  const first = [{op: opposite, n: a}, {op: correct.op, n: b}].filter(ok); // the classic mistakes
+  const rest = [];
+  for (const op of ['+', '-', '*', '/']) for (const n of new Set([a, b])) rest.push({op, n});
+  const seen = new Set([cardLabel(correct)]);
+  const hand = [correct];
+  for (const c of [...shuffle(first), ...shuffle(rest)]) {
+    if (hand.length >= 4) break;
+    if (!ok(c) || seen.has(cardLabel(c))) continue;
+    seen.add(cardLabel(c)); hand.push(c);
+  }
+  return shuffle(hand);
+}
+
+// ---------- Game state ----------
+const MAX_HP = 100, DAMAGE = 10;
+let hp, score, eq, hand, busy = false;
+const $ = id => document.getElementById(id);
+
+function start() { hp = MAX_HP; score = 0; $('over').style.display = 'none'; updateHud(); nextEnemy(); }
+
+function nextEnemy() {
+  eq = generateLevel1(); hand = makeHand(eq); busy = false;
+  $('enemy').classList.remove('dead');
+  $('step').textContent = ''; setMsg('');
+  renderEquation(eq.tokens); renderHand();
+}
+
+function renderEquation(tokens, droppable) {
+  const el = $('equation'); el.innerHTML = '';
+  tokens.forEach((t, i) => {
+    const s = document.createElement('div');
+    s.className = 'tok ' + t.kind + '';
+    s.textContent = t.text; s.dataset.idx = i;
+    el.appendChild(s);
+  });
+}
+
+function renderHand() {
+  const el = $('hand'); el.innerHTML = '';
+  hand.forEach((c, i) => {
+    const d = document.createElement('div');
+    d.className = 'card'; d.dataset.idx = i;
+    const badge = scopeOf(c) === 'part' ? '<span class="badge part" title="One part: drop on that part">◎</span>' : '<span class="badge both" title="Both sides: drop anywhere">⇔</span>';
+    d.innerHTML = `${badge}${cardLabel(c)}<small>${cardText(c)}</small>`;
+    d.addEventListener('pointerdown', e => startDrag(e, d, c));
+    el.appendChild(d);
+  });
+}
+
+function updateHud() {
+  $('hpfill').style.width = (hp / MAX_HP * 100) + '%';
+  $('hptext').textContent = `${hp} / ${MAX_HP}`;
+  $('score').textContent = score;
+}
+function setMsg(t, cls = '') { const m = $('msg'); m.textContent = t; m.className = cls; }
+
+// ---------- Drag & drop (pointer events: mouse + touch) ----------
+// Two kinds of cards:
+//   scope 'both' (default): does the same thing to both sides, so it can be dropped anywhere on the arena.
+//   scope 'part': changes one part of the equation (Distribute, Combine like terms, Factor... for later
+//                 levels), so it must be dropped on the right box. Level 1 only deals 'both' cards.
+const scopeOf = c => c.scope || 'both';
+
+function startDrag(e, el, card) {
+  if (busy) return;
+  e.preventDefault();
+  const r = el.getBoundingClientRect();
+  const offX = e.clientX - r.left, offY = e.clientY - r.top;
+  const ghost = el.cloneNode(true);
+  ghost.classList.add('dragging'); ghost.style.width = r.width + 'px'; ghost.style.height = r.height + 'px';
+  document.body.appendChild(ghost);
+  el.classList.add('placeholder');
+  const targeted = scopeOf(card) === 'part';
+  $('arena').classList.add(targeted ? 'targeting' : 'anywhere');
+  let hover = null;
+  const move = ev => {
+    ghost.style.left = (ev.clientX - offX) + 'px'; ghost.style.top = (ev.clientY - offY) + 'px';
+    let found = null;
+    if (targeted) {
+      // Forgiving hit test: within 40px of a box counts, closest box wins.
+      let best = Infinity;
+      for (const t of document.querySelectorAll('#equation .tok:not(.eq)')) {
+        const b = t.getBoundingClientRect();
+        const d = Math.hypot(Math.max(b.left - ev.clientX, 0, ev.clientX - b.right), Math.max(b.top - ev.clientY, 0, ev.clientY - b.bottom));
+        const cd = Math.hypot(ev.clientX - (b.left + b.right) / 2, ev.clientY - (b.top + b.bottom) / 2);
+        if (d <= 40 && cd < best) { best = cd; found = t; }
+      }
+    } else {
+      const b = $('arena').getBoundingClientRect();
+      if (ev.clientX >= b.left && ev.clientX <= b.right && ev.clientY >= b.top && ev.clientY <= b.bottom) found = $('arena');
+    }
+    if (hover && hover !== found) hover.classList.remove('hover');
+    hover = found; if (found) found.classList.add('hover');
+  };
+  const up = () => {
+    window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', up);
+    ghost.remove(); el.classList.remove('placeholder');
+    $('arena').classList.remove('targeting', 'anywhere');
+    if (hover) { hover.classList.remove('hover'); playCard(card, targeted ? eq.tokens[+hover.dataset.idx] : null); }
+  };
+  move(e);
+  window.addEventListener('pointermove', move); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up);
+}
+
+// ---------- Rules ----------
+function playCard(card, token) {
+  const rightCard = card.op === eq.correct.op && card.n === eq.correct.n;
+  const rightTarget = scopeOf(card) === 'both' || !!(token && token.target);
+  if (rightCard && rightTarget) return solve(card);
+  if (rightCard) return takeDamage(`Right move, wrong part. Drop it on the part it changes.`);
+  takeDamage(scopeOf(card) === 'both' ? `That's allowed, but x still isn't alone: ${appliedText(card)}` : `That move doesn't help here.`);
+}
+
+function takeDamage(why) {
+  hp = Math.max(0, hp - DAMAGE); updateHud();
+  setMsg(`-${DAMAGE} HP. ${why}`, 'bad');
+  const a = $('arena'); a.classList.remove('flash', 'shake'); void a.offsetWidth; a.classList.add('flash', 'shake');
+  if (hp <= 0) { busy = true; setTimeout(() => { $('overText').textContent = `Out of HP. You beat ${score} equation${score === 1 ? '' : 's'}.`; $('over').style.display = 'flex'; }, 500); }
+}
+
+function solve(card) {
+  busy = true;
+  $('step').textContent = appliedText(card);
+  const xOnLeft = eq.tokens.findIndex(t => t.kind === 'var') < eq.tokens.findIndex(t => t.kind === 'eq');
+  setTimeout(() => {
+    renderEquation(xOnLeft ? [{text:'x', kind:'var'}, {text:'=', kind:'eq'}, {text:String(eq.answer), kind:'term'}]
+                           : [{text:String(eq.answer), kind:'term'}, {text:'=', kind:'eq'}, {text:'x', kind:'var'}], false);
+    setMsg(`Solved! x = ${eq.answer}`, 'good');
+    $('enemy').classList.add('dead');
+    score++; updateHud();
+    setTimeout(nextEnemy, 1300);
+  }, 900);
+}
+
+$('restart').addEventListener('click', start);
+start();
+</script>
+</body>
+</html>
