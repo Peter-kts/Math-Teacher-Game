@@ -493,6 +493,7 @@ function enemySvg(key) {
 // =====================================================================
 const opSym = op => ({ '+': '+', '-': MINUS, '*': TIMES, '/': DIV })[op];
 function cardLabel(c) {
+  if (window.ACT2 && ACT2.label(c)) return ACT2.label(c);
   if (c.op === 'neg') return TIMES + '(' + MINUS + '1)';
   if (c.op === 'frac') return TIMES + paren(F(c.n, c.d));
   if (c.op === '+' || c.op === '-') return opSym(c.op) + c.n;
@@ -505,12 +506,13 @@ function chipHtml(c) {   // how a card reads once it's written into the equation
   return opSym(c.op) + ' ' + paren(F(c.n));
 }
 function cardText(c) {
+  if (window.ACT2 && ACT2.text(c)) return ACT2.text(c);
   const n = c.n !== undefined ? numText(c.n) : '';
   return ({ '+': `Add ${n} to both sides`, '-': `Subtract ${n} from both sides`, '*': `Multiply both sides by ${n}`,
             '/': `Divide both sides by ${n}`, neg: `Multiply both sides by ${MINUS}1`,
             frac: `Multiply both sides by ${fracText(F(c.n ?? 1, c.d ?? 1))}` })[c.op];
 }
-const cardKind = c => ({ '+': 'Add', '-': 'Subtract', '*': 'Multiply', '/': 'Divide', neg: `Multiply by ${MINUS}1`, frac: 'Reciprocal' })[c.op];
+const cardKind = c => (window.ACT2 && ACT2.kind(c)) || ({ '+': 'Add', '-': 'Subtract', '*': 'Multiply', '/': 'Divide', neg: `Multiply by ${MINUS}1`, frac: 'Reciprocal' })[c.op];
 const sameCard = (a, b) => cardLabel(a) === cardLabel(b);
 
 // Every card is a legal "do the same thing to both sides" move built from numbers in the equation.
@@ -597,6 +599,8 @@ function tokEl(t) {
   return el;
 }
 function renderEquation(s) {
+  $('equation').classList.remove('a2long');
+  if (s.L) return ACT2.render(s);   // Act 2 equation model (act2.js)
   const el = $('equation'); if (typeof clearNotes === 'function') clearNotes(); el.innerHTML = '';
   tokensFor(s).forEach(t => el.appendChild(tokEl(t)));
 }
@@ -795,22 +799,28 @@ async function flipReciprocal(card, s, ns) {
 //  Run, fights and phases
 // =====================================================================
 const MAX_HP = 100, DAMAGE = 10, ELITE_HEAL = 20;
+// Acts. act2.js adds ACTS[2]. Every act uses the same map layout for now.
+const ACTS = { 1: { name: 'The Ink Cellar', sub: 'Balancing', boss: 'The Scale Keeper', firstSkill: 'onestep',
+  blurb: 'Equations have escaped their textbooks. Beat each one by getting x alone. Clear the map and defeat The Scale Keeper.' } };
+const actOf = id => SKILL[id].act || 1;
 const ACT1_LAYOUT = ['fight', 'fight', 'fight', 'elite', 'fight', 'fight', 'fight', 'elite', 'fight', 'fight', 'boss'];
 const NODE_ICON = { tutorial: '★', fight: '⚔', elite: '☠', boss: '♛' };
 let hp = MAX_HP, run = null, fight = null, cur = null, hand = [], busy = true;
 
-function newRun() {
+function newRun(act = 1) {
   hp = MAX_HP;
-  run = { nodes: ACT1_LAYOUT.map(type => ({ type })), i: 0 };
-  // Any unlocked stage whose tutorial hasn't been played yet goes first.
-  const pending = unlockedSkills().filter(id => !progress.tutorialsDone.includes(id));
+  run = { act, nodes: ACT1_LAYOUT.map(type => ({ type })), i: 0 };
+  // Any unlocked stage of this act whose tutorial hasn't been played yet goes first.
+  const pending = runSkills().filter(id => actOf(id) === act && !progress.tutorialsDone.includes(id));
   run.nodes.unshift(...pending.map(skill => ({ type: 'tutorial', skill })));
-  hideOverlay(); updateHud(); startNode();
+  hideOverlay(); updateHud(); renderSkills(); startNode();
 }
 
 // Normal fights: ~60% the newest stage, ~40% review of earlier ones (needs-review skills weighted ×3).
+// The skills a run can use: everything unlocked up to and including its act, oldest first.
+const runSkills = () => unlockedSkills().filter(id => actOf(id) <= run.act);
 function pickFightSkill() {
-  const list = unlockedSkills();
+  const list = runSkills();
   if (list.length === 1 || Math.random() < 0.6) return list[list.length - 1];
   const earlier = list.slice(0, -1);
   const weights = earlier.map(id => skillStatus(id) === 'review' ? 3 : 1);
@@ -820,9 +830,10 @@ function pickFightSkill() {
 }
 
 function buildFight(node) {
-  const list = unlockedSkills();
+  const list = runSkills();
   if (node.type === 'tutorial') return { phases: SKILL[node.skill].tutorial, handSize: 3, rank: 'Tutorial' };
   if (node.type === 'fight') { const id = pickFightSkill(); return { phases: [SKILL[id].gen], handSize: 4 }; }
+  if (run.act === 2) return ACT2.buildFight(node, list);
   if (node.type === 'elite') {
     const recent = list.slice(-2);
     const swapped = () => { const g = genOneStep(); g.s.xLeft = false; return g; };
@@ -847,8 +858,9 @@ function startNode() {
 function startPhase() {
   const g = fight.phases[fight.phase]();
   const enemy = fight.enemy || g.enemy;
-  cur = makeEquation(g.s, enemy);
-  cur.state = g.s; cur.step = 0; cur.wrong = 0; cur.moves = 0; cur.lastT = performance.now();
+  // Act 2 generators return { eq } (act2.js's equation model); Act 1 ones return { s }.
+  cur = g.eq ? ACT2.makeEquation(g.eq, enemy) : makeEquation(g.s, enemy);
+  cur.state = g.eq || g.s; cur.step = 0; cur.wrong = 0; cur.moves = 0; cur.lastT = performance.now();
   for (const id of cur.skills) progress.skills[id].attempted++;
   saveProgress();
   $('enemyBox').innerHTML = enemySvg(enemy);
@@ -866,7 +878,7 @@ function renderFoe() {
   $('foe').innerHTML = `<b>${e.name}</b><span class="rank">${rank}</span>${pips}`;
 }
 
-function dealHand() { hand = makeHand(cur.state, cur.path[cur.step].move, fight.handSize); renderHand(); }
+function dealHand() { hand = (cur.act2 ? ACT2.makeHand : makeHand)(cur.state, cur.path[cur.step].move, fight.handSize); renderHand(); }
 
 function renderHand() {
   const el = $('hand'); el.innerHTML = '';
@@ -882,12 +894,13 @@ function renderHand() {
 }
 
 function renderMap() {
-  $('map').innerHTML = `<span class="lbl">Act 1 · The Ink Cellar</span>&nbsp;` + run.nodes.map((n, i) =>
+  $('map').innerHTML = `<span class="lbl">Act ${run.act} · ${ACTS[run.act].name}</span>&nbsp;` + run.nodes.map((n, i) =>
     `${i ? '<span class="link"></span>' : ''}<span class="node ${n.type} ${i < run.i ? 'done' : ''} ${i === run.i ? 'cur' : ''}" title="${n.type === 'tutorial' ? 'Tutorial: ' + SKILL[n.skill].name : n.type}">${NODE_ICON[n.type]}</span>`).join('');
 }
 
 function renderSkills(deltas = []) {
-  $('skills').innerHTML = SKILLS.map(s => {
+  const act = run ? run.act : 1;
+  $('skills').innerHTML = SKILLS.filter(s => (s.act || 1) === act).map(s => {
     const p = progress.skills[s.id], status = skillStatus(s.id);
     const tag = status === 'mastered' ? '<span class="tag mastered">mastered</span>' : status === 'review' ? '<span class="tag review">needs review</span>' : status === 'locked' ? '🔒' : '';
     const d = deltas.find(x => x[0] === s.id);
@@ -955,7 +968,7 @@ function startDrag(e, el, card) {
     ghost.remove(); el.classList.remove('placeholder');
     $('arena').classList.remove('targeting', 'anywhere');
     if (hover) hover.classList.remove('hover');
-    if (hover && drop) playCard(card, targeted ? hover.dataset.role : null);
+    if (hover && drop) playCard(card, targeted ? hover : null);
   };
   const up = ev => end(ev, true), cancel = ev => end(ev, false);
   move(e);
@@ -965,19 +978,22 @@ function startDrag(e, el, card) {
 // =====================================================================
 //  Rules and mastery
 // =====================================================================
-function playCard(card) {
+// target: the equation part a ◎ card was dropped on (an element, or its data-ref).
+function playCard(card, target) {
   if (busy) return;
   const step = cur.path[cur.step], sk = progress.skills[step.skill];
   const now = performance.now();
   sk.secondsTotal += (now - cur.lastT) / 1000; sk.movesTimed++; cur.lastT = now;
   sk.lastPracticed = new Date().toISOString(); sk.decayWeeks = 0;
   cur.moves++;
-  if (sameCard(card, step.move)) { saveProgress(); return doStep(card); }
+  const right = cur.act2 ? ACT2.isCorrect(cur, card, target) : sameCard(card, step.move);
+  if (right) { saveProgress(); return doStep(card, target); }
   // Wrong move: -10 HP and -10 mastery on the skill this step uses.
   cur.wrong++;
   sk.wrongByCard[cardKind(card)] = (sk.wrongByCard[cardKind(card)] || 0) + 1;
   changeMastery(step.skill, MASTERY.wrong);
   saveProgress(); renderSkills([[step.skill, MASTERY.wrong]]);
+  if (cur.act2) return takeDamage(ACT2.whyWrong(cur, card, target));
   const s = cur.state, undo = correctMove({ ...s, b: F(0) });
   const why = s.b.n !== 0 && !fIs(s.coef, 1) && sameCard(card, undo)
     ? `That's allowed, but undo the + or ${MINUS} part first, then the ${TIMES} or ${DIV}.`
@@ -985,14 +1001,16 @@ function playCard(card) {
   takeDamage(why);
 }
 
-async function doStep(card) {
+async function doStep(card, target) {
   busy = true; setMsg('');
-  const s = cur.state, ns = applyCard(s, card);
+  const ref = target && target.dataset ? target.dataset.ref : target;
+  const s = cur.state, ns = cur.act2 ? ACT2.apply(s, card, ref) : applyCard(s, card);
   const additive = card.op === '+' || card.op === '-';
   const note = cur.path.length > 1 && cur.step === 0 && additive ? ` (undo + and ${MINUS} first, then ${TIMES} and ${DIV})` : '';
-  const anim = OPERATION_ANIMATIONS[card.op];
-  if (anim) await anim(card, s, ns, note);
+  const anim = cur.act2 ? ACT2.animFor(card) : OPERATION_ANIMATIONS[card.op];
+  if (anim) await anim(card, s, ns, cur.act2 ? ref : note);
   cur.state = ns; cur.step++;
+  if (cur.act2) ACT2.refreshPath(cur);
   cur.lastT = performance.now();   // start the next move's clock after the animation, not before it
   renderEquation(ns);
   if (cur.step < cur.path.length) { dealHand(); busy = false; return; }
@@ -1012,9 +1030,12 @@ function equationSolved() {
   const fresh = checkUnlocks();
   saveProgress(); renderSkills(deltas);
   const gains = deltas.filter(d => d[1]).map(d => `${SKILL[d[0]].name} +${d[1]}`).join(', ');
-  setMsg(`Solved! x = ${fracText(cur.answer)}${gains ? ' · ' + gains : ''}`, 'good');
-  for (const id of fresh) run.nodes.splice(run.i + 1, 0, { type: 'tutorial', skill: id });
-  if (fresh.length) { renderMap(); $('unlock').textContent = `New stage unlocked: ${SKILL[fresh[0]].title.replace(/^Stage \d: /, '')}! Its tutorial fight is next.`; }
+  setMsg(`Solved! ${cur.answerText || 'x = ' + fracText(cur.answer)}${gains ? ' · ' + gains : ''}`, 'good');
+  // A stage of this act gets its tutorial fight next; a stage of a later act opens that act on the title screen.
+  const here = fresh.filter(id => actOf(id) === run.act), later = fresh.filter(id => actOf(id) > run.act);
+  for (const id of here) run.nodes.splice(run.i + 1, 0, { type: 'tutorial', skill: id });
+  if (here.length) { renderMap(); $('unlock').textContent = `New stage unlocked: ${SKILL[here[0]].title.replace(/^Stage \d: /, '')}! Its tutorial fight is next.`; }
+  else if (later.length) $('unlock').textContent = `Act ${actOf(later[0])} unlocked! Start it from the title screen after this run.`;
 
   fight.phase++;
   if (fight.phase < fight.phases.length) {
@@ -1097,11 +1118,18 @@ function skillSummaryHtml() {
 
 function showTitle() {
   busy = true;
-  showOverlay(`<h1>Act 1: The Ink Cellar</h1><h2>Balancing</h2>
-    <p>Equations have escaped their textbooks. Beat each one by getting x alone. Wrong moves cost 10 HP. Clear the map and defeat The Scale Keeper.</p>
+  // An act opens once its first stage is unlocked (80 mastery on the last stage of the act before).
+  const open = Object.keys(ACTS).map(Number).filter(a => isUnlocked(ACTS[a].firstSkill));
+  const top = open[open.length - 1], A = ACTS[top];
+  const buttons = open.slice().reverse().map(a => [`Start Act ${a}`, () => newRun(a), a !== top]);
+  buttons.push(['Skills & stats', () => showStats(showTitle), true]);
+  if (SKILLS.some(s => !isUnlocked(s.id))) buttons.push(['Unlock all stages (testing)', () => {
+    progress.unlocked = SKILLS.map(s => s.id); saveProgress(); renderSkills(); showTitle();
+  }, true]);
+  showOverlay(`<h1>Act ${top}: ${A.name}</h1><h2>${A.sub}</h2>
+    <p>${A.blurb} Wrong moves cost 10 HP.</p>
     <p>Each stage unlocks when the one before it reaches 80 mastery: +25 for a fight with no wrong moves, −10 for each wrong move. Mastery is saved, even if you run out of HP.</p>
-    ${skillSummaryHtml()}`,
-    [['Start run', newRun], ['Skills & stats', () => showStats(showTitle), true]]);
+    ${skillSummaryHtml()}`, buttons);
 }
 
 function showIntro(id) {
@@ -1113,13 +1141,16 @@ function showIntro(id) {
 
 function runLost() {
   showOverlay(`<h1>Out of HP</h1><p>You reached node ${run.i + 1} of ${run.nodes.length}. Your mastery is saved, so the next run starts with every stage you've unlocked.</p>${skillSummaryHtml()}`,
-    [['New run', newRun], ['Skills & stats', () => showStats(runLost), true]]);
+    [['New run', () => newRun(run.act)], ['Title screen', showTitle, true], ['Skills & stats', () => showStats(runLost), true]]);
 }
 
 function actCleared() {
   $('next').classList.remove('show');
-  showOverlay(`<h1>Act 1 cleared!</h1><p>The Scale Keeper is balanced at last. Act 2, the Bracket Halls, is next to be built. Until then, run Act 1 again to keep your skills sharp.</p>${skillSummaryHtml()}`,
-    [['New run', newRun], ['Skills & stats', () => showStats(actCleared), true]]);
+  const text = run.act === 1
+    ? `The Scale Keeper is balanced at last. ${isUnlocked('liketerms') ? 'Act 2, the Bracket Halls, is open.' : 'Act 2, the Bracket Halls, opens when Negatives & fractions reaches 80 mastery.'}`
+    : 'The Archivist\'s shelves are back in order. Act 3, Inequalities and systems, is next to be built. Until then, run Act 2 again to keep your skills sharp.';
+  showOverlay(`<h1>Act ${run.act} cleared!</h1><p>${text}</p>${skillSummaryHtml()}`,
+    [['New run', () => newRun(run.act)], ['Title screen', showTitle, true], ['Skills & stats', () => showStats(actCleared), true]]);
 }
 
 function fmtDate(iso) { return iso ? iso.slice(0, 10) : 'never'; }
@@ -1155,7 +1186,8 @@ $('statsBtn').addEventListener('click', e => { e.stopPropagation(); if (!$('over
 window.__game = { get cur() { return cur; }, get hand() { return hand; }, get busy() { return busy; }, get run() { return run; }, get hp() { return hp; },
   get progress() { return progress; }, playCard, correct: () => cur && cur.path[cur.step].move, goNext, newRun };
 
-renderSkills(); updateHud(); showTitle();
 </script>
+<script src="act2.js"></script>
+<script>renderSkills(); updateHud(); showTitle();</script>
 </body>
 </html>

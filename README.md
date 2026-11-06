@@ -1,6 +1,6 @@
 # Math Teacher Game
 
-A Slay the Spire-style card game where algebra equations are the enemies. This repo holds a playable prototype of Act 1.
+A Slay the Spire-style card game where algebra equations are the enemies. This repo holds a playable prototype of Acts 1 and 2.
 
 ## Running the prototype
 
@@ -9,7 +9,7 @@ No install or build is needed. Open `prototype/index.html` in any modern browser
 ## How it plays
 
 - Each enemy is an equation. You get a hand of cards, each a legal move like "Subtract 3 from both sides", built from the numbers in the equation. Only one gets x closer to alone.
-- Cards marked ⇔ apply to both sides and can be dropped anywhere on the enemy. Cards marked ◎ change one part and must be dropped on that part of the equation. Act 1 only deals ⇔ cards; ◎ is there for later acts (Distribute, Factor and so on).
+- Cards marked ⇔ apply to both sides and can be dropped anywhere on the enemy. Cards marked ◎ change one part and must be dropped on that part of the equation. Act 1 only deals ⇔ cards; Act 2 adds the first ◎ cards (Combine, Distribute, and the two Declare cards).
 - A wrong move costs 10 of your 100 HP. At 0 HP the run ends, but your mastery is kept.
 - Every correct move plays its own animation: the operation is written under the term it acts on (division as a fraction bar under each side), the matching parts cancel, and the other side simplifies. Animation speed can be set to 0.5x, 1x or 2x.
 - After a solve there is a short celebration, and the game waits until you tap (or press Space/Enter). The next question slides in.
@@ -28,6 +28,26 @@ A run is a map of 11 nodes: normal fights, two elites and The Scale Keeper boss.
 - **Normal fights**: about 60% the newest stage, 40% review of earlier stages (skills marked "needs review" come up 3 times as often).
 - **Elites** stack the two newest stages in one equation (for example 18 − 4x = −10). Beating one heals 20 HP.
 - **Boss**: one phase per unlocked stage (sides swap from phase 2), then a final phase that combines them.
+
+## Act 2: The Bracket Halls
+
+Act 2 opens on the title screen once Negatives & fractions reaches 80 mastery. Its code lives in `prototype/act2.js`, which has its own equation model (several terms per side, parentheses, x on both sides, fractions with x on top).
+
+| Stage | Example | New cards |
+|---|---|---|
+| 4. Like terms | 3x + 2x − 4 = 11 | ◎ Combine: drop on one of two like terms; they slide together and their numbers add |
+| 5. Distributing | 3(x + 2) = 15 | ◎ Distribute: drop on the parentheses; arrows run from the 3 to each term, the products are written underneath, the parentheses dissolve |
+| 6. x on both sides | 5x + 3 = 2x + 12 | Subtract (or add) an x-term on both sides: written under the x-term on each side, it cancels on one side and combines on the other |
+| 7. Clearing fractions | x/3 + x/4 = 7 | Multiply both sides by the common denominator: the multiplier is stamped under every term and the denominators pop away |
+| 8. No solution or every number | 2x + 1 = 2x + 5, 3(x + 1) = 3x + 3 | ◎ No solution (the false statement cracks and shatters), ◎ All x (the true one glows) |
+
+Stage 9 (formulas, d = rt) is not built yet.
+
+- Normal fights mix in earlier ideas, for example 3(x + 2) + x = 18, and review fights can pull from Act 1.
+- Elites (Bracket Knight) stack the two newest stages, for example 3(x + 2) = 2x + 9.
+- The Archivist boss has one phase per unlocked Act 2 stage, then a combined phase.
+- A ◎ card can be played on any part where it is legal and helps, not only the one the game would pick. Dropping Combine on a term with no like partner, or Distribute off the parentheses, counts as a wrong move.
+- For testing, the title screen has an "Unlock all stages" button.
 
 ## Mastery and stats
 
