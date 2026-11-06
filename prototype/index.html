@@ -1123,7 +1123,10 @@ function showTitle() {
   const top = open[open.length - 1], A = ACTS[top];
   const buttons = open.slice().reverse().map(a => [`Start Act ${a}`, () => newRun(a), a !== top]);
   buttons.push(['Skills & stats', () => showStats(showTitle), true]);
-  if (SKILLS.some(s => !isUnlocked(s.id))) buttons.push(['Unlock all stages (testing)', () => {
+  // Review fix: testing-only, so it's shown only where the debug menu is (local file, /dev/, ?debug=1).
+  // On the live site one tap used to unlock every stage for good.
+  const debugOn = location.protocol === 'file:' || /\/dev\//.test(location.pathname) || /[?&]debug=1/.test(location.search);
+  if (debugOn && SKILLS.some(s => !isUnlocked(s.id))) buttons.push(['Unlock all stages (testing)', () => {
     progress.unlocked = SKILLS.map(s => s.id); saveProgress(); renderSkills(); showTitle();
   }, true]);
   showOverlay(`<h1>Act ${top}: ${A.name}</h1><h2>${A.sub}</h2>

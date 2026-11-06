@@ -150,8 +150,18 @@
   }
   // After each move the rest of the path is worked out again, because a ◎ card can be played on any
   // valid part (e.g. combining the numbers before the x-terms), not only the one the path picked.
+  // Review fix: skillOf re-tags plain steps as twostep/onestep from how many are left, so a refreshed
+  // path used to move the last step onto a skill this fight never counted (e.g. ÷5 became onestep), and
+  // a wrong move there cost mastery on that skill. New steps now keep a skill the fight already has.
   function refreshPath(cur) {
-    cur.path = cur.path.slice(0, cur.step).concat(pathFrom(cur.state).path);
+    const old = cur.path, fresh = pathFrom(cur.state).path;
+    const plain = cur.skills.find(id => id === 'twostep' || id === 'onestep');
+    fresh.forEach((p, j) => {
+      if (cur.skills.includes(p.skill)) return;
+      if (plain && (p.skill === 'twostep' || p.skill === 'onestep')) p.skill = plain;
+      else p.skill = (old[cur.step + j] || old[old.length - 1]).skill;
+    });
+    cur.path = old.slice(0, cur.step).concat(fresh);
   }
 
   // ---------------------------------------------------------------- text
@@ -236,13 +246,26 @@
   // A card only turns up as a wrong card once the player has met it (its tutorial is done, or under way),
   // so a stage 4 tutorial never deals Distribute or No solution.
   const known = id => isUnlocked(id) && (progress.tutorialsDone.includes(id) || (typeof fight !== 'undefined' && fight && fight.node && fight.node.skill === id) || SKILL[id].stage <= 3);
+  // Review fix (same rule as Act 1's makeHand): when x stands alone on its side with only a number on the
+  // other, shrinking the number in front of x (÷3 on −3x = 9 gives −x = 3) or clearing its minus sign
+  // (×(−1) gives 3x = −9) is correct algebra. These used to be dealt as wrong cards and cost HP.
+  function shrinksCoef(e, a) {
+    const lone = q => { for (const [x, o] of [[q.L, q.R], [q.R, q.L]]) if (x.length === 1 && x[0].t === 'x' && o.every(it => it.t === 'n')) return { k: x[0].k, o }; return null; };
+    const before = lone(e), after = a && lone(a);
+    if (!before || !after || !after.o.every(it => isInt(it.k))) return false;
+    const size = f => Math.abs(f.n) * f.d;
+    return size(after.k) < size(before.k) || (size(after.k) === size(before.k) && before.k.n < 0 && after.k.n > 0);
+  }
   function makeHand2(e, correct, size) {
     const base = steps(e);
     const useful = c => {
       if (isDeclare(c)) return isStatement(e) && (c.op === 'all') === statementTrue(e);
       if (c.op === 'dist') return hasGroup(e);
       if (c.op === 'comb') return ['L', 'R'].some(s => ['x', 'n'].some(k => sideOf(e, s).filter(i => i.t === k).length >= 2));
-      return steps(apply(e, c)) < base;
+      const a = apply(e, c);
+      // Also kept out: adding x to both sides of −x = −2 (gives 0 = −2 + x), which clears the minus sign too.
+      const negLone = [e.L, e.R].some(x => x.length === 1 && x[0].t === 'x' && x[0].k.n < 0);
+      return steps(a) < base || shrinksCoef(e, a) || (c.x && negLone && steps(a) <= base);
     };
     const classic = [], rest = [];
     if (correct.op === '+' || correct.op === '-') classic.push({ ...correct, op: correct.op === '+' ? '-' : '+' });
@@ -286,7 +309,8 @@
     const e = cur.state, ref = refOf(target);
     if (isDeclare(card)) return isStatement(e) && (card.op === 'all') === statementTrue(e);
     if (isPart(card) && !legalPart(e, card, ref)) return false;
-    return steps(apply(e, card, ref)) < steps(e);
+    const a = apply(e, card, ref);
+    return steps(a) < steps(e) || shrinksCoef(e, a);
   }
   function whyWrong(cur, card, target) {
     const e = cur.state, ref = refOf(target), want = cur.path[cur.step].move;
