@@ -115,7 +115,19 @@
   #unlock { font-size:17px; color:var(--accent); min-height:0; text-align:center; font-weight:bold; }
   #hand { display:flex; justify-content:center; gap:12px; min-height:150px; flex-wrap:wrap; padding-bottom:6px; }
   .card { width:132px; height:150px; padding:8px; text-align:center; background:var(--card); color:var(--cardInk); border:3px solid #000; border-radius:8px; display:flex; flex-direction:column; align-items:center; justify-content:center; font-size:28px; font-weight:bold; cursor:grab; box-shadow: 0 4px 0 #000; touch-action:none; }
-  .card .badge { font-size:18px; font-weight:bold; margin-bottom:6px; padding:0 10px; line-height:1.4; border-radius:4px; border:2px solid #000; }
+  .card { position:relative; }
+  .card .badge { position:absolute; top:4px; right:4px; font-size:13px; font-weight:bold; padding:0 4px; line-height:1.3; border-radius:4px; border:2px solid #000; }
+  .cicon { display:inline-flex; align-items:center; justify-content:center; width:1.5em; height:1.5em; font-size:24px; border-radius:6px; border:2px solid #000; margin-bottom:4px; flex:none; }
+  .cicon.k-add, .cicon.k-sub { background:#c9f2df; color:#0b5a3c; }
+  .cicon.k-mul, .cicon.k-div, .cicon.k-recip, .cicon.k-neg { background:#d9d2ff; color:#3a2a8c; }
+  .cicon.k-comb, .cicon.k-dist, .cicon.k-lcd { background:#ffe0a8; color:#6b3d00; }
+  .cicon.k-flip { background:#ffc9d6; color:#7a1530; }
+  .cicon.k-none, .cicon.k-all { background:#e4e4e4; color:#333; }
+  .keyBtn { font:inherit; font-weight:bold; font-size:inherit; padding:1px 8px; background:transparent; color:inherit; border:2px solid var(--muted); border-radius:4px; cursor:pointer; }
+  .keyGrid { display:grid; grid-template-columns:repeat(auto-fill, minmax(210px, 1fr)); gap:6px 14px; }
+  .keyRow { display:flex; align-items:center; gap:8px; font-size:14px; }
+  .keyRow .cicon { font-size:18px; margin:0; }
+  #whyBody .badge { font-size:14px; padding:0 6px; border-radius:4px; border:2px solid #000; }
   .key { display:flex; justify-content:center; align-items:center; gap:18px; flex-wrap:wrap; font-size:13px; color:var(--muted); }
   .key .badge { font-size:15px; font-weight:bold; padding:0 8px; border-radius:4px; border:2px solid #000; margin-right:4px; }
   .badge.both { background:#cfe8ff; color:#1d3b5c; }
@@ -197,7 +209,8 @@
     .key .badge { font-size:12px; }
     #hand { gap:5px; flex-wrap:nowrap; min-height:0; padding-bottom:0; }
     .card { width:calc((100vw - 16px - 5px * (var(--n, 4) - 1)) / var(--n, 4)); max-width:110px; height:clamp(112px, 19vh, 150px); font-size:clamp(16px, 5vw, 22px); padding:4px 3px; }
-    .card .badge { font-size:12px; margin-bottom:3px; padding:0 6px; }
+    .card .badge { font-size:10px; top:3px; right:3px; padding:0 3px; border-width:1.5px; }
+    .cicon { font-size:16px; margin-bottom:2px; }
     .card small { font-size:clamp(9px, 2.7vw, 11px); margin-top:4px; }
     /* 5 or 6 cards: two rows of 3 so each card stays wide enough to read and tap */
     #hand.many { flex-wrap:wrap; row-gap:5px; }
@@ -241,7 +254,8 @@
     #hand { grid-column:2; grid-row:4; display:grid; grid-template-columns: repeat(2, clamp(96px, 15vw, 130px)); grid-auto-rows: minmax(0, 1fr);
             gap:6px; min-height:0; padding:0; align-content:stretch; }
     .card { width:auto; height:auto; min-height:0; font-size:clamp(16px, 5.5vh, 24px); padding:3px; }
-    .card .badge { font-size:11px; margin-bottom:2px; padding:0 6px; }
+    .card .badge { font-size:10px; top:2px; right:2px; padding:0 3px; border-width:1.5px; }
+    .cicon { font-size:14px; margin-bottom:1px; }
     .card small { font-size:10px; margin-top:2px; }
     .card:hover { transform:none; }
     .panel { padding:12px 14px; gap:8px; }
@@ -272,11 +286,11 @@
     <div id="next">Tap anywhere to continue</div>
   </div>
   <div class="help">Pick the move that gets x alone. Wrong move = 10 damage.</div>
-  <div class="key"><b>Key</b> <span><span class="badge both">⇔</span> both sides<span class="lbl">: drop anywhere on the enemy</span></span> <span><span class="badge part">◎</span> one part<span class="lbl">: drop on that part of the equation</span></span></div>
+  <div class="key"><button id="keyBtn" class="keyBtn">Key</button> <span><span class="badge both">⇔</span> both sides<span class="lbl">: drop anywhere on the enemy</span></span> <span><span class="badge part">◎</span> one part<span class="lbl">: drop on that part of the equation</span></span></div>
   <div id="hand"></div>
 </div>
 <div id="over"><div class="panel" id="overPanel"></div></div>
-<div id="why"><div class="panel"><h2>Why that didn't work</h2><div id="whyBody"></div><div class="buttons"><button id="whyClose">Got it</button></div></div></div>
+<div id="why"><div class="panel"><h2 id="whyTitle">Why that didn't work</h2><div id="whyBody"></div><div class="buttons"><button id="whyClose">Got it</button></div></div></div>
 <script>
 // =====================================================================
 //  Small helpers
@@ -767,11 +781,12 @@ function explainAct1({ state: s, card, correct }) {
 }
 registerWhy(explainAct1);
 
-function showWhy(html) {
-  const box = $('why'); $('whyBody').innerHTML = html; box.classList.add('show');
+function showWhy(html, title = "Why that didn't work") {
+  const box = $('why'); $('whyTitle').textContent = title; $('whyBody').innerHTML = html; box.classList.add('show');
 }
 function hideWhy() { $('why').classList.remove('show'); }
 $('whyClose').addEventListener('click', hideWhy);
+$('keyBtn').addEventListener('click', e => { e.stopPropagation(); showKey(); });
 $('why').addEventListener('click', e => { if (e.target.id === 'why') hideWhy(); });
 window.addEventListener('keydown', e => { if (e.key === 'Escape') hideWhy(); });
 
@@ -1117,7 +1132,64 @@ function renderFoe() {
   $('foe').innerHTML = `<b>${e.name}</b><span class="rank">${rank}</span>${pips}`;
 }
 
-function dealHand() { hand = (cur.act2 ? eng().makeHand : makeHand)(cur.state, cur.path[cur.step].move, fight.handSize); renderHand(); }
+// ---------- Card icons ----------
+// Each kind of operation has a small icon at the top of its card; the both-sides / one-part badge
+// sits in the card's top-right corner. Tap "Key" under the arena for the full list.
+const svgI = body => `<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">${body}</svg>`;
+const CARD_ICONS = {
+  add:   { name: 'Add', svg: svgI('<path d="M12 5v14M5 12h14"/>') },
+  sub:   { name: 'Subtract', svg: svgI('<path d="M5 12h14"/>') },
+  mul:   { name: 'Multiply', svg: svgI('<path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/>') },
+  div:   { name: 'Divide (as a fraction)', svg: svgI('<rect x="8.5" y="2.5" width="7" height="6" rx="1"/><path d="M4 12h16"/><rect x="8.5" y="15.5" width="7" height="6" rx="1"/>') },
+  neg:   { name: `Multiply by ${MINUS}1 (flip every sign)`, svg: svgI('<path d="M12 3v8M8 7h8M8 18h8"/>') },
+  recip: { name: 'Multiply by the flipped fraction', svg: svgI('<path d="M7 4v13M4 14l3 3 3-3M17 20V7M14 10l3-3 3 3"/>') },
+  comb:  { name: 'Combine like terms', svg: svgI('<rect x="2.5" y="3" width="6" height="6" rx="1"/><rect x="2.5" y="15" width="6" height="6" rx="1"/><path d="M8.5 6c4 0 4 6 7 6M8.5 18c4 0 4-6 7-6"/><rect x="15.5" y="8.5" width="6" height="7" rx="1"/>') },
+  dist:  { name: 'Distribute', svg: svgI('<circle cx="4.5" cy="12" r="2"/><path d="M6.5 11C11 6 15 5 19 5M6.5 13C11 18 15 19 19 19M17 3l2 2-2 2M17 17l2 2-2 2"/>') },
+  lcd:   { name: 'Least common denominator', svg: svgI('<path d="M3 8h7M14 8h7M2 15h20"/><path d="M6.5 4v1M17.5 4v1M12 19v1"/>') },
+  flip:  { name: 'Flip the inequality sign', svg: svgI('<path d="M9 5l-5 5 5 5M15 9l5 5-5 5"/>') },
+  none:  { name: 'No solution', svg: svgI('<circle cx="12" cy="12" r="8"/><path d="M6 18L18 6"/>') },
+  all:   { name: 'Every number works', svg: svgI('<path d="M12 12c-2-3-4-4.5-6-4.5a4.5 4.5 0 000 9c2 0 4-1.5 6-4.5s4-4.5 6-4.5a4.5 4.5 0 010 9c-2 0-4-1.5-6-4.5z"/>') },
+};
+// A trap card wears the icon of the move it imitates.
+const TRAP_ICON = { 'add across': 'comb', 'first term only': 'dist', 'no sign flip': null, 'unlike terms': 'comb', 'lost sign': 'div', 'no flip': null };
+function iconKey(c) {
+  if (c.op === 'trap') {
+    const k = TRAP_ICON[c.trap]; if (k) return k;
+    const op = c.scaleOp || (c.trap === 'no sign flip' ? '+' : null);
+    return op ? iconKey({ op }) : 'add';
+  }
+  if (c.flip) return 'flip';
+  if (c.lcd) return 'lcd';
+  if (c.op === 'frac') return 'recip';
+  return { '+': 'add', '-': 'sub', '*': 'mul', '/': 'div', neg: 'neg', comb: 'comb', dist: 'dist', none: 'none', all: 'all' }[c.op] || 'add';
+}
+const cardIcon = c => { const k = iconKey(c); return `<span class="cicon k-${k}" aria-label="${CARD_ICONS[k].name}">${CARD_ICONS[k].svg}</span>`; };
+function showKey() {
+  const row = k => `<div class="keyRow"><span class="cicon k-${k}">${CARD_ICONS[k].svg}</span> ${CARD_ICONS[k].name}</div>`;
+  showWhy(`<p><span class="badge both">⇔</span> <b>Both sides:</b> drop the card anywhere on the enemy.<br><span class="badge part">◎</span> <b>One part:</b> drop it on that part of the equation.</p>
+    <div class="keyGrid">${Object.keys(CARD_ICONS).map(row).join('')}</div>`, 'Card key');
+}
+
+function dealHand() { hand = arrangeHand((cur.act2 ? eng().makeHand : makeHand)(cur.state, cur.path[cur.step].move, fight.handSize)); renderHand(); }
+
+// Named operation cards (Combine, Distribute, LCD, ...) always land in the same slot, counting from the
+// left, so a player can find them without reading every card after a redeal. Number cards fill the rest
+// in their dealt order. New acts can add their own named ops to this list.
+const FIXED_SLOTS = ['comb', 'dist', 'lcd', 'flip', 'none', 'all'];
+const slotKey = c => c.lcd ? 'lcd' : c.op;
+function arrangeHand(cards) {
+  const out = new Array(cards.length).fill(null), rest = [];
+  const named = cards.filter(c => FIXED_SLOTS.includes(slotKey(c)))
+    .sort((a, b) => FIXED_SLOTS.indexOf(slotKey(a)) - FIXED_SLOTS.indexOf(slotKey(b)));
+  for (const c of cards) if (!named.includes(c)) rest.push(c);
+  for (const c of named) {                       // its own slot, or the nearest free one after it
+    let i = Math.min(FIXED_SLOTS.indexOf(slotKey(c)), cards.length - 1);
+    while (out[i]) i = (i + 1) % cards.length;
+    out[i] = c;
+  }
+  for (let i = 0; i < out.length; i++) if (!out[i]) out[i] = rest.shift();
+  return out;
+}
 
 function renderHand() {
   const el = $('hand'); el.innerHTML = ''; el.style.setProperty('--n', String(Math.max(4, hand.length))); el.classList.toggle('many', hand.length >= 5);   // 5+ cards: two rows on phones
@@ -1126,7 +1198,7 @@ function renderHand() {
     d.className = 'card deal'; d.dataset.idx = i; d.style.animationDelay = `calc(${i * 70}ms * var(--k))`;
     d.addEventListener('animationend', () => d.classList.remove('deal'), { once: true });
     const badge = scopeOf(c) === 'part' ? '<span class="badge part" title="One part: drop on that part">◎</span>' : '<span class="badge both" title="Both sides: drop anywhere">⇔</span>';
-    d.innerHTML = `${badge}${cardLabel(c)}<small>${cardText(c)}</small>`;
+    d.innerHTML = `${badge}${cardIcon(c)}<span class="clabel">${cardLabel(c)}</span><small>${cardText(c)}</small>`;
     d.addEventListener('pointerdown', e => startDrag(e, d, c));
     el.appendChild(d);
   });
