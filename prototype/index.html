@@ -46,7 +46,7 @@
   #enemyBox.dead { transform: scale(0) rotate(90deg); opacity:0; }
   #enemyBox.hit { animation: hit calc(.5s * var(--k)); }
   @keyframes hit { 0%,100% { transform:none; filter:none; } 30% { transform: translateX(-8px) scale(.92); filter: brightness(3); } 60% { transform: translateX(6px); } }
-  #equation { display:flex; align-items:center; gap:4px; font-size:var(--eqSize); font-weight:bold; flex-wrap:wrap; justify-content:center; perspective:600px; }
+  #equation { display:flex; align-items:center; gap:4px; font-size:var(--eqSize); font-weight:bold; flex-wrap:wrap; justify-content:center; perspective:600px; position:relative; padding-bottom:.5em; }
   .tok { padding:14px 12px; border:4px dashed transparent; border-radius:10px; min-width:64px; white-space:pre; min-height:96px; display:flex; align-items:center; justify-content:center; text-align:center; max-width:320px; transition: background .15s, border-color .15s, max-width calc(.45s * var(--k)), min-width calc(.45s * var(--k)), padding calc(.45s * var(--k)), opacity calc(.45s * var(--k)), transform calc(.45s * var(--k)), color calc(.3s * var(--k)); }
   #arena.targeting .tok:not(.eq) { border-color: var(--muted); background:#ffffff0d; }
   #arena.anywhere { outline:4px dashed var(--muted); outline-offset:-10px; }
@@ -69,6 +69,40 @@
   @keyframes flip { 0% { transform: rotateX(0); } 50% { transform: rotateX(90deg); } 100% { transform: rotateX(0); } }
   .tok.spin { animation: spin calc(.9s * var(--k)) ease-in-out; }
   @keyframes spin { 0% { transform: rotateY(0); } 100% { transform: rotateY(360deg); } }
+  /* operations written under a term */
+  .unote { position:absolute; transform:translateX(-50%); margin-top:.1em; font-size:.42em; color:#7bdff2; white-space:nowrap; pointer-events:none; z-index:2;
+           display:flex; align-items:center; line-height:1.1; text-shadow:0 2px 0 #000;
+           transition: opacity calc(.4s * var(--k)), color calc(.3s * var(--k)); animation: noteIn calc(.55s * var(--k)) cubic-bezier(.2,1.6,.4,1); }
+  .unote.divnote { margin-top:0; flex-direction:column; }
+  .unote .ubar { display:block; height:.14em; min-height:3px; background:currentColor; border-radius:2px; margin-bottom:.08em; animation: grow calc(.4s * var(--k)) ease-out; }
+  @keyframes noteIn { from { transform: translate(-50%, 40px) scale(.3); opacity:0; } }
+  .unote.cancel { color:var(--bad); text-decoration:line-through; }
+  .unote.merge { color:var(--good); }
+  .unote.out { opacity:0; }
+  .unote.spin { animation: spinNote calc(.9s * var(--k)) ease-in-out; }
+  @keyframes spinNote { from { transform: translateX(-50%) rotateY(0); } to { transform: translateX(-50%) rotateY(360deg); } }
+  /* division written as a fraction */
+  .tok.var .den { color:var(--ink); }
+  .frac > span { transition: opacity calc(.45s * var(--k)), color calc(.3s * var(--k)); }
+  .frac .cancel { color:var(--bad); text-decoration:line-through; }
+  .frac .gone { opacity:0; }
+  @keyframes grow { from { transform: scaleX(0); } }
+
+  /* solve celebration and moving to the next question */
+  #celebrate { position:absolute; inset:0; pointer-events:none; z-index:3; overflow:hidden; }
+  .stamp { position:absolute; left:0; right:0; text-align:center; font-size:clamp(28px, 7vw, 52px); font-weight:bold; color:var(--good);
+           text-shadow: 0 3px 0 #000, 0 0 18px #06d6a088; letter-spacing:3px; animation: stamp calc(.6s * var(--k)) cubic-bezier(.2,1.6,.4,1) both; }
+  @keyframes stamp { 0% { transform: scale(3) rotate(-14deg); opacity:0; } 100% { transform: scale(1) rotate(-5deg); opacity:1; } }
+  .spark { position:absolute; width:14px; height:14px; margin:-7px 0 0 -7px; box-shadow:0 0 8px currentColor; animation: spark calc(.95s * var(--k)) cubic-bezier(.1,.7,.3,1) forwards; }
+  @keyframes spark { 0% { transform: translate(0,0) scale(1.2); opacity:1; } 100% { transform: translate(var(--dx), var(--dy)) scale(.2) rotate(180deg); opacity:0; } }
+  #equation.solved .tok { animation: cheer calc(.7s * var(--k)) ease-in-out 2; }
+  @keyframes cheer { 50% { transform: translateY(-10px) scale(1.1); color:var(--accent); text-shadow: 0 0 16px #ffd166aa; } }
+  .leave { animation: leave calc(.35s * var(--k)) ease-in forwards !important; }
+  @keyframes leave { to { transform: translateX(-70px); opacity:0; } }
+  .arrive { animation: arrive calc(.45s * var(--k)) cubic-bezier(.2,1.3,.4,1) both; }
+  @keyframes arrive { from { transform: translateX(70px); opacity:0; } }
+  .card.deal { animation: deal calc(.4s * var(--k)) cubic-bezier(.2,1.4,.4,1) both; }
+  @keyframes deal { from { transform: translateY(70px) rotate(8deg); opacity:0; } }
   #step { font-size:20px; color:var(--muted); min-height:26px; text-align:center; padding:0 10px; }
   #msg { font-size:17px; min-height:22px; text-align:center; padding:0 10px; }
   #msg.bad { color:var(--bad); } #msg.good { color:var(--good); }
@@ -210,7 +244,8 @@
     <div id="step"></div>
     <div id="msg"></div>
     <div id="unlock"></div>
-    <div id="next">Click anywhere to continue</div>
+    <div id="celebrate"></div>
+    <div id="next">Tap anywhere to continue</div>
   </div>
   <div class="help">Pick the move that gets x alone. Wrong move = 10 damage.</div>
   <div class="key"><b>Key</b> <span><span class="badge both">⇔</span> both sides<span class="lbl">: drop anywhere on the enemy</span></span> <span><span class="badge part">◎</span> one part<span class="lbl">: drop on that part of the equation</span></span></div>
@@ -540,7 +575,10 @@ function tokensFor(s) {
   const xTok = neg => ({ role: 'x', text: lead ? (neg ? MINUS + 'x' : 'x') : (neg ? MINUS + ' x' : '+ x') });
   if (d === 1 && Math.abs(n) === 1) xs.push(xTok(n < 0));
   else if (d === 1) xs.push({ role: 'coef', text: lead ? numText(n) : signed(s.coef) }, { role: 'x', text: 'x' });
-  else if (Math.abs(n) === 1) xs.push(xTok(n < 0), { role: 'coef', text: DIV + ' ' + d });
+  else if (Math.abs(n) === 1) {             // x ÷ d is written as a fraction: x over d
+    const top = xTok(n < 0).text;
+    xs.push({ role: 'x', text: `${top}/${d}`, html: `<span class="frac"><span>${top}</span><span class="den" data-role="coef">${d}</span></span>` });
+  }
   else xs.push({ role: 'coef', text: lead ? fracText(s.coef) : signed(s.coef), html: lead ? fracHtml(s.coef) : signed(s.coef, true) }, { role: 'x', text: 'x' });
   const side = [...xs];
   if (s.b.n !== 0) {
@@ -559,7 +597,7 @@ function tokEl(t) {
   return el;
 }
 function renderEquation(s) {
-  const el = $('equation'); el.innerHTML = '';
+  const el = $('equation'); if (typeof clearNotes === 'function') clearNotes(); el.innerHTML = '';
   tokensFor(s).forEach(t => el.appendChild(tokEl(t)));
 }
 function sideTexts(s) {
@@ -570,8 +608,9 @@ function sideTexts(s) {
 // What the equation looks like after applying a card to both sides, for the wrong-move message.
 function appliedText(s, card) {
   const wrap = arr => { const t = arr.join(' ').replace(/(\d) x/g, '$1x'); return arr.length > 1 ? `(${t})` : t; };
-  const sym = cardLabel(card).replace(/^(.)/, '$1 ');
   const [l, r] = sideTexts(s);
+  if (card.op === '/') { const dn = '/' + paren(F(card.n)); return `${wrap(l)}${dn}  =  ${wrap(r)}${dn}`; }
+  const sym = cardLabel(card).replace(/^(.)/, '$1 ');
   return `${wrap(l)} ${sym}  =  ${wrap(r)} ${sym}`;
 }
 
@@ -586,7 +625,7 @@ const OPERATION_ANIMATIONS = {
   '+': cancelAndCombine,
   '-': cancelAndCombine,
   '*': cancelAndCombine,
-  '/': cancelAndCombine,
+  '/': divideAsFraction,
   neg: flipSigns,
   frac: flipReciprocal,
 };
@@ -604,20 +643,51 @@ document.querySelectorAll('.speed button').forEach(b => b.addEventListener('clic
 setSpeed(speed);
 const sleep = ms => new Promise(r => setTimeout(r, ms / speed));
 const caption = t => { $('step').textContent = t; };
-function chip(html, cls = 'term op-new') {   // a new token that drops in
-  const s = document.createElement('div'); s.className = 'tok ' + cls + ' enter'; s.dataset.role = 'chip'; s.innerHTML = html; return s;
-}
 const mark = (els, cls) => els.forEach(e => e && e.classList.add(cls));
 async function removeTok(els) { els = els.filter(Boolean); mark(els, 'gone'); await sleep(460); els.forEach(e => e.remove()); }
 const roleEl = role => $('equation').querySelector(`[data-role="${role}"]`);
-// Drops the card onto both sides: a chip at the end of each side. Returns [chip on x side, chip on other side].
-async function dropOnBothSides(card, s) {
-  const el = $('equation'), eqEl = roleEl('eq');
-  const left = chip(chipHtml(card)), right = chip(chipHtml(card));
-  el.insertBefore(left, eqEl); el.appendChild(right);
-  await sleep(1000);
-  return s.xLeft ? [left, right] : [right, left];
+
+// Operations are written under the term they act on, the way you'd write them by hand, so the
+// equation itself never has to widen. Each note is absolutely positioned and follows its anchor
+// terms while the equation collapses.
+const notes = new Set();
+let notesRaf = 0;
+function placeNote(n) {
+  const eqR = $('equation').getBoundingClientRect();
+  let l = Infinity, r = -Infinity, t = Infinity, b = -Infinity;
+  for (const a of n._anchors) {
+    if (!a.isConnected) continue;
+    // Measure the glyphs, not the padded box, so the note sits just under what's written.
+    const rg = document.createRange(); rg.selectNodeContents(a);
+    let ar = rg.getBoundingClientRect(); if (!ar.width) ar = a.getBoundingClientRect();
+    l = Math.min(l, ar.left); r = Math.max(r, ar.right); t = Math.min(t, ar.top); b = Math.max(b, ar.bottom);
+  }
+  if (l === Infinity) return;
+  n.style.left = ((l + r) / 2 - eqR.left) + 'px';
+  n.style.top = (b - eqR.top) + 'px';
+  if (n._bar) n._bar.style.width = Math.max(30, (r - l) * 0.85) + 'px';
 }
+function trackNotes() {
+  notes.forEach(placeNote);
+  notesRaf = notes.size ? requestAnimationFrame(trackNotes) : 0;
+}
+// note(html, anchors, {bar}) writes an operation under the given terms. With bar:true it is drawn as
+// a fraction bar with the divisor underneath (dividing the whole side).
+function note(html, anchors, opts = {}) {
+  const n = document.createElement('div');
+  n.className = 'unote' + (opts.bar ? ' divnote' : '');
+  n._anchors = anchors.filter(Boolean);
+  if (opts.bar) { n._bar = document.createElement('span'); n._bar.className = 'ubar'; n.appendChild(n._bar); const d = document.createElement('span'); d.innerHTML = html; n.appendChild(d); }
+  else n.innerHTML = html;
+  $('equation').appendChild(n);
+  notes.add(n); placeNote(n);
+  if (!notesRaf) notesRaf = requestAnimationFrame(trackNotes);
+  return n;
+}
+async function dropNote(n) { n.classList.add('out'); await sleep(400); notes.delete(n); n.remove(); }
+function clearNotes() { notes.forEach(n => n.remove()); notes.clear(); }
+const xSideEls = () => ['coef', 'x', 'const'].map(roleEl).filter(Boolean);
+
 // Rewrites the remaining x-side tokens in their new form ("− x" becomes "−x" once the 5 in front is gone).
 function refreshXSide(ns) {
   const fresh = tokensFor(ns);
@@ -627,72 +697,98 @@ function refreshXSide(ns) {
   }
 }
 // The other side simplifies to its new value.
-async function combineOtherSide(card, s, ns, oChip) {
+async function combineOtherSide(s, ns, oNote, how) {
   const other = roleEl('other');
-  caption(`${fracText(s.c)} ${cardLabel(card).replace(/^(.)/, '$1 ')} = ${fracText(ns.c)}`);
-  mark([other, oChip], 'merge');
+  caption(how);
+  mark([other, oNote], 'merge');
   await sleep(800);
-  await removeTok([oChip]);
+  dropNote(oNote);
   other.classList.remove('merge'); other.innerHTML = fracHtml(ns.c); other.classList.add('pop');
-  await sleep(600);
+  await sleep(700);
 }
 
-// Stages 1-2: do the same thing to both sides, the pair next to x cancels, the other side simplifies.
-//   x + 3 = 7  ->  x + 3 − 3 = 7 − 3  ->  x = 7 − 3  ->  x = 4
+// Stages 1-2 (+ and −), and × to undo a division: the operation is written under the term it undoes
+// and under the other side, the pair cancels, and the other side simplifies.
+//   x + 3 = 7      ->  under "+ 3" and under "7" write "− 3"  ->  x = 4
+//   x/3 = 5        ->  under "x/3" and under "5" write "× 3"   ->  x = 15
 //   In a two-step equation the caption adds why the + or − goes first.
-async function cancelAndCombine(card, s, ns, note = '') {
+async function cancelAndCombine(card, s, ns, note_ = '') {
   const additive = card.op === '+' || card.op === '-';
   const target = roleEl(additive ? 'const' : 'coef');
-  caption(cardText(card) + note);
-  const [xChip, oChip] = await dropOnBothSides(card, s);
-  caption(`${target.textContent.replace(/\s/g, '')} and ${cardLabel(card)} cancel out (they make ${additive ? 0 : 1})`);
-  mark([target, xChip], 'cancel');
+  const anchor = target.classList.contains('den') ? roleEl('x') : target;   // x/3: write it under the whole fraction
+  caption(cardText(card) + note_);
+  const xNote = note(chipHtml(card), [anchor]), oNote = note(chipHtml(card), [roleEl('other')]);
+  await sleep(1100);
+  caption(target.classList.contains('den')
+    ? `Dividing by ${target.textContent} and multiplying by ${target.textContent} cancel out (they make 1)`
+    : `${target.textContent.replace(/\s/g, '')} and ${cardLabel(card)} cancel out (they make ${additive ? 0 : 1})`);
+  mark([target, xNote], 'cancel');
   await sleep(1000);
-  await removeTok([target, xChip]);
+  dropNote(xNote);
+  await removeTok([target]);
   refreshXSide(ns);
-  await combineOtherSide(card, s, ns, oChip);
+  await combineOtherSide(s, ns, oNote, `${fracText(s.c)} ${cardLabel(card).replace(/^(.)/, '$1 ')} = ${fracText(ns.c)}`);
 }
 
-// Stage 3, multiply by −1: the card drops on both sides, then every sign flips in a ripple from left to right.
-//   −x = 5  ->  −x × (−1) = 5 × (−1)  ->  x = −5
+// Divide both sides: a fraction bar with the divisor slides in under each whole side, the matching
+// numbers on the x side cancel to 1, and the other side divides out.
+//   3x = 15  ->  (3x over 3) = (15 over 3)  ->  x = 5
+async function divideAsFraction(card, s, ns) {
+  const dn = paren(F(card.n));
+  caption(cardText(card));
+  const xNote = note(dn, xSideEls(), { bar: true }), oNote = note(dn, [roleEl('other')], { bar: true });
+  await sleep(1100);
+  const coef = roleEl('coef');
+  caption(`${coef.textContent} over ${dn} is 1, so they cancel`);
+  mark([coef, xNote], 'cancel');
+  await sleep(1000);
+  dropNote(xNote);
+  await removeTok([coef]);
+  await combineOtherSide(s, ns, oNote, `${fracText(s.c)} over ${dn} = ${fracText(ns.c)}`);
+}
+
+// Stage 3, multiply by −1: "× (−1)" is written under both sides, then every sign flips in a ripple.
+//   −x = 5  ->  x = −5
 async function flipSigns(card, s, ns) {
   caption(cardText(card));
-  await dropOnBothSides(card, s);
+  const notesHere = [note(chipHtml(card), xSideEls()), note(chipHtml(card), [roleEl('other')])];
+  await sleep(1100);
   caption(`Multiplying by ${MINUS}1 flips the sign of every term`);
   const fresh = tokensFor(ns);
-  for (const t of [...$('equation').children]) {
+  for (const t of [...$('equation').querySelectorAll('.tok')]) {
     const role = t.dataset.role;
     if (role === 'eq') continue;
     t.classList.add('flip');
     await sleep(220);                       // halfway through the flip, the term shows its new sign
-    if (role === 'chip') { t.classList.add('gone'); }
-    else { const nt = fresh.find(f => f.role === role); if (nt) t.innerHTML = nt.html || nt.text; t.classList.add('merge'); }
+    const nt = fresh.find(f => f.role === role); if (nt) t.innerHTML = nt.html || nt.text;
+    t.classList.add('merge');
     await sleep(260);
   }
-  await sleep(500);
-  [...$('equation').querySelectorAll('[data-role="chip"]')].forEach(c => c.remove());
+  notesHere.forEach(dropNote);
   caption(`${fracText(s.c)} × (${MINUS}1) = ${fracText(ns.c)}, so x = ${fracText(ns.c)}`);
-  await sleep(700);
+  await sleep(900);
 }
 
-// Stage 3, multiply by the reciprocal: the fraction and its flipped twin spin together and cancel to 1.
-//   (2/3)x = 8  ->  (2/3)x × 3/2 = 8 × 3/2  ->  1x = 12  ->  x = 12
+// Stage 3, multiply by the reciprocal: the reciprocal is written under the fraction and under the other
+// side; the fraction and its flipped twin spin together and cancel to 1.
+//   (2/3)x = 8  ->  under 2/3 and under 8 write "× 3/2"  ->  x = 12
 async function flipReciprocal(card, s, ns) {
   const coef = roleEl('coef'), f = F(card.n, card.d);
   caption(cardText(card));
-  const [xChip, oChip] = await dropOnBothSides(card, s);
+  const xNote = note(chipHtml(card), [coef]), oNote = note(chipHtml(card), [roleEl('other')]);
+  await sleep(1100);
   caption(`${fracText(f)} is ${fracText(s.coef)} flipped over`);
-  mark([coef, xChip], 'spin');
+  mark([coef, xNote], 'spin');
   await sleep(1000);
   caption(`${fracText(s.coef)} × ${fracText(f)} = 1, so they cancel`);
-  coef.classList.remove('spin'); xChip.classList.remove('spin');
-  mark([coef, xChip], 'cancel');
+  coef.classList.remove('spin'); xNote.classList.remove('spin');
+  mark([coef, xNote], 'cancel');
   await sleep(900);
-  await removeTok([xChip]);
+  dropNote(xNote);
   coef.classList.remove('cancel'); coef.textContent = '1'; coef.classList.add('merge');
   await sleep(700);
   await removeTok([coef]);
-  await combineOtherSide(card, s, ns, oChip);
+  await combineOtherSide(s, ns, oNote, `${fracText(s.c)} × ${fracText(f)} = ${fracText(ns.c)}`);
 }
 
 // =====================================================================
@@ -760,6 +856,7 @@ function startPhase() {
   renderFoe();
   caption(''); setMsg(''); $('unlock').textContent = '';
   renderEquation(cur.state); dealHand(); busy = false;
+  for (const id of ['foe', 'enemyBox', 'equation']) { const e = $(id); e.classList.remove('arrive'); void e.offsetWidth; e.classList.add('arrive'); }
 }
 
 function renderFoe() {
@@ -775,7 +872,8 @@ function renderHand() {
   const el = $('hand'); el.innerHTML = '';
   hand.forEach((c, i) => {
     const d = document.createElement('div');
-    d.className = 'card'; d.dataset.idx = i;
+    d.className = 'card deal'; d.dataset.idx = i; d.style.animationDelay = `calc(${i * 70}ms * var(--k))`;
+    d.addEventListener('animationend', () => d.classList.remove('deal'), { once: true });
     const badge = scopeOf(c) === 'part' ? '<span class="badge part" title="One part: drop on that part">◎</span>' : '<span class="badge both" title="Both sides: drop anywhere">⇔</span>';
     d.innerHTML = `${badge}${cardLabel(c)}<small>${cardText(c)}</small>`;
     d.addEventListener('pointerdown', e => startDrag(e, d, c));
@@ -939,21 +1037,40 @@ function takeDamage(why) {
   if (hp <= 0) { busy = true; setTimeout(runLost, 600); }
 }
 
-// After a solve, hold the result for 3 seconds, or skip ahead with a click anywhere.
-const NEXT_DELAY_MS = 3000;
-let nextTimer = null, nextAction = null;
+// After a solve: a short celebration, then the game waits until the player taps (or presses Space/Enter).
+let waiting = false, nextAction = null;
+function celebrate() {
+  const box = $('celebrate'), arena = $('arena').getBoundingClientRect(), eqR = $('equation').getBoundingClientRect();
+  const cx = eqR.left + eqR.width / 2 - arena.left, cy = eqR.top + eqR.height / 2 - arena.top;
+  const colors = ['#ffd166', '#06d6a0', '#7bdff2', '#f1ecff', '#ef8fcf'];
+  let html = `<div class="stamp" style="top:${Math.max(4, eqR.top - arena.top - 70)}px">SOLVED!</div>`;
+  for (let i = 0; i < 18; i++) {
+    const a = (i / 18) * Math.PI * 2 + Math.random() * 0.3, r = 110 + Math.random() * 130;
+    html += `<span class="spark" style="left:${cx}px; top:${cy}px; background:${colors[i % colors.length]}; --dx:${Math.cos(a) * r}px; --dy:${Math.sin(a) * r}px"></span>`;
+  }
+  box.innerHTML = html;
+  const eq = $('equation'); eq.classList.remove('solved'); void eq.offsetWidth; eq.classList.add('solved');
+}
 function waitForNext(action) {
-  busy = true; nextAction = action;
+  busy = true; nextAction = action; waiting = true;
+  celebrate();
   $('next').classList.add('show');
-  nextTimer = setTimeout(goNext, NEXT_DELAY_MS);
 }
-function goNext() {
-  if (!nextTimer) return;
-  clearTimeout(nextTimer); nextTimer = null;
+async function goNext() {
+  if (!waiting) return;
+  waiting = false;
   $('next').classList.remove('show');
-  const a = nextAction; nextAction = null; a();
+  const a = nextAction; nextAction = null;
+  // The finished question slides out before the next one slides in.
+  const parts = ['foe', 'enemyBox', 'equation', 'step', 'msg', 'unlock', 'celebrate'].map($);
+  parts.forEach(p => p.classList.add('leave'));
+  await sleep(350);
+  parts.forEach(p => p.classList.remove('leave'));
+  $('celebrate').innerHTML = ''; $('equation').classList.remove('solved');
+  a();
 }
-window.addEventListener('click', e => { if (nextTimer && !e.target.closest('.speed, button, #over')) goNext(); });
+window.addEventListener('click', e => { if (waiting && !e.target.closest('.speed, button, #over')) goNext(); });
+window.addEventListener('keydown', e => { if (waiting && (e.key === ' ' || e.key === 'Enter') && !$('over').classList.contains('show')) { e.preventDefault(); goNext(); } });
 
 // =====================================================================
 //  Screens: title, tutorial intro, run end, stats
