@@ -47,7 +47,9 @@ Stage 9 (formulas, d = rt) is not built yet.
 - Elites (Bracket Knight) stack the two newest stages, for example 3(x + 2) = 2x + 9.
 - The Archivist boss has one phase per unlocked Act 2 stage, then a combined phase.
 - A ◎ card can be played on any part where it is legal and helps, not only the one the game would pick. Dropping Combine on a term with no like partner, or Distribute off the parentheses, counts as a wrong move.
-- For testing, the title screen has an "Unlock all stages" button.
+- For testing, the title screen has an "Unlock all stages" button (only on the dev preview, a local file, or with `?debug=1`).
+- Difficulty: on Normal and up, every number is multiplied by 2 to 4 (so answers stay whole), signs flip at random, and extra steps are added (a number split in two, or the same x-term added to both sides). Easy keeps answers positive; Expert also allows fraction answers. Tutorials always use Easy numbers.
+- Wrong moves come with a "Why?" explanation of what the card did and which move works instead.
 
 ## Mastery and stats
 

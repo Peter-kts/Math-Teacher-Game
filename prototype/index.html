@@ -1022,8 +1022,10 @@ function startNode() {
 }
 
 function startPhase() {
-  const g = fight.phases[fight.phase]();
+  const gen = fight.phases[fight.phase];
+  let g = gen();
   if (g.s && fight.node.type !== 'tutorial') g.s = applyDifficulty(g.s);
+  if (g.eq && fight.node.type !== 'tutorial') g = ACT2.applyDifficulty(g, gen);
   const enemy = fight.enemy || g.enemy;
   // Act 2 generators return { eq } (act2.js's equation model); Act 1 ones return { s }.
   cur = g.eq ? ACT2.makeEquation(g.eq, enemy) : makeEquation(g.s, enemy);
@@ -1164,7 +1166,8 @@ function playCard(card, target) {
   sk.wrongByCard[cardKind(card)] = (sk.wrongByCard[cardKind(card)] || 0) + 1;
   changeMastery(step.skill, MASTERY.wrong);
   saveProgress(); renderSkills([[step.skill, MASTERY.wrong]]);
-  if (cur.act2) return takeDamage(ACT2.whyWrong(cur, card, target));
+  if (cur.act2) return takeDamage(ACT2.whyWrong(cur, card, target),
+    explainWhy({ state: cur.state, card, correct: step.move, ref: target && target.dataset ? target.dataset.ref : target }));
   const s = cur.state, undo = correctMove({ ...s, b: F(0) });
   const why = s.b.n !== 0 && !fIs(s.coef, 1) && sameCard(card, undo)
     ? `That's allowed, but undo the + or ${MINUS} part first, then the ${TIMES} or ${DIV}.`
