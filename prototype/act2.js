@@ -106,7 +106,7 @@
     if (isSolved(e)) return null;
     for (const s of ['L', 'R']) { const i = sideOf(e, s).findIndex(it => it.t === 'g'); if (i >= 0) return { op: 'dist', scope: 'part', ref: s + i }; }
     const fr = fracItems(e);
-    if (fr.length >= 2) return { op: '*', n: fr.reduce((a, it) => lcm(a, it.k.d), 1) };
+    if (fr.length >= 2) return { op: '*', n: fr.reduce((a, it) => lcm(a, it.k.d), 1), lcd: true };
     for (const kind of ['x', 'n']) for (const s of ['L', 'R']) {
       const idx = sideOf(e, s).map((it, j) => (it.t === kind ? j : -1)).filter(j => j >= 0);
       if (idx.length >= 2) return { op: 'comb', scope: 'part', ref: s + idx[0] };
@@ -218,6 +218,8 @@
 
   // ---------------------------------------------------------------- cards
   function label(c) {
+    if (c.op === 'trap') return `<span class="clong">${c.label}</span>`;
+    if (c.lcd) return `${TIMES}${c.n}<span class="ltag">LCD</span>`;
     if (c.op === 'comb') return '<span class="clong">Combine</span>';
     if (c.op === 'dist') return '<span class="clong">Distribute</span>';
     if (c.op === 'none') return '<span class="clong">No solution</span>';
@@ -226,6 +228,8 @@
     return null;
   }
   function text(c) {
+    if (c.op === 'trap') return c.text;
+    if (c.lcd) return 'Both sides × the least common denominator';
     if (c.op === 'comb') return 'Combine like terms';
     if (c.op === 'dist') return 'Multiply into the parentheses';
     if (c.op === 'none') return 'Declare: no solution';
@@ -234,6 +238,8 @@
     return null;
   }
   function kind(c) {
+    if (c.op === 'trap') return 'Trap: ' + c.trap;
+    if (c.lcd) return 'Least common denominator';
     if (c.op === 'comb') return 'Combine';
     if (c.op === 'dist') return 'Distribute';
     if (isDeclare(c)) return 'Declare';
@@ -255,6 +261,52 @@
     if (!before || !after || !after.o.every(it => isInt(it.k))) return false;
     const size = f => Math.abs(f.n) * f.d;
     return size(after.k) < size(before.k) || (size(after.k) === size(before.k) && before.k.n < 0 && after.k.n > 0);
+  }
+  // Expert only: one trap card per hand when one fits. A trap looks like a real move but is a classic
+  // mistake (adding fractions straight across, distributing to the first term only, moving a term across
+  // without flipping its sign, combining unlike terms, losing a minus sign when dividing). Playing it is a
+  // wrong move, and its Why? explains the mistake.
+  function trapFor(e, correct) {
+    const T = (trap, lbl, txt, why) => ({ op: 'trap', trap, label: lbl, text: txt, why: `<p>${why}</p>` });
+    const xs = [...e.L, ...e.R].filter(i => i.t === 'x');
+    if (correct.lcd) {
+      const fr = xs.filter(i => i.k.d > 1).slice(0, 2);
+      if (fr.length === 2) {
+        const [a, b] = fr, top = a.k.n + b.k.n, bot = a.k.d + b.k.d, wrong = `${top === 1 ? '' : top}x/${bot}`;
+        return T('add across', 'Add across', `Add straight across: ${plain(a)} + ${plain(b)} = ${wrong}`,
+          `Fractions can't be added by adding the tops and the bottoms. ${plain(a)} + ${plain(b)} is not ${wrong}: try x = ${a.k.d * b.k.d} and the two sides come out different. Fractions need a common bottom number first, which is why multiplying both sides by the least common denominator (${correct.n}) clears them.`);
+      }
+    }
+    if (correct.op === 'dist') {
+      const [sd, i] = parseRef(correct.ref), g = sideOf(e, sd)[i], [t0, ...rest] = g.items;
+      const wrong = [{ t: t0.t, k: fMul(t0.k, g.m) }, ...rest].map((t, j) => termStr(t, j === 0, false)).join(' ');
+      return T('first term only', wrong, `Distribute: ${plain(g)} = ${wrong}`,
+        `The number in front of the parentheses multiplies <b>every</b> term inside, not just the first one. ${plain(g)} = ${g.items.map((t, j) => termStr({ t: t.t, k: fMul(t.k, g.m) }, j === 0, false)).join(' ')}.`);
+    }
+    if (correct.x) {
+      const k = correct.op === '-' ? correct.n : -correct.n, kx = (Math.abs(k) === 1 ? '' : Math.abs(k)) + 'x';
+      return T('no sign flip', `Move ${kx}`, `Move ${kx} to the other side as it is`,
+        `A term can't jump to the other side and keep its sign. Moving ${kx} across really means subtracting it from both sides, so it turns into ${k > 0 ? MINUS : '+'}${kx} over there. Use the card that subtracts (or adds) it on both sides.`);
+    }
+    if (correct.op === 'comb') {
+      for (const side of [e.L, e.R]) {
+        const x = side.find(i => i.t === 'x'), n = side.find(i => i.t === 'n');
+        if (x && n && isInt(x.k) && isInt(n.k)) {
+          const wrong = plain({ t: 'x', k: fAdd(x.k, n.k) });
+          return T('unlike terms', `Make ${wrong}`, `Combine ${plain(x)} and ${fracText(n.k)} into ${wrong}`,
+            `${plain(x)} and ${fracText(n.k)} are not like terms: one counts x's, the other is a plain number, so they can't be added together. Only x-terms combine with x-terms, and numbers with numbers.`);
+        }
+      }
+    }
+    if (correct.op === '/' && correct.n < 0) {
+      const other = [e.L, e.R].find(sd => sd.length === 1 && sd[0].t === 'n'), c = other ? other[0].k : null;
+      if (c) {
+        const wrong = fracText(fMul(c, F(1, -correct.n)));
+        return T('lost sign', `x = ${wrong}`, `Divide both sides: x = ${wrong}`,
+          `Dividing by a negative number flips the sign: ${fracText(c)} ÷ (${numText(correct.n)}) = ${fracText(fMul(c, F(1, correct.n)))}, not ${wrong}.`);
+      }
+    }
+    return null;
   }
   function makeHand2(e, correct, size) {
     const base = steps(e);
@@ -294,6 +346,8 @@
       return true;
     };
     const seen = new Set([cardLabel(correct)]), hand = [correct];
+    const trap = difficulty.level >= 3 ? trapFor(e, correct) : null;
+    if (trap && size > 2) { hand.push(trap); seen.add(cardLabel(trap)); }
     const fallback = shuffle([2, 3, 4, 5, 6, 7, 8, 9]).flatMap(n => [{ op: '+', n }, { op: '-', n }]);
     for (const c of [...shuffle(classic), ...shuffle(rest), ...fallback]) {
       if (hand.length >= size) break;
@@ -307,6 +361,7 @@
   const refOf = t => (t && t.dataset ? t.dataset.ref : t) || null;
   function isCorrect(cur, card, target) {
     const e = cur.state, ref = refOf(target);
+    if (card.op === 'trap') return false;
     if (isDeclare(card)) return isStatement(e) && (card.op === 'all') === statementTrue(e);
     if (isPart(card) && !legalPart(e, card, ref)) return false;
     const a = apply(e, card, ref);
@@ -314,6 +369,7 @@
   }
   function whyWrong(cur, card, target) {
     const e = cur.state, ref = refOf(target), want = cur.path[cur.step].move;
+    if (card.op === 'trap') return `That's a trap: it isn't true. Tap Why? to see why.`;
     if (isDeclare(card)) {
       if (!isStatement(e)) return 'x is still in the equation, so it is too early to declare. Keep solving.';
       return statementTrue(e) ? `${eqText(e)} is always true, so every number works.` : `${eqText(e)} is never true, so no number works.`;
@@ -766,6 +822,7 @@
   css.textContent = `
     #equation.a2long { font-size: calc(var(--eqSize) * .78); }
     @media (max-width: 640px) { .tok.a2 { min-width:0; padding-left:3px; padding-right:3px; } }
+    .card .ltag { display:block; font-size:.45em; letter-spacing:1px; color:#7a5c00; }
     .card .clong { font-size:.62em; white-space:nowrap; }
     .tok.a2 .xv { font-style:normal; color:var(--accent); }
     .tok.a2.k-g { max-width:none; }
