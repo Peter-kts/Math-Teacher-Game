@@ -189,7 +189,7 @@
 
   // ---------------------------------------------------------------- rendering
   function render(e) {
-    const el = $('equation'); if (typeof clearNotes === 'function') clearNotes(); el.innerHTML = '';
+    const el = $('equation'); if (typeof clearNotes === 'function') clearNotes(); el.innerHTML = ''; el.classList.add('a2');
     // Long equations (lots of terms) get a smaller font so they stay on one or two lines on phones.
     el.classList.toggle('a2long', e.L.length + e.R.length > 4 || [...e.L, ...e.R].some(i => i.t === 'g') && e.L.length + e.R.length > 2);
     if (e.result) { el.appendChild(mkTok(e.result === 'none' ? 'No solution' : 'Every number works', 'Lr', 'result')); return; }
@@ -199,7 +199,40 @@
       side.forEach((it, i) => el.appendChild(mkTok(termStr(it, i === 0, true), s + i, it.t)));
       if (s === 'L') { const q = document.createElement('div'); q.className = 'tok eq'; q.dataset.role = 'eq'; q.textContent = '='; el.appendChild(q); }
     }
+    fitEq();
   }
+  // Act 2 equations stay on one line: if they don't fit the width, shrink the equation's font
+  // (via its own --eqSize) until they do. Each render fits from full size. The equation is never
+  // resized while an operation animates (the operation is written above/below its term), so
+  // prefit() sizes it once beforehand, small enough for the result as well.
+  function fitEq() {
+    const el = $('equation'); if (!el || !el.classList.contains('a2')) return;
+    el.style.removeProperty('--eqSize');
+    const base = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--eqSize')) || 56;
+    let size = base;
+    el.classList.add('fitting');   // no transitions while measuring, or widths lag behind the new size
+    for (let i = 0; i < 8; i++) {
+      const avail = el.clientWidth, need = el.scrollWidth;
+      if (!avail || need <= avail + 1) break;
+      size = Math.max(12, Math.floor(size * Math.min(.97, avail / need)));
+      el.style.setProperty('--eqSize', size + 'px');
+      if (size <= 12) break;
+    }
+    el.classList.remove('fitting');
+  }
+  const fontPx = () => parseFloat(getComputedStyle($('equation')).fontSize);
+  // Before an animation: lay out the result, note its font size, then lay the current equation back
+  // out no bigger than that. All in one task, so nothing flickers on screen.
+  function prefit(s, ns) {
+    if (!ns || ns.result) return;
+    render(ns); const after = fontPx();
+    render(s); const before = fontPx();
+    if (before > after + .5) {
+      const el = $('equation'), cur = parseFloat(el.style.getPropertyValue('--eqSize')) || parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--eqSize')) || 56;
+      el.style.setProperty('--eqSize', Math.floor(cur * after / before) + 'px');
+    }
+  }
+  addEventListener('resize', () => { if (!(typeof animating !== 'undefined' && animating)) fitEq(); });
   function mkTok(html, ref, kind) {
     const d = document.createElement('div');
     d.className = 'tok term a2 k-' + kind;
@@ -837,6 +870,9 @@
   const css = document.createElement('style');
   css.textContent = `
     #equation.a2long { font-size: calc(var(--eqSize) * .78); }
+    #equation.a2 { flex-wrap: nowrap; max-width: 100%; }
+    #equation.a2 .tok { flex-shrink: 0; }
+    #equation.fitting .tok { transition: none !important; }
     @media (max-width: 640px) { .tok.a2 { min-width:0; padding-left:3px; padding-right:3px; } }
     .card .ltag { display:block; font-size:.45em; letter-spacing:1px; color:#7a5c00; }
     .card .clong { font-size:.62em; white-space:nowrap; }
@@ -860,7 +896,7 @@
   `;
   document.head.appendChild(css);
 
-  window.ACT2 = { apply, canon, steps, isSolved, makeEquation: makeEquation2, refreshPath, render, eqText, makeHand: makeHand2,
+  window.ACT2 = { apply, canon, steps, isSolved, makeEquation: makeEquation2, refreshPath, render, prefit, eqText, makeHand: makeHand2,
     isCorrect, whyWrong, animFor, applyDifficulty: applyDifficulty2, label, text, kind, buildFight: buildFight2, genStacked: genStacked2,
     gens: { liketerms: genLike, distribute: genDist, xboth: genXBoth, clearfrac: genClearFrac, special: genSpecial } };
 })();
