@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Algebra Cards</title>
 <style>
   :root { --k:1; --bg:#1d1b2a; --panel:#2a2740; --ink:#f1ecff; --muted:#a59fc4; --accent:#ffd166; --bad:#ef476f; --good:#06d6a0; --card:#f7f1e3; --cardInk:#2a2740; --eqSize:56px; }
@@ -99,9 +99,9 @@
   .help { color:var(--muted); font-size:13px; text-align:center; }
 
   /* overlays: title, tutorial intro, run end, stats */
-  #over { position:fixed; inset:0; background:#000d; display:none; align-items:center; justify-content:center; z-index:20; padding:16px; }
+  #over { position:fixed; inset:0; background:#000d; display:none; align-items:flex-start; justify-content:center; z-index:20; padding:16px; overflow-y:auto; touch-action:pan-y; }
   #over.show { display:flex; }
-  .panel { background:var(--panel); border:3px solid #000; max-width:640px; width:100%; max-height:100%; overflow:auto; padding:20px 22px; display:flex; flex-direction:column; gap:12px; }
+  .panel { background:var(--panel); border:3px solid #000; max-width:640px; width:100%; margin:auto; padding:20px 22px; display:flex; flex-direction:column; gap:12px; }
   .panel h1 { margin:0; font-size:26px; color:var(--accent); }
   .panel h2 { margin:0; font-size:18px; color:var(--muted); font-weight:normal; }
   .panel p { margin:0; line-height:1.45; font-size:16px; }
@@ -113,26 +113,83 @@
   .statrow dl { display:grid; grid-template-columns: max-content 1fr; gap:2px 14px; margin:0; font-size:14px; }
   .statrow dt { color:var(--muted); } .statrow dd { margin:0; }
 
+  /* ---------- phones ---------- */
+  .short { display:none; }
+  button, .card, .speed button { touch-action:none; }
+  @supports (height: 100dvh) { #app { height:100dvh; } }
+
+  /* Portrait phones and narrow windows */
   @media (max-width: 640px) {
-    :root { --eqSize:34px; }
-    #app { padding:8px; gap:6px; }
-    .tok { min-height:64px; min-width:40px; padding:8px 6px; }
-    .tok.eq { padding:8px 4px; }
-    .card { width:82px; height:112px; font-size:19px; padding:4px; }
-    .card .badge { font-size:13px; margin-bottom:3px; }
-    .card small { font-size:10px; margin-top:4px; }
-    .hpbar { width:110px; }
-    header { gap:6px; }
-    .lbl, .help { display:none; }
-    #hand { min-height:112px; gap:6px; flex-wrap:nowrap; }
-    #map .node { width:20px; height:20px; font-size:11px; }
-    #map .link { width:3px; }
-    #skills { gap:4px 10px; font-size:10px; }
-    #skills .meter { width:44px; }
-    #enemyBox svg { width:56px; height:56px; }
+    :root { --eqSize: clamp(26px, min(10vw, 5.5vh), 48px); }
+    #app { padding:6px 8px calc(6px + env(safe-area-inset-bottom)); gap:5px; }
+    header { gap:6px; flex-wrap:nowrap; }
+    .hpwrap { gap:6px; flex:1; min-width:0; font-size:13px; }
+    .hpbar { width:auto; flex:1; min-width:60px; }
+    .speed { gap:3px; }
+    .speed button, .topbtn { font-size:13px; padding:6px 7px; min-height:36px; }
+    .long, .lbl, .help { display:none; }
+    .short { display:inline; }
+    #map { gap:2px; }
+    #map .node { width:19px; height:19px; font-size:10px; border-width:1px; border-radius:4px; }
+    #map .node.cur { transform:scale(1.2); }
+    #map .link { width:2px; }
+    #skills { gap:2px 10px; font-size:10px; }
+    #skills .meter { width:40px; }
     #arena { min-height:0; gap:4px; }
-    #step, #msg, #unlock { font-size:14px; }
+    #foe { font-size:12px; }
+    #enemyBox svg { width:52px; height:52px; }
+    .tok { min-height:calc(var(--eqSize) * 1.7); min-width:calc(var(--eqSize) * 1.1); padding:6px 5px; border-width:3px; }
+    .tok.eq { padding:6px 3px; }
+    #step, #msg, #unlock { font-size:13px; }
     .key { font-size:11px; gap:10px; }
+    .key .badge { font-size:12px; }
+    #hand { gap:5px; flex-wrap:nowrap; min-height:0; padding-bottom:0; }
+    .card { width:calc((100vw - 16px - 15px) / 4); max-width:110px; height:clamp(112px, 19vh, 150px); font-size:clamp(16px, 5vw, 22px); padding:4px 3px; }
+    .card .badge { font-size:12px; margin-bottom:3px; padding:0 6px; }
+    .card small { font-size:clamp(9px, 2.7vw, 11px); margin-top:4px; }
+    .card:hover { transform:none; }
+    .panel { padding:14px; gap:10px; }
+    .panel h1 { font-size:21px; } .panel p { font-size:14px; } .panel .example { font-size:15px; }
+    .statrow .meter { width:90px; }
+    .statrow dl { font-size:12px; }
+    button { font-size:16px; padding:10px 14px; }
+  }
+
+  /* Landscape phones: the hand moves to a column on the right so the equation keeps the height */
+  @media (orientation: landscape) and (max-height: 520px) {
+    :root { --eqSize: clamp(22px, 9vh, 40px); }
+    #app { max-width:none; display:grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto auto minmax(0, 1fr);
+           gap:4px 10px; padding:6px max(10px, env(safe-area-inset-right)) 6px max(10px, env(safe-area-inset-left)); }
+    header { grid-column:1 / -1; grid-row:1; flex-wrap:nowrap; gap:8px; }
+    .hpwrap { flex:1; } .hpbar { flex:1; width:auto; max-width:220px; }
+    .speed button, .topbtn { font-size:13px; padding:5px 8px; min-height:34px; }
+    .lbl, .help, .long { display:none; }
+    .short { display:inline; }
+    #map { grid-column:1; grid-row:2; gap:2px; }
+    #map .node { width:20px; height:20px; font-size:11px; border-width:1px; }
+    #map .link { width:3px; }
+    #skills { grid-column:1; grid-row:3; font-size:10px; gap:2px 10px; }
+    #skills .meter { width:44px; }
+    #arena { grid-column:1; grid-row:4; min-height:0; gap:2px; }
+    #foe { font-size:11px; min-height:0; }
+    #enemyBox svg { width:40px; height:40px; }
+    .tok { min-height:calc(var(--eqSize) * 1.6); min-width:calc(var(--eqSize) * 1.1); padding:4px 5px; border-width:3px; }
+    .tok.eq { padding:4px 3px; }
+    #step, #msg, #unlock { font-size:12px; min-height:0; }
+    #next { bottom:4px; font-size:12px; }
+    .key { grid-column:2; grid-row:2 / 4; flex-direction:column; align-items:flex-start; gap:0; font-size:10px; justify-content:center; }
+    .key b { display:none; }
+    .key .badge { font-size:11px; }
+    #hand { grid-column:2; grid-row:4; display:grid; grid-template-columns: repeat(2, clamp(96px, 15vw, 130px)); grid-auto-rows: minmax(0, 1fr);
+            gap:6px; min-height:0; padding:0; align-content:stretch; }
+    .card { width:auto; height:auto; min-height:0; font-size:clamp(16px, 5.5vh, 24px); padding:3px; }
+    .card .badge { font-size:11px; margin-bottom:2px; padding:0 6px; }
+    .card small { font-size:10px; margin-top:2px; }
+    .card:hover { transform:none; }
+    .panel { padding:12px 14px; gap:8px; }
+    .panel h1 { font-size:20px; } .panel p { font-size:13px; } .panel .example { font-size:14px; padding:6px 10px; }
+    .statrow { padding-top:6px; } .statrow dl { font-size:12px; }
+    button { font-size:15px; padding:8px 14px; }
   }
 </style>
 </head>
@@ -141,7 +198,7 @@
   <header>
     <div class="hpwrap">HP <div class="hpbar"><div class="hpfill" id="hpfill"></div><div class="hptext" id="hptext"></div></div></div>
     <div class="speed"><span class="lbl">Animation speed</span> <button data-speed="0.5">0.5x</button><button data-speed="1">1x</button><button data-speed="2">2x</button></div>
-    <button class="topbtn ghost" id="statsBtn">Skills &amp; stats</button>
+    <button class="topbtn ghost" id="statsBtn"><span class="long">Skills &amp; stats</span><span class="short">Stats</span></button>
   </header>
   <div id="map"></div>
   <div id="skills"></div>
@@ -399,7 +456,7 @@ function cardText(c) {
   const n = c.n !== undefined ? numText(c.n) : '';
   return ({ '+': `Add ${n} to both sides`, '-': `Subtract ${n} from both sides`, '*': `Multiply both sides by ${n}`,
             '/': `Divide both sides by ${n}`, neg: `Multiply both sides by ${MINUS}1`,
-            frac: `Multiply both sides by ${fracText(F(c.n ?? 1, c.d ?? 1))}, the reciprocal` })[c.op];
+            frac: `Multiply both sides by ${fracText(F(c.n ?? 1, c.d ?? 1))}` })[c.op];
 }
 const cardKind = c => ({ '+': 'Add', '-': 'Subtract', '*': 'Multiply', '/': 'Divide', neg: `Multiply by ${MINUS}1`, frac: 'Reciprocal' })[c.op];
 const sameCard = (a, b) => cardLabel(a) === cardLabel(b);
