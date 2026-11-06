@@ -595,7 +595,7 @@
   // Every generator returns { eq, enemy } with a whole-number answer.
   function genLike(type) {
     for (;;) {
-      const t = type || pick(['xx', 'xxc', 'xxc', 'cc', 'split', 'rhs']);
+      const t = type || pick(['xx', 'xxc', 'xxc', 'cc', 'split', 'rhs', 'cxx', 'ccr', 'cxc']);
       const x = rand(1, 9);
       if (t === 'xx') { const a = rand(2, 7), b = rand(1, 6); return { eq: E([X(a), X(b)], [N((a + b) * x)]), enemy: 'clutter' }; }
       if (t === 'xxc') {
@@ -609,12 +609,19 @@
         return { eq: maybeSwap(E([X(a), N(c1), N(c2)], [N(a * x + c1 + c2)])), enemy: 'clutter' };
       }
       if (t === 'split') { const a = rand(2, 6), b = rand(1, 5), c = nonZero(-9, 9); return { eq: maybeSwap(E([X(a), N(c), X(b)], [N((a + b) * x + c)])), enemy: 'clutter' }; }
+      if (t === 'cxx') { const a = rand(2, 6), b = rand(1, 5), c = nonZero(-9, 9); return { eq: E([N(c), X(a), X(b)], [N((a + b) * x + c)]), enemy: 'clutter' }; }   // 4 + 2x + 3x = 29
+      if (t === 'ccr') {                   // the numbers to combine are on the other side: 3x + 2 = 9 + 8
+        const a = rand(2, 6), c = nonZero(-9, 9), r = a * x + c, c2 = rand(1, 12), c3 = r - c2;
+        if (r === 0 || c3 === 0) continue;
+        return { eq: E([X(a), N(c)], [N(c2), N(c3)]), enemy: 'clutter' };
+      }
+      if (t === 'cxc') { const a = rand(2, 6), c1 = rand(1, 9), c2 = nonZero(-9, 9); if (c1 + c2 === 0) continue; return { eq: E([N(c1), X(a), N(c2)], [N(a * x + c1 + c2)]), enemy: 'clutter' }; }   // 5 + 2x − 3 = 12
       const a = rand(1, 5), b = rand(2, 6); return { eq: E([N((a + b) * x)], [X(a), X(b)]), enemy: 'clutter' };
     }
   }
   function genDist(type) {
     for (;;) {
-      const t = type || pick(['plain', 'plain', 'neg', 'inner', 'plus', 'plusx']);
+      const t = type || pick(['plain', 'plain', 'neg', 'inner', 'plus', 'plusx', 'front', 'numfirst']);
       const x = type ? rand(1, 9) : rand(-3, 9), a = rand(2, 6), b = nonZero(-8, 9);   // tutorials keep x positive
       if (x + b === 0) continue;
       if (t === 'plain') return { eq: maybeSwap(E([G(a, [X(1), N(b)])], [N(a * (x + b))])), enemy: 'distributor' };
@@ -622,28 +629,34 @@
       if (t === 'neg') { const m = -rand(2, 5); return { eq: E([G(m, [X(1), N(b)])], [N(m * (x + b))]), enemy: 'distributor' }; }
       if (t === 'inner') { const p = rand(2, 4), q = nonZero(-6, 6), aa = rand(2, 4); if (p * x + q === 0) continue; return { eq: E([G(aa, [X(p), N(q)])], [N(aa * (p * x + q))]), enemy: 'distributor' }; }
       if (t === 'plus') { const c = nonZero(-9, 9); return { eq: maybeSwap(E([G(a, [X(1), N(b)]), N(c)], [N(a * (x + b) + c)])), enemy: 'distributor' }; }
+      if (t === 'front') { const c = rand(1, 9); return { eq: E([N(c), G(a, [X(1), N(b)])], [N(c + a * (x + b))]), enemy: 'distributor' }; }   // 5 + 3(x − 2) = 17
+      if (t === 'numfirst') { const bb = rand(1, 9); return { eq: E([G(a, [N(bb), X(1)])], [N(a * (bb + x))]), enemy: 'distributor' }; }   // 4(2 + x) = 20
       return { eq: maybeSwap(E([G(a, [X(1), N(b)]), X(1)], [N(a * (x + b) + x)])), enemy: 'distributor' };
     }
   }
   function genXBoth(type) {
     for (;;) {
-      const t = type || pick(['basic', 'basic', 'basic', 'noconst']);
+      const t = type || pick(['basic', 'basic', 'noconst', 'front', 'negc']);
       const x = t === 'tut' ? rand(1, 9) : nonZero(-6, 10);
       if (t === 'tut') { const c = rand(1, 4), a = c + rand(1, 5), b = rand(1, 9), d = a * x + b - c * x; if (d <= 0) continue; return { eq: E([X(a), N(b)], [X(c), N(d)]), enemy: 'twin' }; }
       const a = rand(1, 9), c = rand(1, 9); if (a === c) continue;
       if (t === 'noconst' || t === 'tut2') { const d = (a - c) * x; if (t === 'tut2' && (a < c || d <= 0)) continue; return { eq: E([X(a)], [X(c), N(d)]), enemy: 'twin' }; }
       const b = nonZero(-12, 12), d = a * x + b - c * x;
+      if (t === 'front') { if (!d) continue; return { eq: E([N(b), X(a)], [N(d), X(c)]), enemy: 'twin' }; }   // 4 + 5x = 10 + 3x
+      if (t === 'negc') { const dd = a * x + b + c * x; return { eq: E([X(a), N(b)], dd ? [N(dd), X(-c)] : [X(-c)]), enemy: 'twin' }; }   // 2x + 3 = 18 − 3x
       return { eq: E([X(a), N(b)], d ? [X(c), N(d)] : [X(c)]), enemy: 'twin' };
     }
   }
   const FRAC_PAIRS = [[2, 3], [3, 4], [2, 5], [2, 4], [3, 6], [4, 6], [2, 6], [3, 5], [4, 5]];
   function genClearFrac(type) {
     for (;;) {
-      const t = type || pick(['sum', 'sum', 'diff', 'const', 'coef']);
+      const t = type || pick(['sum', 'sum', 'diff', 'const', 'coef', 'cfront', 'across']);
       const [p, q] = pick(FRAC_PAIRS), L = lcm(p, q), x = L * rand(1, 3);
       if (t === 'sum') return { eq: E([X(F(1, p)), X(F(1, q))], [N(x / p + x / q)]), enemy: 'clutter' };
       if (t === 'diff') { const v = x / p - x / q; if (!v) continue; return { eq: E([X(F(1, p)), X(F(-1, q))], [N(v)]), enemy: 'clutter' }; }
       if (t === 'const') { const d = nonZero(-6, 6); return { eq: E([X(F(1, p)), X(F(1, q)), N(d)], [N(x / p + x / q + d)]), enemy: 'clutter' }; }
+      if (t === 'cfront') { const d = rand(1, 6); return { eq: E([N(d), X(F(1, p)), X(F(1, q))], [N(x / p + x / q + d)]), enemy: 'clutter' }; }   // 2 + x/3 + x/4 = 9
+      if (t === 'across') return { eq: E([X(F(1, p))], [N(x / p + x / q), X(F(-1, q))]), enemy: 'clutter' };   // x/3 = 7 − x/4
       const a = rand(2, 3); if (gcd(a, p) !== 1) continue;
       return { eq: E([X(F(a, p)), X(F(1, q))], [N((a * x) / p + x / q)]), enemy: 'clutter' };
     }
@@ -780,6 +793,8 @@
     return out.join('');
   }
   if (typeof registerWhy === 'function') registerWhy(explain2);
+  // The variety picker (index.html) needs to write and mirror Act 2 equations.
+  if (typeof ENGINES === 'object') ENGINES.eq = { text: eqText, mirror: swapSides };
 
   // ---------------------------------------------------------------- skills and enemies
   SKILLS.push(

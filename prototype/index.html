@@ -340,39 +340,43 @@ function makeEquation(s, enemy) {
 }
 
 // ---------- Generators, one per stage ----------
-// Stage 1: one-step.  x + a = b, a + x = b, x − a = b, ax = b, x ÷ a = b
+// Stage 1: one-step.  x + a = b, a + x = b, x − a = b, −a + x = b, ax = b, x ÷ a = b
+// (Any of them can also come with x on the right: the variety picker mirrors equations.)
 function genOneStep(type) {
   for (;;) {
-    const t = type || pick(['add', 'addFront', 'sub', 'mul', 'div']);
+    const t = type || pick(['add', 'addFront', 'sub', 'subFront', 'mul', 'div']);
     const x = rand(1, 12);
     if (t === 'add' || t === 'addFront') { const a = rand(1, 12); if (a === x + a) continue; return { s: st(1, a, x + a, { constFirst: t === 'addFront' }), enemy: 'inkling' }; }
-    if (t === 'sub') { let a = rand(1, 12); if (x - a < 0) a = rand(1, x); const c = x - a; if (c < 2 || c === a) continue; return { s: st(1, -a, c), enemy: 'inkling' }; }
+    if (t === 'sub' || t === 'subFront') { let a = rand(1, 12); if (x - a < 0) a = rand(1, x); const c = x - a; if (c < 2 || c === a) continue; return { s: st(1, -a, c, { constFirst: t === 'subFront' }), enemy: 'inkling' }; }
     if (t === 'mul') { const a = rand(2, 10); if (x < 2 || x === 1) continue; return { s: st(a, 0, a * x), enemy: 'doubler' }; }
     const a = rand(2, 10), k = rand(2, 10); if (k === a) continue;
     return { s: st(F(1, a), 0, k), enemy: 'doubler' };
   }
 }
-// Stage 2: two-step.  ax + b = c, ax − b = c, x ÷ a + b = c, x ÷ a − b = c, b + ax = c
+// Stage 2: two-step.  ax + b = c, ax − b = c, x ÷ a + b = c, x ÷ a − b = c, and each of those with the
+// number written first: b + ax = c, −b + ax = c, b + x ÷ a = c, −b + x ÷ a = c
 function genTwoStep(type, big) {
   const hi = big ? 15 : 10;
   for (;;) {
-    const t = type || pick(['axb', 'axmb', 'xdivb', 'xdivmb', 'bax']);
+    const t = type || pick(['axb', 'axmb', 'xdivb', 'xdivmb', 'bax', 'mbax', 'bxdiv', 'mbxdiv']);
+    const front = ['bax', 'mbax', 'bxdiv', 'mbxdiv'].includes(t);
     if (t === 'axb' || t === 'bax') {
       const a = rand(2, 6), x = rand(1, hi), b = rand(1, 12); if (b % a === 0) continue;
-      return { s: st(a, b, a * x + b, { constFirst: t === 'bax' }), enemy: 'doubler' };
+      return { s: st(a, b, a * x + b, { constFirst: front }), enemy: 'doubler' };
     }
-    if (t === 'axmb') { const a = rand(2, 6), x = rand(2, hi), b = rand(1, 12); if (b % a === 0 || a * x - b < 1) continue; return { s: st(a, -b, a * x - b), enemy: 'doubler' }; }
+    if (t === 'axmb' || t === 'mbax') { const a = rand(2, 6), x = rand(2, hi), b = rand(1, 12); if (b % a === 0 || a * x - b < 1) continue; return { s: st(a, -b, a * x - b, { constFirst: front }), enemy: 'doubler' }; }
     const a = rand(2, 5);
-    if (t === 'xdivb') { const k = rand(1, 8), b = rand(1, 9); return { s: st(F(1, a), b, k + b), enemy: 'inkling' }; }
-    const k = rand(3, hi), b = rand(1, k - 1); return { s: st(F(1, a), -b, k - b), enemy: 'inkling' };
+    if (t === 'xdivb' || t === 'bxdiv') { const k = rand(1, 8), b = rand(1, 9); return { s: st(F(1, a), b, k + b, { constFirst: front }), enemy: 'inkling' }; }
+    const k = rand(3, hi), b = rand(1, k - 1); return { s: st(F(1, a), -b, k - b, { constFirst: front }), enemy: 'inkling' };
   }
 }
-// Stage 3: negatives and fractions.  −x = a, a − x = c, −nx = c, (p/q)x = c
+// Stage 3: negatives and fractions.  −x = a, a − x = c, −x + a = c, −nx = c, −x/n = c, (p/q)x = c
 const FRACS = [[2, 3], [3, 4], [2, 5], [3, 2], [4, 3], [3, 5], [5, 2], [5, 3]];
 function genNegFrac(type) {
-  const t = type || pick(['negx', 'aminusx', 'negnx', 'frac']);
+  const t = type || pick(['negx', 'aminusx', 'negxa', 'negnx', 'negdiv', 'frac']);
   if (t === 'negx') { const x = nonZero(-12, 12); return { s: st(-1, 0, -x), enemy: 'minusmite' }; }
-  if (t === 'aminusx') { const a = rand(3, 15); let x; do { x = nonZero(-5, 15); } while (x === a); return { s: st(-1, a, a - x, { constFirst: true }), enemy: 'minusmite' }; }
+  if (t === 'aminusx' || t === 'negxa') { const a = rand(3, 15); let x; do { x = nonZero(-5, 15); } while (x === a); return { s: st(-1, a, a - x, { constFirst: t === 'aminusx' }), enemy: 'minusmite' }; }
+  if (t === 'negdiv') { const n = rand(2, 6), k = nonZero(-9, 9); return { s: st(F(-1, n), 0, k), enemy: 'minusmite' }; }   // −x/4 = 3: multiply by −4
   if (t === 'negnx') { const n = rand(2, 9), x = nonZero(-10, 10); return { s: st(-n, 0, -n * x), enemy: 'minusmite' }; }
   const [p, q] = pick(FRACS), k = rand(1, 6); return { s: st(F(p, q), 0, p * k), enemy: 'minusmite' };
 }
@@ -380,11 +384,12 @@ function genNegFrac(type) {
 function genStacked(skills) {
   if (skills.includes('negfrac')) {
     for (;;) {
-      const t = pick(['bminusnx', 'negnxb', 'fracb']);
+      const t = pick(['bminusnx', 'negnxb', 'fracb', 'negdivb']);
+      if (t === 'negdivb') { const n = rand(2, 5), k = nonZero(-8, 8), b = rand(1, 12) * pick([1, -1]); return { s: st(F(-1, n), b, k + b, { constFirst: Math.random() < 0.4 }), enemy: 'stacker' }; }
       if (t === 'bminusnx') { const n = rand(2, 6), b = rand(5, 20), x = rand(1, 8); if (b % n === 0) continue; return { s: st(-n, b, b - n * x, { constFirst: true }), enemy: 'stacker' }; }
       if (t === 'negnxb') { const n = rand(2, 6), x = nonZero(-6, 8), b = rand(1, 12) * pick([1, -1]); if (b % n === 0) continue; return { s: st(-n, b, -n * x + b), enemy: 'stacker' }; }
       const [p, q] = pick(FRACS), k = rand(1, 5), b = rand(1, 9) * pick([1, -1]);
-      return { s: st(F(p, q), b, p * k + b), enemy: 'stacker' };
+      return { s: st(F(p, q), b, p * k + b, { constFirst: Math.random() < 0.4 }), enemy: 'stacker' };
     }
   }
   if (skills.includes('twostep')) return { ...genTwoStep(null, true), enemy: 'stacker' };
@@ -652,8 +657,9 @@ function tokensFor(s) {
   if (d === 1 && Math.abs(n) === 1) xs.push(xTok(n < 0));
   else if (d === 1) xs.push({ role: 'coef', text: lead ? numText(n) : signed(s.coef) }, { role: 'x', text: 'x' });
   else if (Math.abs(n) === 1) {             // x ÷ d is written as a fraction: x over d
-    const top = xTok(n < 0).text;
-    xs.push({ role: 'x', text: `${top}/${d}`, html: `<span class="frac"><span>${top}</span><span class="den" data-role="coef">${d}</span></span>` });
+    // After a number ("5 + x/3") the sign stays outside the fraction bar; in front it sits on top (−x/3).
+    const sign = lead ? '' : (n < 0 ? MINUS : '+') + ' ', top = lead && n < 0 ? MINUS + 'x' : 'x';
+    xs.push({ role: 'x', text: `${sign}${top}/${d}`, html: `${sign}<span class="frac"><span>${top}</span><span class="den" data-role="coef">${d}</span></span>` });
   }
   else xs.push({ role: 'coef', text: lead ? fracText(s.coef) : signed(s.coef), html: lead ? fracHtml(s.coef) : signed(s.coef, true) }, { role: 'x', text: 'x' });
   const side = [...xs];
@@ -885,7 +891,7 @@ async function cancelAndCombine(card, s, ns, note_ = '') {
   const xNote = note(chipHtml(card), [anchor]), oNote = note(chipHtml(card), [roleEl('other')]);
   await showOperation(cardText(card) + note_);
   const cancelText = target.classList.contains('den')
-    ? `÷ ${target.textContent} and ${cardLabel(card)} cancel`
+    ? (card.n < 0 ? `÷ ${target.textContent} and ${cardLabel(card)} cancel, and the two minus signs make +` : `÷ ${target.textContent} and ${cardLabel(card)} cancel`)
     : `${target.textContent.replace(/\s/g, '')} and ${cardLabel(card)} cancel`;
   mark([target, xNote], 'cancel');
   await quick(250);
@@ -1027,6 +1033,43 @@ function buildFight(node) {
   return { phases, handSize: difficulty.hand, enemy: 'scalekeeper' };
 }
 
+// =====================================================================
+//  Variety: no repeats, and the shapes keep changing
+// =====================================================================
+// Every fight in every act gets its equation through freshEquation(), which keeps a run from feeling
+// repetitive:
+//   - the same equation never comes up twice in one run,
+//   - shapes rotate: an equation's shape is its text with the numbers blanked out, so "x + 3 = 10" and
+//     "x + 8 = 2" share a shape but "10 = x + 3" and "3 + x = 10" don't. Each pick prefers the shape used
+//     least so far this run, and never the shape just played,
+//   - outside tutorials either side can hold x: equations are mirrored about half the time.
+// It only needs to know how to write and mirror an equation, per engine (the key a generator returns
+// its equation under): Act 1 is `s`; act2.js registers `eq`. A later act with its own equation model
+// adds one line to ENGINES and gets all of this for free.
+const ENGINES = {
+  s: { text: s => tokensFor(s).map(t => t.text).join(' '), mirror: s => ({ ...s, xLeft: !s.xLeft }) },
+};
+const shapeOf = text => text.replace(/\d+/g, 'n');
+function freshEquation(gen, { prepare = g => g, mirror = true, tries = 40 } = {}) {
+  const v = run.variety || (run.variety = { seen: new Set(), shapes: new Map(), last: null });
+  let best = null;
+  for (let i = 0; i < tries; i++) {
+    let g = prepare(gen());
+    const kind = Object.keys(ENGINES).find(k => g[k]);
+    if (!kind) return g;                                   // an engine nobody registered: no variety, but it still works
+    const E = ENGINES[kind];
+    if (mirror && E.mirror && Math.random() < 0.5) g = { ...g, [kind]: E.mirror(g[kind]) };
+    const text = E.text(g[kind]), shape = shapeOf(text);
+    if (v.seen.has(text)) continue;
+    const score = (v.shapes.get(shape) || 0) + (shape === v.last ? 100 : 0);
+    if (!best || score < best.score) best = { g, text, shape, score };
+    if (score === 0) break;                                // a shape this run hasn't had yet
+  }
+  if (!best) return prepare(gen());                        // every try was a repeat (a tiny pool): allow one
+  v.seen.add(best.text); v.shapes.set(best.shape, (v.shapes.get(best.shape) || 0) + 1); v.last = best.shape;
+  return best.g;
+}
+
 function startNode() {
   const node = run.nodes[run.i];
   fight = { ...buildFight(node), node, phase: 0 };
@@ -1037,14 +1080,20 @@ function startNode() {
 
 function startPhase() {
   const gen = fight.phases[fight.phase];
-  let g = gen();
-  if (g.s && fight.node.type !== 'tutorial') g.s = applyDifficulty(g.s);
-  const E = g.eq && g.eq.rel ? ACT3 : ACT2;
-  if (g.eq && fight.node.type !== 'tutorial') g = E.applyDifficulty(g, gen);
+  // Tutorials stay on Easy and keep the shape they teach (no mirroring); they still never repeat.
+  const tut = fight.node.type === 'tutorial';
+  const prepare = g => {
+    if (tut) return g;
+    if (g.s) return { ...g, s: applyDifficulty(g.s) };
+    if (g.eq) return ACT2.applyDifficulty(g, gen);
+    if (g.ineq) return ACT3.applyDifficulty(g, gen);
+    return g;
+  };
+  const g = freshEquation(gen, { prepare, mirror: !tut });
   const enemy = fight.enemy || g.enemy;
-  // Act 2 generators return { eq } (act2.js's equation model), Act 3 ones an eq with a relation; Act 1 ones return { s }.
-  cur = g.eq ? E.makeEquation(g.eq, enemy) : makeEquation(g.s, enemy);
-  cur.state = g.eq || g.s; cur.step = 0; cur.wrong = 0; cur.moves = 0; cur.lastT = performance.now();
+  // Act 3 generators return { ineq } (act3.js: Act 2's model plus a relation), Act 2 ones { eq } (act2.js's equation model), Act 1 ones { s }.
+  cur = g.ineq ? ACT3.makeEquation(g.ineq, enemy) : g.eq ? ACT2.makeEquation(g.eq, enemy) : makeEquation(g.s, enemy);
+  cur.state = g.ineq || g.eq || g.s; cur.step = 0; cur.wrong = 0; cur.moves = 0; cur.lastT = performance.now();
   for (const id of cur.skills) progress.skills[id].attempted++;
   saveProgress();
   $('enemyBox').innerHTML = enemySvg(enemy);

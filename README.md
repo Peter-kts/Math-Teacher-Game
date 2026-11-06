@@ -62,10 +62,10 @@ Act 3 opens once No solution / every x reaches 80 mastery. Its code lives in `pr
 Stages 11 to 13 (compound inequalities, absolute value equations, absolute value inequalities) are not built yet.
 
 - **Number line**: when an inequality is solved, the answer is shaded on a number line under it (filled dot for ≤ and ≥, open dot for < and >). It draws any set of intervals, so the later stages can shade "between" and "outside" answers.
-- About half of the normal inequality fights need a flip. Some are written the other way round (9 > 2x + 1), and the answer is read with x first (4 > x is x < 4).
+- About half of the normal inequality fights need a flip. The shared variety system writes about half the other way round (9 > 2x + 1); the answer is read with x first (4 > x is x < 4).
 - Elites (Bound Warden) stack an inequality with an Act 2 move, for example −2(x − 3) < 10. The Leaning Tower boss has a no-flip phase, a flip phase and a stacked phase.
 - Difficulty uses Act 2's rules. Expert adds a trap card: the same × or ÷ by a negative, marked "keep ≥". Its Why? checks a number that fits the wrong answer and shows the original inequality coming out false.
-- No inequality repeats within a run.
+- Act 3 plugs into the shared variety system (`ENGINES.ineq`), so no inequality repeats within a run and shapes rotate.
 
 ## Mastery and stats
 

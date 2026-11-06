@@ -10,7 +10,8 @@
 // relation on top: it flips the sign on a negative × or ÷, renders it, labels those cards "flip the
 // sign", draws the answer on a number line, and has its own wrong-move messages, Why? text and traps.
 //
-// index.html picks this engine when a generator returns { eq } with eq.rel set (cur.act3).
+// Generators return { ineq } and index.html picks this engine for them (cur.act3). ENGINES.ineq plugs it
+// into the shared variety system (no repeats in a run, shapes rotate, sides mirrored).
 //
 // The number line (drawLine) is a reusable system for the rest of the act: it draws any set made of
 // intervals, so compound inequalities (between, or outside) and absolute value can use it later.
@@ -26,7 +27,6 @@
   const RELS = ['<', '≤', '>', '≥'];
   const I = (L, R, rel) => ({ L: noZero(L), R: noZero(R), result: null, rel: rel || pick(RELS) });
   const swapI = e => ({ ...e, L: e.R, R: e.L, rel: FLIP[e.rel] });         // 9 > 2x + 1 is the same as 2x + 1 < 9
-  const maybeSwapI = (e, p = 0.3) => (Math.random() < p ? swapI(e) : e);
   const constOf = side => { const c = side.find(i => i.t === 'n'); return c ? c.k : F(0); };
   const isDeclare = c => c.op === 'none' || c.op === 'all';
   const SCALE_OPS = ['*', '/', 'neg', 'frac'];
@@ -275,14 +275,14 @@
   }
 
   // ---------------------------------------------------------------- generators
-  // Every generator returns { eq, enemy } with a whole-number boundary. Shapes (Easy):
+  // Every generator returns { ineq, enemy } with a whole-number boundary. Shapes (Easy):
   //   add/sub   x + a < b, x − a ≥ b              mul/div  ax > b, x/a ≤ b
   //   two/twom  ax + b ≤ c, ax − b > c
   //   negx      −x < a           (× −1, flip)      negmul   −ax ≥ b       (÷ −a, flip)
   //   negtwo    b − ax > c       (− b, ÷ −a, flip) negtwo2  −ax + b ≤ c
   //   negdiv    x/(−a) < b       (× −a, flip)
-  // About half of normal fights need a flip, since that's the new idea. 30% are written the other
-  // way round (9 > 2x + 1).
+  // About half of normal fights need a flip, since that's the new idea. The variety system writes about
+  // half of them the other way round (9 > 2x + 1).
   const FLIPS = ['negx', 'negmul', 'negtwo', 'negtwo2', 'negdiv'], KEEPS = ['add', 'sub', 'mul', 'div', 'two', 'twom'];
   function genIneq(type) {
     const tut = !!type;
@@ -303,8 +303,7 @@
       else if (t === 'negtwo2') e = I([X(-a), N(b)], [N(-a * x + b)], rel);
       else e = I([X(F(-1, a))], [N(rand(1, 9) * pick([1, -1]))], rel);
       if ([...e.L, ...e.R].length < 2) continue;
-      if (!tut) e = maybeSwapI(e);
-      return { eq: e, enemy };
+      return { ineq: e, enemy };
     }
   }
 
@@ -319,41 +318,36 @@
       else if (t === 'dist') { const m = rand(2, 4), b = nonZero(-6, 6), c = nonZero(-8, 8); e = I([G(m, [X(1), N(b)]), N(c)], [N(m * (x + b) + c)], rel); }
       else if (t === 'like') { const p = rand(1, 4), q = -rand(p + 1, p + 5), c = nonZero(-9, 9); e = I([X(p), X(q), N(c)], [N((p + q) * x + c)], rel); }
       else { const p = rand(1, 5), q = rand(1, 5), c = nonZero(-9, 9); if (p === q) continue; const d = p * x + c - q * x; e = I([X(p), N(c)], d ? [X(q), N(d)] : [X(q)], rel); }
-      return { eq: maybeSwapI(e), enemy: 'boundwarden' };
+      return { ineq: e, enemy: 'boundwarden' };
     }
   }
 
   // Act 3 elite and boss fights. list = the unlocked skills this run can use, oldest first.
   function buildFight3(node, list) {
     const act3 = list.filter(id => (SKILL[id].act || 1) === 3);
-    if (node.type === 'elite') return { phases: [() => fresh(genStacked3)], handSize: difficulty.hand, enemy: 'boundwarden' };
+    if (node.type === 'elite') return { phases: [genStacked3], handSize: difficulty.hand, enemy: 'boundwarden' };
     // Boss: an inequality that keeps its sign, one that flips (written the other way round), then a stacked one.
-    const phases = [() => fresh(() => genIneq(pick(KEEPS))), () => fresh(() => { const g = genIneq(pick(FLIPS)); g.eq = swapI(g.eq); return g; })];
-    for (const id of act3.slice(1)) phases.push(() => fresh(SKILL[id].gen));
-    phases.push(() => fresh(genStacked3));
+    const phases = [() => genIneq(pick(KEEPS)), () => genIneq(pick(FLIPS))];
+    for (const id of act3.slice(1)) phases.push(SKILL[id].gen);
+    phases.push(genStacked3);
     return { phases, handSize: difficulty.hand, enemy: 'leaningtower' };
   }
 
-  // No repeated inequalities within a run (the project's variety rule). The shared variety system can
-  // replace this once it lands on dev.
-  function fresh(gen) {
-    const seen = (run && (run.seen3 || (run.seen3 = new Set()))) || new Set();
-    let g;
-    for (let i = 0; i < 25; i++) { g = gen(); const k = eqText(g.eq); if (!seen.has(k)) { seen.add(k); break; } }
-    return g;
-  }
+  // The shared variety system (index.html freshEquation): writes an inequality and mirrors it (sides swap,
+  // the sign turns around so it means the same thing).
+  if (typeof ENGINES === 'object') ENGINES.ineq = { text: e => eqText(e), mirror: swapI };
 
   // Difficulty: Act 2's rules (bigger numbers, negatives, extra steps, fraction answers on Expert) fit
   // inequalities as they are. They only scale plain numbers, so a negative x-coefficient (the flip) stays.
   function applyDifficulty3(g, regen) {
-    const out = A2.applyDifficulty(g, regen);
-    if (out.eq && !out.eq.rel) out.eq.rel = g.eq.rel;
-    return out;
+    const asEq = r => { const { ineq, ...rest } = r; return { ...rest, eq: ineq }; };
+    const { eq, ...rest } = A2.applyDifficulty(asEq(g), () => asEq(regen()));
+    return { ...rest, ineq: eq.rel ? eq : { ...eq, rel: g.ineq.rel } };
   }
 
   // ---------------------------------------------------------------- skills, enemies, act
   SKILLS.push(
-    { id: 'ineq', stage: 10, act: 3, name: 'Inequalities', gen: () => fresh(() => genIneq()),
+    { id: 'ineq', stage: 10, act: 3, name: 'Inequalities', gen: () => genIneq(),
       title: 'Stage 10: Inequalities',
       intro: 'An inequality uses &lt;, &gt;, ≤ or ≥ instead of =, and its answer is a whole range of numbers. Solve it the same way as an equation, with one new rule: multiplying or dividing both sides by a <b>negative</b> number flips the sign. Those cards say "flip sign". The answer is then shaded on a number line.',
       example: '2x + 1 &lt; 9<br>Subtract 1 from both sides → 2x &lt; 8<br>Divide both sides by 2 → x &lt; 4<br><br>−3x ≥ 12<br>Divide both sides by −3 and flip the sign → x ≤ −4',
