@@ -7,7 +7,7 @@
 
   const css = document.createElement('style');
   css.textContent = `
-    #dbgBtn { position:fixed; left:8px; bottom:8px; z-index:30; font-size:12px; padding:4px 8px; background:#ef476f; color:#000; border:2px solid #000; opacity:.85; }
+    #dbgBtn { position:absolute; left:4px; top:4px; z-index:5; font-size:11px; line-height:1; padding:3px 6px; min-height:0; background:#ef476f; color:#000; border:2px solid #000; opacity:.8; }
     #dbgPanel h2 { margin:6px 0 0; }
     #dbgPanel .grid { display:flex; flex-wrap:wrap; gap:6px; }
     #dbgPanel .grid button { font-size:13px; padding:6px 10px; }
@@ -15,7 +15,7 @@
   document.head.appendChild(css);
   const btn = document.createElement('button');
   btn.id = 'dbgBtn'; btn.textContent = 'Debug';
-  document.body.appendChild(btn);
+  ($('arena') || document.body).appendChild(btn);   // top-left corner of the arena, which is always empty
 
   const acts = () => (typeof ACTS !== 'undefined' ? Object.keys(ACTS).map(Number) : [1]);
   const actOfSkill = id => SKILL[id].act || 1;
@@ -82,4 +82,13 @@
     });
   }
   btn.addEventListener('click', e => { e.stopPropagation(); open(); });
+  // The corner button sits under menus, so the title screen gets its own Debug button.
+  const baseTitle = showTitle;
+  showTitle = function () {
+    baseTitle.apply(this, arguments);
+    const row = document.querySelector('#overPanel .buttons'); if (!row) return;
+    const b = document.createElement('button'); b.className = 'ghost'; b.textContent = 'Debug';
+    b.addEventListener('click', open); row.appendChild(b);
+  };
+  if ($('over').classList.contains('show') && !run) showTitle();
 })();
