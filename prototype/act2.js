@@ -518,7 +518,7 @@
     if (fr) caption(`${card.n} is a multiple of every bottom number, so the fractions clear`);
     else if (card.op === '/') {
       const xt = sides.find(o => o.side.length === 1 && o.side[0].t === 'x');
-      caption(xt ? `${plain(xt.side[0])} over ${card.n} is ${plain(xt.nside[0] || X(0))}` : `Every term is divided by ${card.n}`);
+      caption(xt ? `${plain(xt.side[0])} over ${numText(card.n)} is ${plain(xt.nside[0] || X(0))}` : `Every term is divided by ${card.n}`);
     } else if (card.op === 'neg') caption(`Multiplying by ${MINUS}1 flips the sign of every term`);
     else caption(`Every term is multiplied by ${fracText(m)}`);
     // Denominators that clear pop away first.
@@ -782,9 +782,11 @@
         const side = sideOf(e, o[1]), c = side[o[2]].k.n, a = Math.sign(c) * rand(2, Math.abs(c) - 2);
         side.splice(o[2], 1, N(a), N(c - a)); split.add(o[1]);
       } else {
-        // Review fix: j is re-picked if it would cancel an existing x-term (−x + 1x left a "0x" term).
-        const cancels = j => [e.L, e.R].some(sd => { const x = sd.find(it => it.t === 'x'); return x && fZero(fAdd(x.k, F(j))); });
-        let j; do j = rand(1, 3); while (cancels(j)); seen.xadd = 1;
+        // Review fix: with a negative x-term (−3x), adding 3x made a "0x" term and a "Add 0x" card. Pick an amount that can't.
+        const ks = [e.L, e.R].map(side => side.find(it => it.t === 'x')).filter(Boolean).map(it => it.k);
+        const js = [1, 2, 3].filter(j => ks.every(k => !fZero(fAdd(k, F(j)))));
+        if (!js.length) break;
+        const j = pick(js); seen.xadd = 1;
         for (const side of [e.L, e.R]) { const xi = side.findIndex(it => it.t === 'x'); if (xi >= 0) side[xi] = X(fAdd(side[xi].k, F(j))); else side.unshift(X(j)); }
       }
     }
@@ -907,7 +909,7 @@
   `;
   document.head.appendChild(css);
 
-  window.ACT2 = { apply, canon, steps, isSolved, makeEquation: makeEquation2, refreshPath, render, prefit, eqText, makeHand: makeHand2,
+  window.ACT2 = { apply, canon, steps, isSolved, sideStr, makeEquation: makeEquation2, refreshPath, render, prefit, eqText, makeHand: makeHand2,
     isCorrect, whyWrong, animFor, applyDifficulty: applyDifficulty2, label, text, kind, buildFight: buildFight2, genStacked: genStacked2,
     gens: { liketerms: genLike, distribute: genDist, xboth: genXBoth, clearfrac: genClearFrac, special: genSpecial } };
 })();
