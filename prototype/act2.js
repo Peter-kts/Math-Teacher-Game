@@ -317,8 +317,8 @@
     if (correct.op === 'dist') {
       const [sd, i] = parseRef(correct.ref), g = sideOf(e, sd)[i], [t0, ...rest] = g.items;
       const wrong = [{ t: t0.t, k: fMul(t0.k, g.m) }, ...rest].map((t, j) => termStr(t, j === 0, false)).join(' ');
-      return T('first term only', wrong, `Distribute: ${plain(g)} = ${wrong}`,
-        `The number in front of the parentheses multiplies <b>every</b> term inside, not just the first one. ${plain(g)} = ${g.items.map((t, j) => termStr({ t: t.t, k: fMul(t.k, g.m) }, j === 0, false)).join(' ')}.`);
+      return { scope: 'part', ...T('first term only', wrong, `Distribute: ${plain(g)} = ${wrong}`,
+        `The number in front of the parentheses multiplies <b>every</b> term inside, not just the first one. ${plain(g)} = ${g.items.map((t, j) => termStr({ t: t.t, k: fMul(t.k, g.m) }, j === 0, false)).join(' ')}.`) };
     }
     if (correct.x) {
       const k = correct.op === '-' ? correct.n : -correct.n, kx = (Math.abs(k) === 1 ? '' : Math.abs(k)) + 'x';
@@ -345,6 +345,18 @@
       }
     }
     return null;
+  }
+  // Rule decoy, at every difficulty: with a negative number in front of the parentheses, a Distribute card
+  // that only changes the first sign: −2(x − 1) "=" −2x − 1·2. A minus in front hits every term inside.
+  function signDecoy(e, correct) {
+    if (correct.op !== 'dist' || !correct.ref) return null;
+    const [sd, i] = parseRef(correct.ref), g = sideOf(e, sd)[i];
+    if (!g || g.t !== 'g' || g.m.n >= 0 || g.items.length < 2) return null;
+    const right = g.items.map((t, j) => termStr({ t: t.t, k: fMul(t.k, g.m) }, j === 0, false)).join(' ');
+    const wrong = g.items.map((t, j) => termStr({ t: t.t, k: fMul(t.k, j === 0 ? g.m : fAbs(g.m)) }, j === 0, false)).join(' ');
+    if (wrong === right) return null;
+    return { op: 'trap', trap: 'first sign only', scope: 'part', label: wrong, text: `Distribute: ${plain(g)} = ${wrong}`,
+      why: `<p>A minus in front of parentheses hits <b>every</b> term inside, not just the first one. Multiply each term by ${fracText(g.m)}: ${plain(g)} = ${right}. Here the second sign was left as it was, so ${wrong} is wrong.</p>` };
   }
   function makeHand2(e, correct, size) {
     const base = steps(e);
@@ -389,6 +401,8 @@
     const inTutorial = typeof fight !== 'undefined' && fight && fight.node && fight.node.type === 'tutorial';
     const trap = difficulty.level >= 3 && !inTutorial ? trapFor(e, correct) : null;
     if (trap && size > 2) { hand.push(trap); seen.add(cardLabel(trap)); }
+    const decoy = !inTutorial ? signDecoy(e, correct) : null;
+    if (decoy && hand.length < size && !seen.has(cardLabel(decoy))) { hand.push(decoy); seen.add(cardLabel(decoy)); }
     const fallback = shuffle([2, 3, 4, 5, 6, 7, 8, 9]).flatMap(n => [{ op: '+', n }, { op: '-', n }]);
     for (const c of [...shuffle(classic), ...shuffle(rest), ...fallback]) {
       if (hand.length >= size) break;
@@ -660,10 +674,10 @@
       const a = rand(1, 5), b = rand(2, 6); return { eq: E([N((a + b) * x)], [X(a), X(b)]), enemy: 'clutter' };
     }
   }
-  function genDist(type) {
+  function genDist(type, tut) {
     for (;;) {
       const t = type || pick(['plain', 'plain', 'neg', 'inner', 'plus', 'plusx', 'front', 'numfirst']);
-      const x = type ? rand(1, 9) : rand(-3, 9), a = rand(2, 6), b = nonZero(-8, 9);   // tutorials keep x positive
+      const x = tut ? rand(1, 9) : rand(-3, 9), a = rand(2, 6), b = nonZero(-8, 9);   // tutorials keep x positive
       if (x + b === 0) continue;
       if (t === 'plain') return { eq: maybeSwap(E([G(a, [X(1), N(b)])], [N(a * (x + b))])), enemy: 'distributor' };
       if (t === 'minus') { const bb = rand(1, 8); if (x - bb === 0) continue; return { eq: E([G(a, [X(1), N(-bb)])], [N(a * (x - bb))]), enemy: 'distributor' }; }
@@ -760,10 +774,11 @@
   // ---------------------------------------------------------------- difficulty
   // Act 2 generators are written for Easy. Other levels adjust the equation they return, keeping its shape:
   //   bigger numbers: every number is multiplied by f (so the answer is multiplied by f too and stays whole),
-  //   negatives: Easy flips every number's sign when the answer comes out negative, other levels flip at random,
+  //   negatives: every number's sign is flipped at random (often on Normal and up, sometimes on Easy),
   //   steps: extra steps, made by splitting a number into two (one more Combine) or adding the same x-term to
   //          both sides (one more x-on-both-sides move), only with cards the player has already met,
-  //   fracAnswers (Expert): the lone number on the side without x is nudged, so the answer is often a fraction.
+  //   fraction answers: the lone number on the side without x is nudged: sometimes on every level, kept only when
+  //   the answer is a simple fraction (halves, thirds, quarters); on Expert (fracAnswers) often and messy.
   function scaleNums(e, f) {
     const s = it => (it.t === 'n' ? { t: 'n', k: fMul(it.k, F(f)) } : it.t === 'g' ? { ...it, items: it.items.map(s) } : it);
     return { ...e, L: e.L.map(s), R: e.R.map(s) };
@@ -792,22 +807,26 @@
     }
     return e;
   }
-  function applyDifficulty2(g, regen, opts = {}) {   // opts (Act 3): noXadd = no x-term added to both sides (it would hide a needed flip); negOK / fracOK = negative / fraction answers allowed on every level
+  function applyDifficulty2(g, regen, opts = {}) {   // opts (Act 3): noXadd = no x-term added to both sides (it would hide a needed flip); keepAnswer, messyOK: see below
     const D = difficulty;
     for (let tries = 0; tries < 40; tries++, g = regen()) {
       let e = clone(g.eq);
       const f = D.level >= 2 ? rand(2, 4) : D.level === 1 ? rand(1, 2) : 1;
-      e = scaleNums(e, f * (D.neg && Math.random() < 0.5 ? -1 : 1));
-      let end = pathFrom(e).end;
-      if (!end.result && !D.neg && !opts.negOK && makeEquation2(e).answer.n < 0) { e = scaleNums(e, -1); end = pathFrom(e).end; }
-      if (D.fracAnswers && !end.result) { const sd = numSide(e); if (sd) { const side = sideOf(e, sd); let k; do k = fAdd(side[0].k, F(nonZero(-5, 5))); while (fZero(k)); side[0] = N(k); } }
+      // Every level teaches all the material: Easy also gets some (small) negative answers and every level
+      // gets some simple fraction answers (x = 3/2); Expert's are messy (x = −17/6).
+      // opts.keepAnswer (Act 3): the generator already chose the answer's kind (its case), so no random sign
+      // flip or fraction nudge; opts.messyOK lets Expert nudge a fraction case into a messy fraction.
+      const keep = !!opts.keepAnswer;
+      e = scaleNums(e, f * (!keep && Math.random() < (D.neg ? 0.5 : 0.15) ? -1 : 1));
+      const end = pathFrom(e).end, wantFrac = !keep && !D.fracAnswers && Math.random() < 0.15;
+      if (((D.fracAnswers && (!keep || opts.messyOK)) || wantFrac) && !end.result) { const sd = numSide(e); if (sd) { const side = sideOf(e, sd); let k; do k = fAdd(side[0].k, F(nonZero(-5, 5))); while (fZero(k)); side[0] = N(k); } }
       // Review fix (line above): the nudge used to cancel the number to 0 sometimes, leaving "3x + 0" and a "+0" card.
       if (D.steps) e = addSteps(e, D.steps, opts);
       const c = makeEquation2(e);
       if (c.path.length >= 12 || allNums(e).some(k => Math.abs(k.n) > D.max * 2)) continue;
-      if (!c.end.result && !D.fracAnswers && !opts.fracOK && c.answer.d !== 1) continue;
-      if (!c.end.result && !D.neg && !opts.negOK && c.answer.n < 0) continue;
-      if (!c.end.result && D.fracAnswers && c.answer.d === 1 && Math.random() < 0.6) continue;
+      if (!keep && !c.end.result && !D.fracAnswers && c.answer.d !== 1 && !(wantFrac && c.answer.d <= 4)) continue;
+      if (!keep && !c.end.result && !D.level && Math.abs(c.answer.n / c.answer.d) > 9 && c.answer.n < 0) continue;   // Easy: small negatives
+      if (!keep && !c.end.result && D.fracAnswers && c.answer.d === 1 && Math.random() < 0.6) continue;
       return { ...g, eq: e };
     }
     return g;
@@ -840,27 +859,27 @@
 
   // ---------------------------------------------------------------- skills and enemies
   SKILLS.push(
-    { id: 'liketerms', stage: 4, act: 2, name: 'Like terms', gen: () => genLike(),
+    { id: 'liketerms', stage: 4, act: 2, name: 'Like terms', cases: ['xx', 'xxc', 'cc', 'split', 'rhs', 'cxx', 'ccr', 'cxc'], gen: cycled('liketerms', genLike),
       title: 'Stage 4: Like terms',
       intro: 'New ◎ card: Combine. Terms of the same kind can be added together: x-terms with x-terms, numbers with numbers. Drop Combine on one of them and they merge into one.',
       example: '3x + 2x − 4 = 11<br>Combine 3x and 2x → 5x − 4 = 11<br>Add 4 to both sides → 5x = 15<br>Divide both sides by 5 → x = 3',
       tutorial: [() => genLike('xx'), () => genLike('cc')] },
-    { id: 'distribute', stage: 5, act: 2, name: 'Distributing', gen: () => genDist(),
+    { id: 'distribute', stage: 5, act: 2, name: 'Distributing', cases: ['plain', 'minus', 'neg', 'inner', 'plus', 'plusx', 'front', 'numfirst'], gen: cycled('distribute', genDist),
       title: 'Stage 5: The distributive property',
       intro: 'New ◎ card: Distribute. A number in front of parentheses multiplies everything inside. Drop Distribute on the parentheses to multiply it in and clear them.',
       example: '3(x + 2) = 15<br>Distribute → 3x + 6 = 15<br>Subtract 6 from both sides → 3x = 9<br>Divide both sides by 3 → x = 3',
-      tutorial: [() => genDist('plain'), () => genDist('minus')] },
-    { id: 'xboth', stage: 6, act: 2, name: 'x on both sides', gen: () => genXBoth(),
+      tutorial: [() => genDist('plain', true), () => genDist('minus', true)] },
+    { id: 'xboth', stage: 6, act: 2, name: 'x on both sides', cases: ['basic', 'noconst', 'front', 'negc'], gen: cycled('xboth', genXBoth),
       title: 'Stage 6: x on both sides',
       intro: 'Now x appears on both sides. Subtract the smaller x-term from both sides: it cancels on one side and combines on the other. Then solve as before.',
       example: '5x + 3 = 2x + 12<br>Subtract 2x from both sides → 3x + 3 = 12<br>Subtract 3 → 3x = 9<br>Divide by 3 → x = 3',
       tutorial: [() => genXBoth('tut'), () => genXBoth('tut2')] },
-    { id: 'clearfrac', stage: 7, act: 2, name: 'Clearing fractions', gen: () => genClearFrac(),
+    { id: 'clearfrac', stage: 7, act: 2, name: 'Clearing fractions', cases: ['sum', 'diff', 'const', 'coef', 'cfront', 'across'], gen: cycled('clearfrac', genClearFrac),
       title: 'Stage 7: Clearing fractions',
       intro: 'Several fractions? Multiply both sides by a number that every bottom number goes into (the common denominator). Every fraction clears at once.',
       example: '<span class="frac"><span>x</span><span>3</span></span> + <span class="frac"><span>x</span><span>4</span></span> = 7<br>Multiply both sides by 12 → 4x + 3x = 84<br>Combine → 7x = 84<br>Divide by 7 → x = 12',
       tutorial: [() => genClearFrac('sum'), () => genClearFrac('sum')] },
-    { id: 'special', stage: 8, act: 2, name: 'No solution / every x', gen: () => genSpecial(),
+    { id: 'special', stage: 8, act: 2, name: 'No solution / every x', cases: ['none', 'all', 'nonec', 'allc', 'one'], gen: cycled('special', genSpecial),
       title: 'Stage 8: No solution, or every number',
       intro: 'Sometimes the x-terms cancel completely. If what is left is false (1 = 5), no number works: play ◎ No solution. If it is true (6 = 6), every number works: play ◎ All x. Drop them on the statement.',
       example: '2x + 1 = 2x + 5<br>Subtract 2x → 1 = 5<br>Never true → No solution<br><br>3(x + 1) = 3x + 3<br>Distribute → 3x + 3 = 3x + 3<br>Subtract 3x → 3 = 3<br>Always true → every number works',

@@ -55,24 +55,17 @@
   const SPLIT = (way, d) => ({ op: 'split', scope: 'part', ref: 'abs', way, d });
 
   // Cases. Every difficulty covers every case of a stage (the difficulty only changes how hard each one
-  // is to solve). Generators aim for the case this run has seen least; makeEquation counts the case a
-  // question actually turned out to be, after the difficulty changes.
+  // is to solve). Normal fights go through them with index.html's shared cycle (SKILL.cases + cycled():
+  // the generator gets the case, and a stage isn't mastered until each case is solved once).
+  // applyDifficulty3 checks that a question is still its case after the difficulty changes.
   const CASES = {
     ineq: ['keep-pos', 'keep-neg', 'keep-frac', 'flip-pos', 'flip-neg', 'flip-frac'],
     compound: ['keep-pos', 'keep-neg', 'keep-frac', 'flip-pos', 'flip-neg', 'flip-frac', 'or'],
     absval: ['two-int', 'two-frac', 'none'],
     absineq: ['between-int', 'between-frac', 'outside-int', 'outside-frac', 'none', 'all'],
   };
-  function caseCounts(skill) {
-    if (typeof run === 'undefined' || !run) return {};
-    const all = run.act3cases || (run.act3cases = {});
-    return all[skill] || (all[skill] = {});
-  }
-  function nextCase(skill, only = () => true) {
-    const c = caseCounts(skill), list = CASES[skill].filter(only);
-    const min = Math.min(...list.map(k => c[k] || 0));
-    return pick(list.filter(k => (c[k] || 0) === min));
-  }
+  // Elites and boss phases pick a case at random (they don't take one from the cycle).
+  const anyCase = (skill, only = () => true) => pick(CASES[skill].filter(only));
   // pos / neg / frac for a set of answer numbers: frac if any is a fraction, neg if any is negative.
   const ansKind = vs => (vs.some(v => !isInt(v)) ? 'frac' : vs.some(v => v.n < 0) ? 'neg' : 'pos');
 
@@ -833,11 +826,11 @@
     return AB(m, a, b, c, rel, m * dd + c);
   }
   function genAbsEq(type, want, tut = isTutorial()) {
-    const w = want || (tut ? 'two-int' : nextCase('absval'));
+    const w = want || (tut ? 'two-int' : anyCase('absval'));
     return { ineq: { ...genAbsWith('=', type, tut, w), skill: 'absval' }, enemy: 'mirrorling' };
   }
   function genAbsIneq(type, want, tut = isTutorial()) {
-    const w = want || (tut ? 'between-int' : nextCase('absineq'));
+    const w = want || (tut ? 'between-int' : anyCase('absineq'));
     const rel = /^between|^none/.test(w) ? pick(['<', '≤']) : pick(['>', '≥']);
     return { ineq: { ...genAbsWith(rel, type, tut, w), skill: 'absineq' }, enemy: 'mirrorling' };
   }
@@ -862,7 +855,7 @@
   // A fraction answer needs a number in front of x: x = 3/2 comes from 2x < 3.
   const FRAC_OK = ['mul', 'two', 'twom', 'negmul', 'negtwo', 'negtwo2'];
   function genIneq(type, want, tut = isTutorial()) {
-    const w = want || (type || tut ? null : nextCase('ineq'));
+    const w = want || (type || tut ? null : anyCase('ineq'));
     const [fk, ak] = w ? w.split('-') : [null, tut ? 'pos' : pick(['pos', 'neg'])];
     for (;;) {
       const pool = (fk === 'flip' ? FLIPS : fk === 'keep' ? KEEPS : [...FLIPS, ...KEEPS]).filter(t => ak !== 'frac' || FRAC_OK.includes(t));
@@ -893,7 +886,7 @@
   //   −2(x − 3) < 10    3x − 5x + 4 ≥ 10    2x + 5 > 5x − 4 (written so the x-term left over is negative)
   function genStacked3() {
     // Once compound inequalities are open, some elites are a chain that needs a flip, with bigger numbers.
-    if (isUnlocked('compound') && Math.random() < 0.35) { const g = genCompound(null, nextCase('compound', k => k.startsWith('flip'))); return { ...g, enemy: 'boundwarden' }; }
+    if (isUnlocked('compound') && Math.random() < 0.35) { const g = genCompound(null, anyCase('compound', k => k.startsWith('flip'))); return { ...g, enemy: 'boundwarden' }; }
     if (isUnlocked('absval') && Math.random() < 0.35) { const g = isUnlocked('absineq') && Math.random() < 0.5 ? genAbsIneq('both', null, false) : genAbsEq('both', null, false); return { ...g, enemy: 'boundwarden' }; }
     for (;;) {
       const t = pick(['distneg', 'distneg', 'dist', 'like', 'xboth']);
@@ -915,7 +908,7 @@
   // want = a stage 11 case (see CASES). The answer runs from P to Q: whole numbers above 0 (pos), starting
   // below 0 (neg), or fractions with a number in front of x (frac, e.g. 3/2 < x ≤ 9/2 from 3 < 2x ≤ 9).
   function genCompound(type, want, tut = isTutorial()) {
-    const w = want || (type || tut ? null : nextCase('compound'));
+    const w = want || (type || tut ? null : anyCase('compound'));
     if (w === 'or') return genOrCompound();
     const [fk, ak] = w ? w.split('-') : [null, tut ? 'pos' : pick(['pos', 'neg'])];
     const pool = (fk === 'flip' ? FLIPS_C : fk === 'keep' ? KEEPS_C : [...FLIPS_C, ...KEEPS_C]).filter(t => ak !== 'frac' || ['mul', 'two', 'neg', 'negmul'].includes(t));
@@ -942,7 +935,7 @@
   function chainDifficulty(g, regen) {
     const D = difficulty;
     for (let tries = 0; tries < 30; tries++, g = regen()) {
-      if (!g.ineq || !g.ineq.chain) return applyDifficulty3(g, regen);    // a mixed generator (an elite) re-rolled something else
+      if (!g.ineq || !g.ineq.chain) return prepare3(g, regen);    // a mixed generator (an elite) re-rolled something else
       let e = { ...g.ineq };
       let end0 = e; for (const p of chainPath(e, 'compound')) end0 = chainApply(end0, p.move);
       const fracOK = !isInt(end0.lo) || !isInt(end0.hi);     // the generator asked for a fraction case
@@ -1017,9 +1010,7 @@
   function makeEquation3(eq, enemy) {
     const main = eq.skill || 'ineq', path = pathOf(eq, main);
     let end = eq; for (const p of path) end = apply(end, p.move, p.move.ref);
-    const kase = CASES[main] ? caseOf(main, eq, path, end) : null;
-    if (kase) { const c = caseCounts(main); c[kase] = (c[kase] || 0) + 1; }
-    return { start: eq, end, path, main, case: kase, skills: [...new Set(path.map(p => p.skill))], enemy, act2: true, act3: true, answer: F(0), answerText: answerOf(end) };
+    return { start: eq, end, path, main, skills: [...new Set(path.map(p => p.skill))], enemy, act2: true, act3: true, answer: F(0), answerText: answerOf(end) };
   }
   function refreshPath(cur) { cur.path = cur.path.slice(0, cur.step).concat(pathOf(cur.state, cur.main)); }
   function isCorrect(cur, card, target) {
@@ -1094,7 +1085,19 @@
   // Difficulty: single inequalities use Act 2's rules (bigger numbers, negatives, extra steps, fraction
   // answers on Expert); they only scale plain numbers, so a negative x-coefficient (the flip) stays.
   // Chains have their own; absolute value generators read the difficulty themselves.
+  function caseOfG(g) {
+    const main = g.ineq.skill || 'ineq', path = pathOf(g.ineq, main);
+    let end = g.ineq; for (const p of path) end = apply(end, p.move, p.move.ref);
+    return caseOf(main, g.ineq, path, end);
+  }
+  // A question from the case cycle keeps its case: re-roll until the harder numbers still give it.
   function applyDifficulty3(g, regen) {
+    if (!g.case) return prepare3(g, regen);
+    let out = g;
+    for (let i = 0; i < 30; i++) { out = prepare3(i ? regen() : g, regen); if (caseOfG(out) === g.case) return out; }
+    return out;
+  }
+  function prepare3(g, regen) {
     const k = kindOf(g.ineq);
     if (k === 'chain') return chainDifficulty(g, regen);
     if (k !== 'single') return g;
@@ -1106,7 +1109,7 @@
     const want = flips(g.ineq);
     let out;
     for (let i = 0; i < 25; i++) {
-      const { eq, ...rest } = A2.applyDifficulty(asEq(g), again, { noXadd: want, negOK: true, fracOK: true });
+      const { eq, ...rest } = A2.applyDifficulty(asEq(g), again, { noXadd: want, keepAnswer: true, messyOK: /frac/.test(g.case || '') });
       out = { ...rest, ineq: { ...eq, rel: eq.rel || g.ineq.rel } };
       if (!want || flips(out.ineq)) return out;
     }
@@ -1118,29 +1121,29 @@
     const act3 = list.filter(id => (SKILL[id].act || 1) === 3);
     if (node.type === 'elite') return { phases: [genStacked3], handSize: difficulty.hand, enemy: 'boundwarden' };
     // Boss: an inequality that keeps its sign, one that needs a flip, one phase per later Act 3 stage, then a stacked one.
-    const phases = [() => genIneq(null, nextCase('ineq', k => k.startsWith('keep'))), () => genIneq(null, nextCase('ineq', k => k.startsWith('flip')))];
+    const phases = [() => genIneq(null, anyCase('ineq', k => k.startsWith('keep'))), () => genIneq(null, anyCase('ineq', k => k.startsWith('flip')))];
     for (const id of act3.slice(1)) phases.push(SKILL[id].gen);
     phases.push(genStacked3);
     return { phases, handSize: difficulty.hand, enemy: 'leaningtower' };
   }
   // ---------------------------------------------------------------- skills, enemies, act
   SKILLS.push(
-    { id: 'ineq', stage: 10, act: 3, name: 'Inequalities', gen: () => genIneq(),
+    { id: 'ineq', stage: 10, act: 3, name: 'Inequalities', cases: CASES.ineq, gen: cycled('ineq', c => genIneq(null, c)),
       title: 'Stage 10: Inequalities',
       intro: 'An inequality uses &lt;, &gt;, ≤ or ≥ instead of =, and its answer is a whole range of numbers. Solve it the same way as an equation, with one new rule: after multiplying or dividing both sides by a <b>negative</b> number, the sign has to flip. That is its own move: drop the new ◎ Flip card on the sign. Flipping at any other time is a wrong move. The answer is then shaded on a number line.',
       example: '2x + 1 &lt; 9<br>Subtract 1 from both sides → 2x &lt; 8<br>Divide both sides by 2 → x &lt; 4<br><br>−3x ≥ 12<br>Divide both sides by −3 → x ≥ −4 (not true yet!)<br>Flip the sign → x ≤ −4',
       tutorial: [() => genIneq('two', null, true), () => genIneq('negmul', null, true)] },
-    { id: 'compound', stage: 11, act: 3, name: 'Compound inequalities', gen: () => genCompound(),
+    { id: 'compound', stage: 11, act: 3, name: 'Compound inequalities', cases: CASES.compound, gen: cycled('compound', c => genCompound(null, c)),
       title: 'Stage 11: Compound inequalities',
       intro: 'A compound inequality squeezes x between two numbers: −3 &lt; 2x + 1 ≤ 7 means 2x + 1 is above −3 <b>and</b> at most 7. It has three parts, and every card now does the same thing to all three. After a negative × or ÷, Flip turns both signs around, and the chain is read from the other end so the smaller number comes first. Some are "or" compounds instead: two cases, solved one after the other.',
       example: '−3 &lt; 2x + 1 ≤ 7<br>Subtract 1 from all three parts → −4 &lt; 2x ≤ 6<br>Divide all three parts by 2 → −2 &lt; x ≤ 3<br><br>1 ≤ 7 − 2x &lt; 5<br>Subtract 7 → −6 ≤ −2x &lt; −2<br>Divide by −2 → 3 ≤ x &lt; 1 (can\'t be true)<br>Flip both signs → 3 ≥ x &gt; 1, which reads 1 &lt; x ≤ 3',
       tutorial: [() => genCompound('two', null, true), () => genCompound('neg', null, true)] },
-    { id: 'absval', stage: 12, act: 3, name: 'Absolute value', gen: () => genAbsEq(),
+    { id: 'absval', stage: 12, act: 3, name: 'Absolute value', cases: CASES.absval, gen: cycled('absval', c => genAbsEq(null, c)),
       title: 'Stage 12: Absolute value equations',
       intro: 'The bars | | mean distance from 0: |5| = 5 and |−5| = 5. So |x − 3| = 5 means x − 3 is 5 away from 0, which is 5 <b>or</b> −5. First get the bars alone, treating them as one block. Then drop the new ◎ Split card on the bars: it makes two cases, and you solve each one. One catch: a distance is never negative, so if the bars end up equal to a negative number, like |x − 3| = −5, nothing works. Declare No solution instead of splitting.',
       example: '|x − 3| = 5<br>Split → x − 3 = 5 or x − 3 = −5<br>Case 1: add 3 → x = 8<br>Case 2: add 3 → x = −2<br>Answer: x = 8 or x = −2<br><br>|x − 3| + 8 = 3<br>Subtract 8 → |x − 3| = −5<br>A distance can\'t be −5 → No solution',
       tutorial: [() => genAbsEq('plain', 'two-int', true), () => genAbsEq('front', 'two-int', true)] },
-    { id: 'absineq', stage: 13, act: 3, name: 'Abs. inequalities', gen: () => genAbsIneq(),
+    { id: 'absineq', stage: 13, act: 3, name: 'Abs. inequalities', cases: CASES.absineq, gen: cycled('absineq', c => genAbsIneq(null, c)),
       title: 'Stage 13: Absolute value inequalities',
       intro: 'For inequalities there are two Split cards, and you choose. Less than 7 away from 0 means <b>between</b> −7 and 7, so drop ◎ Between on |u| &lt; 7 to get one chain, −7 &lt; u &lt; 7. More than 7 away means <b>outside</b>, so drop ◎ Outside on |u| &gt; 7 to get two cases, u &lt; −7 or u &gt; 7. If the number is negative, a distance is never below it (|u| &lt; −2: No solution) and always above it (|u| &gt; −2: All x).',
       example: '|2x − 1| &lt; 7<br>Between → −7 &lt; 2x − 1 &lt; 7<br>Add 1 → −6 &lt; 2x &lt; 8<br>Divide by 2 → −3 &lt; x &lt; 4<br><br>|x + 2| ≥ 4<br>Outside → x + 2 ≤ −4 or x + 2 ≥ 4<br>→ x ≤ −6 or x ≥ 2<br><br>|x − 1| ≥ −3 → All x',
@@ -1219,5 +1222,5 @@
 
   window.ACT3 = { apply, isSolved, solution, segmentsOf, drawLine, clearLine: () => { clearLine(); clearCases(); }, makeEquation: makeEquation3, refreshPath, render, prefit,
     eqText: textOf, makeHand: makeHand3, isCorrect, whyWrong, animFor, applyDifficulty: applyDifficulty3, label, text, kind, kindOf,
-    buildFight: buildFight3, genStacked: genStacked3, gens: { ineq: genIneq, compound: genCompound, absval: genAbsEq, absineq: genAbsIneq } };
+    buildFight: buildFight3, genStacked: genStacked3, caseOf: caseOfG, gens: { ineq: genIneq, compound: genCompound, absval: genAbsEq, absineq: genAbsIneq } };
 })();

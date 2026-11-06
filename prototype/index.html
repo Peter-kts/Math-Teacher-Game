@@ -438,52 +438,89 @@ let difficulty = DIFFICULTIES[0];
 try { difficulty = DIFFICULTIES[+localStorage.getItem('algebraCards.difficulty')] || DIFFICULTIES[0]; } catch (e) {}
 
 // Re-rolls an Act 1 equation's numbers for the current difficulty, keeping its shape (which terms
-// exist, where x is, the coefficient), so the stage's concept stays the same. Easy leaves it as is.
+// exist, where x is), so the stage's concept stays the same. Every level teaches all the material:
+// Easy also sees small negative answers and simple fraction answers (x = 3/2); harder levels use bigger
+// numbers, and Expert adds messy fraction answers (x = −17/6). Tutorials skip this and stay simple.
+const COEF_MAX = [10, 12, 15, 20];   // biggest multiplier or divisor per level
+const ANSWER_MIX = [                 // chance of each kind of answer per level; the rest are positive whole numbers
+  { neg: .15, frac: .12 }, { neg: .4, frac: .15 }, { neg: .4, frac: .15 }, { messy: .35, frac: .15, neg: .3 }];
+function answerKind(D, canFrac) {
+  let r = Math.random();
+  for (const [k, w] of Object.entries(ANSWER_MIX[D.level])) { if (k === 'frac' && !canFrac) continue; if ((r -= w) < 0) return k; }
+  return 'pos';
+}
 function applyDifficulty(s) {
-  const D = difficulty;
-  if (!D.level) return s;
-  const N = D.max, C = [10, 12, 15, 20][D.level];                   // biggest coefficient or divisor
-  for (let tries = 0; tries < 300; tries++) {
-    const r = { ...s };
-    let a = s.coef;                                                    // bigger multipliers and divisors, same sign
-    if (a.d === 1 && Math.abs(a.n) > 1) a = F(Math.sign(a.n) * rand(2, C));
-    else if (Math.abs(a.n) === 1 && a.d > 1) a = F(a.n, rand(2, C));
-    r.coef = a;
-    if (s.b.n !== 0) {
-      const b = D.neg ? nonZero(-N, N) : rand(1, N);
-      if (isInt(a) && Math.abs(a.n) > 1 && b % a.n === 0) continue;   // keep "undo + or − first" a real lesson
-      r.b = F(b);
+  const D = difficulty, N = D.level ? D.max : 12, C = COEF_MAX[D.level];
+  const kind = answerKind(D, Math.abs(s.coef.n) > 1);    // 2x, −3x, (2/3)x: a fraction answer can come out
+  if (!D.level && kind === 'pos') return s;               // Easy keeps the stage's own numbers
+  const cMax = D.level ? N : 150;
+  for (let tries = 0; tries < 400; tries++) {
+    let a = s.coef, b = s.b;
+    if (D.level) {                                         // bigger multipliers and divisors, same sign
+      if (a.d === 1 && Math.abs(a.n) > 1) a = F(Math.sign(a.n) * rand(2, C));
+      else if (Math.abs(a.n) === 1 && a.d > 1) a = F(a.n, rand(2, C));
+      if (b.n !== 0) b = F(D.neg ? nonZero(-N, N) : rand(1, N));
     }
-    if (D.fracAnswers) {
-      r.c = F(nonZero(-N, N));                                          // the answer falls out, often a fraction
-      const x = fMul(fAdd(r.c, F(-r.b.n, r.b.d)), F(a.d, a.n));
+    if (isInt(a) && Math.abs(a.n) > 1 && b.n !== 0 && b.n % a.n === 0) continue;   // keep "undo + or − first" a real lesson
+    let x;
+    if (kind === 'messy') {
+      const c = F(nonZero(-N, N)); x = fMul(fAdd(c, F(-b.n, b.d)), F(a.d, a.n));
       if (x.n === 0 || (isInt(x) && Math.random() < 0.6)) continue;
+    } else if (kind === 'frac') {                          // a simple fraction: halves, thirds or quarters
+      const q = pick([2, 3, 4]);
+      if (isInt(a)) a = F(Math.sign(a.n) * q * rand(1, Math.max(1, Math.floor(C / q))));   // so a·x comes out whole
+      if (Math.abs(a.n) < 2) continue;
+      const p = rand(1, 3 * q) * (D.level && Math.random() < 0.4 ? -1 : 1);
+      if (gcd(p, q) !== 1) continue;
+      x = F(p, q);
+      if (isInt(a) && b.n !== 0 && b.n % a.n === 0) continue;
     } else {
-      const k = Math.max(1, Math.floor(N / a.d));
-      const x = (D.neg ? nonZero(-k, k) : rand(1, k)) * a.d;          // x/q needs x to be a multiple of q
-      r.c = fAdd(fMul(a, F(x)), r.b);
-      if (!isInt(r.c) || Math.abs(r.c.n) > N || r.c.n === 0 || r.c.n === r.b.n) continue;
+      const k = Math.max(1, Math.floor((D.level ? N : 9) / a.d));
+      x = F((kind === 'neg' ? -1 : 1) * rand(1, k) * a.d);   // x/q needs x to be a multiple of q
     }
-    return r;
+    const c = fAdd(fMul(a, x), b);
+    if (!isInt(c) || c.n === 0 || Math.abs(c.n) > cMax || fIs(c, b.n, b.d)) continue;
+    if (kind !== 'messy' && kind !== 'frac' && !isInt(x)) continue;
+    return { ...s, coef: a, b, c };
   }
   return s;
 }
+
+// Each stage has a list of cases (the shapes of problem it teaches). Normal fights go through every case
+// in a shuffled cycle at every difficulty, and a stage can't reach mastered until each case has been
+// solved once. nextCase(id) gives the next one (the same one until it's used, since freshEquation may
+// generate several candidates); generators return it as g.case.
+const caseQueues = {};
+function nextCase(id) {
+  const all = SKILL[id].cases;
+  if (!all) return undefined;
+  const done = progress.skills[id].casesSolved || [];
+  let q = caseQueues[id];
+  if (!q || !q.length) {                                    // a new cycle, unsolved cases first
+    q = caseQueues[id] = [...shuffle(all.filter(c => !done.includes(c))), ...shuffle(all.filter(c => done.includes(c)))];
+  }
+  return q[0];                                              // taken off the queue once the equation is used (useCase)
+}
+function useCase(id, c) { const q = caseQueues[id]; const i = q ? q.indexOf(c) : -1; if (i >= 0) q.splice(i, 1); }
+const casesLeft = id => (SKILL[id].cases || []).filter(c => !(progress.skills[id].casesSolved || []).includes(c));
+// A skill's normal-fight generator: takes the next case and tags the equation with it.
+const cycled = (id, gen) => () => { const c = nextCase(id); const g = gen(c); return { ...g, case: c, caseSkill: id }; };
 
 // =====================================================================
 //  Skills, stages and saved progress
 // =====================================================================
 const SKILLS = [
-  { id: 'onestep', stage: 1, name: 'One-step', gen: () => genOneStep(),
+  { id: 'onestep', stage: 1, name: 'One-step', cases: ['add', 'addFront', 'sub', 'mul', 'div'], gen: cycled('onestep', genOneStep),
     title: 'Stage 1: One-step equations',
     intro: 'Each enemy is an equation. Get x alone by doing the same thing to both sides. Pick the card that undoes what is attached to x: subtracting undoes adding, dividing undoes multiplying.',
     example: 'x + 3 = 7<br>Subtract 3 from both sides<br>x = 4',
     tutorial: [() => genOneStep('add'), () => genOneStep('mul')] },
-  { id: 'twostep', stage: 2, name: 'Two-step', gen: () => genTwoStep(),
+  { id: 'twostep', stage: 2, name: 'Two-step', cases: ['axb', 'axmb', 'xdivb', 'xdivmb', 'bax', 'mbax', 'bxdiv', 'mbxdiv'], gen: cycled('twostep', genTwoStep),
     title: 'Stage 2: Two-step equations',
     intro: 'Now x has two things attached. Undo the + or − first, then the × or ÷. No new cards: the order is the new idea.',
     example: '3x + 4 = 19<br>Subtract 4 from both sides → 3x = 15<br>Divide both sides by 3 → x = 5',
     tutorial: [() => genTwoStep('axb'), () => genTwoStep('xdivmb')] },
-  { id: 'negfrac', stage: 3, name: 'Negatives & fractions', gen: () => genNegFrac(),
+  { id: 'negfrac', stage: 3, name: 'Negatives & fractions', cases: ['negx', 'aminusx', 'negxa', 'negnx', 'negdiv', 'frac'], gen: cycled('negfrac', genNegFrac),
     title: 'Stage 3: Negatives and fractions',
     intro: 'Two new cards. "Multiply both sides by −1" flips every sign, so −x becomes x. "Multiply by the reciprocal" flips a fraction over, and a fraction times its reciprocal is 1.',
     example: '−x = 5<br>Multiply both sides by −1 → x = −5<br><br>(2/3)x = 8<br>Multiply both sides by 3/2 → x = 12',
@@ -497,7 +534,7 @@ const MASTERY = { clean: 25, wrong: -10, weeklyDecay: -5, reviewFloor: 60 };
 
 const STORE_KEY = 'algebraCards.progress.v1';
 const blankSkill = () => ({ mastery: 0, everMastered: false, attempted: 0, solved: 0, wrongByCard: {},
-  parDiffTotal: 0, parCount: 0, secondsTotal: 0, movesTimed: 0, hints: 0, lastPracticed: null, decayWeeks: 0 });
+  parDiffTotal: 0, parCount: 0, secondsTotal: 0, movesTimed: 0, hints: 0, lastPracticed: null, decayWeeks: 0, casesSolved: [] });
 function loadProgress() {
   let p = null;
   try { p = JSON.parse(localStorage.getItem(STORE_KEY)); } catch (e) {}
@@ -513,6 +550,7 @@ function loadProgress() {
     for (const f of ['attempted', 'solved', 'parCount', 'secondsTotal', 'movesTimed', 'hints', 'decayWeeks']) k[f] = num(k[f], 0);
     k.parDiffTotal = num(k.parDiffTotal, 0, -Infinity);
     k.everMastered = k.everMastered === true;
+    k.casesSolved = Array.isArray(k.casesSolved) ? k.casesSolved.filter(c => (s.cases || []).includes(c)) : [];
     k.wrongByCard = isObj(k.wrongByCard) ? Object.fromEntries(Object.entries(k.wrongByCard).filter(([, v]) => Number.isFinite(v))) : {};
     k.lastPracticed = typeof k.lastPracticed === 'string' && Number.isFinite(Date.parse(k.lastPracticed)) ? k.lastPracticed : null;
     p.skills[s.id] = k;
@@ -551,7 +589,10 @@ function skillStatus(id) {
 }
 function changeMastery(id, delta) {
   const s = progress.skills[id];
-  s.mastery = Math.max(0, Math.min(100, s.mastery + delta));
+  let next = Math.max(0, Math.min(100, s.mastery + delta));
+  // Not mastered until every case of the stage has been solved once (a stage mastered before stays so).
+  if (delta > 0 && s.mastery < MASTERED && next >= MASTERED && casesLeft(id).length) next = MASTERED - 1;
+  s.mastery = next;
   if (s.mastery >= MASTERED) s.everMastered = true;
 }
 // 80 mastery on a stage unlocks the next stage's tutorial fight. Stages never lock again.
@@ -1117,6 +1158,7 @@ function startPhase() {
   // Act 3 generators return { ineq } (act3.js: Act 2's model plus a relation), Act 2 ones { eq } (act2.js's equation model), Act 1 ones { s }.
   cur = g.ineq ? ACT3.makeEquation(g.ineq, enemy) : g.eq ? ACT2.makeEquation(g.eq, enemy) : makeEquation(g.s, enemy);
   cur.state = g.ineq || g.eq || g.s; cur.step = 0; cur.wrong = 0; cur.moves = 0; cur.lastT = performance.now();
+  cur.case = g.case; cur.caseSkill = g.caseSkill; if (g.case) useCase(g.caseSkill, g.case);
   for (const id of cur.skills) progress.skills[id].attempted++;
   saveProgress();
   $('enemyBox').innerHTML = enemySvg(enemy);
@@ -1156,7 +1198,7 @@ const CARD_ICONS = {
   all:   { name: 'Every number works', svg: svgI('<path d="M12 12c-2-3-4-4.5-6-4.5a4.5 4.5 0 000 9c2 0 4-1.5 6-4.5s4-4.5 6-4.5a4.5 4.5 0 010 9c-2 0-4-1.5-6-4.5z"/>') },
 };
 // A trap card wears the icon of the move it imitates.
-const TRAP_ICON = { 'add across': 'comb', 'first term only': 'dist', 'no sign flip': null, 'unlike terms': 'comb', 'lost sign': 'div', 'drop bars': 'split' };
+const TRAP_ICON = { 'add across': 'comb', 'first term only': 'dist', 'first sign only': 'dist', 'no sign flip': null, 'unlike terms': 'comb', 'lost sign': 'div', 'drop bars': 'split' };
 function iconKey(c) {
   if (c.op === 'trap') {
     const k = TRAP_ICON[c.trap]; if (k) return k;
@@ -1348,6 +1390,7 @@ function equationSolved() {
   for (const id of cur.skills) {
     const sk = progress.skills[id];
     sk.solved++; sk.parDiffTotal += cur.moves - par; sk.parCount++;
+    if (id === cur.caseSkill && cur.case && !sk.casesSolved.includes(cur.case)) sk.casesSolved.push(cur.case);
     const d = clean ? Math.round(MASTERY.clean * difficulty.gain) : 0;
     if (d) changeMastery(id, d);
     deltas.push([id, d]);
@@ -1359,7 +1402,10 @@ function equationSolved() {
       cur.skills.some(id => progress.skills[id].mastery >= MASTERED)) newLevel = DIFFICULTIES[++progress.levelUnlocked];
   saveProgress(); renderSkills(deltas);
   const gains = deltas.filter(d => d[1]).map(d => `${SKILL[d[0]].name} +${d[1]}`).join(', ');
-  setMsg(`Solved! ${cur.answerText || 'x = ' + fracText(cur.answer)}${gains ? ' · ' + gains : ''}`, 'good');
+  // A stage held just under mastered says why: some kinds of problem haven't been solved yet.
+  const held = cur.skills.filter(id => progress.skills[id].mastery === MASTERED - 1 && casesLeft(id).length);
+  const heldNote = held.length ? ` · ${SKILL[held[0]].name}: ${casesLeft(held[0]).length} more kind${casesLeft(held[0]).length > 1 ? 's' : ''} of problem to solve before it's mastered` : '';
+  setMsg(`Solved! ${cur.answerText || 'x = ' + fracText(cur.answer)}${gains ? ' · ' + gains : ''}${heldNote}`, 'good');
   // A stage of this act gets its tutorial fight next; a stage of a later act opens that act on the title screen.
   const here = fresh.filter(id => actOf(id) === run.act), later = fresh.filter(id => actOf(id) > run.act);
   for (const id of here) run.nodes.splice(run.i + 1, 0, { type: 'tutorial', skill: id });
