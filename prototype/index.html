@@ -69,6 +69,12 @@
   @keyframes flip { 0% { transform: rotateX(0); } 50% { transform: rotateX(90deg); } 100% { transform: rotateX(0); } }
   .tok.spin { animation: spin calc(.9s * var(--k)) ease-in-out; }
   @keyframes spin { 0% { transform: rotateY(0); } 100% { transform: rotateY(360deg); } }
+  /* difficulty picker */
+  .diff { display:flex; flex-direction:column; gap:6px; }
+  .diff input[type=range] { width:100%; accent-color:var(--accent); height:32px; touch-action:pan-x; }
+  .diffLabels { display:flex; justify-content:space-between; font-size:14px; font-weight:bold; }
+  .diffLabels .lockd { color:var(--muted); font-weight:normal; }
+  .diffTag { font-size:11px; padding:1px 6px; border:1px solid var(--muted); border-radius:3px; }
   /* operations written under a term */
   .unote { position:absolute; transform:translateX(-50%); margin-top:.1em; font-size:.42em; color:#7bdff2; white-space:nowrap; pointer-events:none; z-index:2;
            display:flex; align-items:center; line-height:1.1; text-shadow:0 2px 0 #000;
@@ -178,9 +184,10 @@
     .key { font-size:11px; gap:10px; }
     .key .badge { font-size:12px; }
     #hand { gap:5px; flex-wrap:nowrap; min-height:0; padding-bottom:0; }
-    .card { width:calc((100vw - 16px - 15px) / 4); max-width:110px; height:clamp(112px, 19vh, 150px); font-size:clamp(16px, 5vw, 22px); padding:4px 3px; }
+    .card { width:calc((100vw - 16px - 5px * (var(--n, 4) - 1)) / var(--n, 4)); max-width:110px; height:clamp(112px, 19vh, 150px); font-size:clamp(16px, 5vw, 22px); padding:4px 3px; }
     .card .badge { font-size:12px; margin-bottom:3px; padding:0 6px; }
     .card small { font-size:clamp(9px, 2.7vw, 11px); margin-top:4px; }
+    #hand.many .card small { font-size:clamp(8px, 2.3vw, 11px); overflow-wrap:anywhere; }
     .card:hover { transform:none; }
     .panel { padding:14px; gap:10px; }
     .panel h1 { font-size:21px; } .panel p { font-size:14px; } .panel .example { font-size:15px; }
@@ -373,6 +380,54 @@ function genStacked(skills) {
 }
 
 // =====================================================================
+//  Difficulty
+// =====================================================================
+// Picked at the start of each run (like ascension levels). Easy is the original game. The same
+// stages get harder numbers, more cards in the hand, and bigger mastery gains. Act 2 generators can
+// read `difficulty` too: steps (extra steps), highlight ('on' | 'afterWrong' | 'off') are for them,
+// since Act 1's one- and two-step shapes have no room for extra steps.
+const DIFFICULTIES = [
+  { level: 0, name: 'Easy',   max: 12, neg: false, fracAnswers: false, hand: 4, gain: 1,    steps: 0, highlight: 'on',
+    desc: 'Whole numbers 1 to 12 with positive answers.' },
+  { level: 1, name: 'Normal', max: 20, neg: true,  fracAnswers: false, hand: 4, gain: 1.25, steps: 1, highlight: 'on',
+    desc: 'Numbers up to 20, negative numbers and answers. Mastery ×1.25.' },
+  { level: 2, name: 'Hard',   max: 50, neg: true,  fracAnswers: false, hand: 5, gain: 1.5,  steps: 2, highlight: 'afterWrong',
+    desc: 'Numbers up to 50 and 5 cards to choose from. Mastery ×1.5.' },
+  { level: 3, name: 'Expert', max: 50, neg: true,  fracAnswers: true,  hand: 6, gain: 2,    steps: 3, highlight: 'off',
+    desc: 'Answers can be fractions (x = −7/3) and 6 cards to choose from. Mastery ×2.' },
+];
+let difficulty = DIFFICULTIES[0];
+try { difficulty = DIFFICULTIES[+localStorage.getItem('algebraCards.difficulty')] || DIFFICULTIES[0]; } catch (e) {}
+
+// Re-rolls an Act 1 equation's numbers for the current difficulty, keeping its shape (which terms
+// exist, where x is, the coefficient), so the stage's concept stays the same. Easy leaves it as is.
+function applyDifficulty(s) {
+  const D = difficulty;
+  if (!D.level) return s;
+  const N = D.max, a = s.coef;
+  for (let tries = 0; tries < 300; tries++) {
+    const r = { ...s };
+    if (s.b.n !== 0) {
+      const b = D.neg ? nonZero(-N, N) : rand(1, N);
+      if (isInt(a) && Math.abs(a.n) > 1 && b % a.n === 0) continue;   // keep "undo + or − first" a real lesson
+      r.b = F(b);
+    }
+    if (D.fracAnswers) {
+      r.c = F(nonZero(-N, N));                                          // the answer falls out, often a fraction
+      const x = fMul(fAdd(r.c, F(-r.b.n, r.b.d)), F(a.d, a.n));
+      if (x.n === 0 || (isInt(x) && Math.random() < 0.6)) continue;
+    } else {
+      const k = Math.max(1, Math.floor(N / a.d));
+      const x = (D.neg ? nonZero(-k, k) : rand(1, k)) * a.d;          // x/q needs x to be a multiple of q
+      r.c = fAdd(fMul(a, F(x)), r.b);
+      if (!isInt(r.c) || Math.abs(r.c.n) > N || r.c.n === 0 || r.c.n === r.b.n) continue;
+    }
+    return r;
+  }
+  return s;
+}
+
+// =====================================================================
 //  Skills, stages and saved progress
 // =====================================================================
 const SKILLS = [
@@ -423,6 +478,7 @@ function loadProgress() {
   const ids = SKILLS.map(s => s.id);
   p.unlocked = Array.isArray(p.unlocked) ? p.unlocked.filter(id => ids.includes(id)) : [];
   if (!p.unlocked.includes('onestep')) p.unlocked.unshift('onestep');
+  p.levelUnlocked = Math.max(0, Math.min(3, Math.floor(+p.levelUnlocked) || 0));
   p.tutorialsDone = Array.isArray(p.tutorialsDone) ? p.tutorialsDone.filter(id => ids.includes(id)) : [];
   applyDecay(p);
   return p;
@@ -548,7 +604,7 @@ function makeHand(s, correct, size) {
   const size_ = f => Math.abs(f.n) * f.d;
   const useful = c => {
     const a = applyCard(s, c);
-    if (!isInt(a.b) || !isInt(a.c)) return false;
+    if (!isInt(a.b)) return false;
     if (stepsLeft(a) < stepsLeft(s)) return true;
     if (s.b.n !== 0) return false;   // with a + or − term left, × or ÷ first stays a teachable order mistake
     return size_(a.coef) < size_(s.coef) || (size_(a.coef) === size_(s.coef) && s.coef.n < 0 && a.coef.n > 0);
@@ -808,7 +864,29 @@ const ACT1_LAYOUT = ['fight', 'fight', 'fight', 'elite', 'fight', 'fight', 'figh
 const NODE_ICON = { tutorial: '★', fight: '⚔', elite: '☠', boss: '♛' };
 let hp = MAX_HP, run = null, fight = null, cur = null, hand = [], busy = true;
 
-function newRun() {
+// Starting a run first asks for a difficulty.
+function newRun(act) {
+  act = typeof act === 'number' ? act : 1;
+  busy = true;
+  const max = progress.levelUnlocked;
+  const labels = DIFFICULTIES.map(d => `<span class="${d.level > max ? 'lockd' : ''}">${d.level > max ? '🔒 ' : ''}${d.name}</span>`).join('');
+  showOverlay(`<h2>New run</h2><h1>Choose difficulty</h1>
+    <div class="diff"><input type="range" id="diffRange" min="0" max="3" step="1" value="${Math.min(difficulty.level, max)}">
+    <div class="diffLabels">${labels}</div></div>
+    <p id="diffDesc"></p>
+    <p class="help">Each level opens after a clean solve on a mastered stage at the level below.</p>`,
+    [['Start', () => { const lvl = Math.min(+$('diffRange').value, max); startRun(act, lvl); }], ['Back', showTitle, true]]);
+  const range = $('diffRange');
+  const show = () => {
+    if (+range.value > max) range.value = max;
+    const d = DIFFICULTIES[+range.value];
+    $('diffDesc').innerHTML = `<b>${d.name}:</b> ${d.desc}`;
+  };
+  range.addEventListener('input', show); show();
+}
+function startRun(act = 1, level = difficulty.level) {
+  difficulty = DIFFICULTIES[level] || DIFFICULTIES[0];
+  try { localStorage.setItem('algebraCards.difficulty', String(difficulty.level)); } catch (e) {}
   hp = MAX_HP;
   run = { nodes: ACT1_LAYOUT.map(type => ({ type })), i: 0 };
   // Any unlocked stage whose tutorial hasn't been played yet goes first.
@@ -831,18 +909,18 @@ function pickFightSkill() {
 function buildFight(node) {
   const list = unlockedSkills();
   if (node.type === 'tutorial') return { phases: SKILL[node.skill].tutorial, handSize: 3, rank: 'Tutorial' };
-  if (node.type === 'fight') { const id = pickFightSkill(); return { phases: [SKILL[id].gen], handSize: 4 }; }
+  if (node.type === 'fight') { const id = pickFightSkill(); return { phases: [SKILL[id].gen], handSize: difficulty.hand }; }
   if (node.type === 'elite') {
     const recent = list.slice(-2);
     const swapped = () => { const g = genOneStep(); g.s.xLeft = false; return g; };
     const phases = recent.length > 1 ? [() => genStacked(recent)] : [() => genOneStep(), swapped];   // one stage only: two equations back to back
-    return { phases, handSize: 4, enemy: 'stacker' };
+    return { phases, handSize: difficulty.hand, enemy: 'stacker' };
   }
   // Boss: one phase per unlocked stage (sides swap from phase 2), then everything at once.
   const phases = list.map((id, i) => () => { const g = SKILL[id].gen(); if (i > 0) g.s.xLeft = false; return g; });
   phases.push(() => { const g = list.length > 1 ? genStacked(list.slice(-2)) : genOneStep(); g.s.xLeft = Math.random() < 0.5; return g; });
   if (list.length === 1) phases.splice(1, 0, () => { const g = genOneStep(); g.s.xLeft = false; return g; });
-  return { phases, handSize: 4, enemy: 'scalekeeper' };
+  return { phases, handSize: difficulty.hand, enemy: 'scalekeeper' };
 }
 
 function startNode() {
@@ -855,6 +933,7 @@ function startNode() {
 
 function startPhase() {
   const g = fight.phases[fight.phase]();
+  if (g.s && fight.node.type !== 'tutorial') g.s = applyDifficulty(g.s);
   const enemy = fight.enemy || g.enemy;
   cur = makeEquation(g.s, enemy);
   cur.state = g.s; cur.step = 0; cur.wrong = 0; cur.moves = 0; cur.lastT = performance.now();
@@ -878,7 +957,7 @@ function renderFoe() {
 function dealHand() { hand = makeHand(cur.state, cur.path[cur.step].move, fight.handSize); renderHand(); }
 
 function renderHand() {
-  const el = $('hand'); el.innerHTML = '';
+  const el = $('hand'); el.innerHTML = ''; el.style.setProperty('--n', String(Math.max(4, hand.length))); el.classList.toggle('many', hand.length >= 6);
   hand.forEach((c, i) => {
     const d = document.createElement('div');
     d.className = 'card deal'; d.dataset.idx = i; d.style.animationDelay = `calc(${i * 70}ms * var(--k))`;
@@ -892,7 +971,7 @@ function renderHand() {
 
 function renderMap() {
   $('map').innerHTML = `<span class="lbl">Act 1 · The Ink Cellar</span>&nbsp;` + run.nodes.map((n, i) =>
-    `${i ? '<span class="link"></span>' : ''}<span class="node ${n.type} ${i < run.i ? 'done' : ''} ${i === run.i ? 'cur' : ''}" title="${n.type === 'tutorial' ? 'Tutorial: ' + SKILL[n.skill].name : n.type}">${NODE_ICON[n.type]}</span>`).join('');
+    `${i ? '<span class="link"></span>' : ''}<span class="node ${n.type} ${i < run.i ? 'done' : ''} ${i === run.i ? 'cur' : ''}" title="${n.type === 'tutorial' ? 'Tutorial: ' + SKILL[n.skill].name : n.type}">${NODE_ICON[n.type]}</span>`).join('') + `&nbsp;<span class="diffTag">${difficulty.name}</span>`;
 }
 
 function renderSkills(deltas = []) {
@@ -1015,15 +1094,20 @@ function equationSolved() {
   for (const id of cur.skills) {
     const sk = progress.skills[id];
     sk.solved++; sk.parDiffTotal += cur.moves - par; sk.parCount++;
-    const d = clean ? MASTERY.clean : 0;
+    const d = clean ? Math.round(MASTERY.clean * difficulty.gain) : 0;
     if (d) changeMastery(id, d);
     deltas.push([id, d]);
   }
   const fresh = checkUnlocks();
+  // A clean solve on a mastered stage opens the next difficulty.
+  let newLevel = null;
+  if (clean && difficulty.level === progress.levelUnlocked && progress.levelUnlocked < 3 &&
+      cur.skills.some(id => progress.skills[id].mastery >= MASTERED)) newLevel = DIFFICULTIES[++progress.levelUnlocked];
   saveProgress(); renderSkills(deltas);
   const gains = deltas.filter(d => d[1]).map(d => `${SKILL[d[0]].name} +${d[1]}`).join(', ');
   setMsg(`Solved! x = ${fracText(cur.answer)}${gains ? ' · ' + gains : ''}`, 'good');
   for (const id of fresh) run.nodes.splice(run.i + 1, 0, { type: 'tutorial', skill: id });
+  if (newLevel && !fresh.length) $('unlock').textContent = `${newLevel.name} difficulty unlocked! Pick it at the start of your next run.`;
   if (fresh.length) { renderMap(); $('unlock').textContent = `New stage unlocked: ${SKILL[fresh[0]].title.replace(/^Stage \d: /, '')}! Its tutorial fight is next.`; }
 
   fight.phase++;

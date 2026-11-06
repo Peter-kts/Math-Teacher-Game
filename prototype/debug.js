@@ -33,7 +33,7 @@
   function jump(act, node) {
     unlockAll();
     resetScreen();
-    newRun(act);
+    (typeof startRun === "function" ? startRun : newRun)(act);
     resetScreen();
     run.nodes = layout().map(type => ({ type }));
     if (node.type === 'tutorial') { run.nodes.unshift(node); run.i = 0; }
@@ -60,6 +60,7 @@
       <p>Jumping unlocks every stage and starts a new run at that spot. Auto-solve counts as a clean solve, so it also raises mastery.</p>
       ${rows}</div>`, [
       ['Auto-solve this fight', autoSolve],
+      ['Unlock all difficulties', () => { progress.levelUnlocked = 3; saveProgress(); hideOverlay(); }, true],
       ['Refill HP', () => { hp = MAX_HP; updateHud(); hideOverlay(); }, true],
       ['Close', hideOverlay, true],
     ]);
