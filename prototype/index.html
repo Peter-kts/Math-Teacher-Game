@@ -141,6 +141,14 @@
   /* overlays: title, tutorial intro, run end, stats */
   #over { position:fixed; inset:0; background:#000d; display:none; align-items:flex-start; justify-content:center; z-index:20; padding:16px; overflow-y:auto; touch-action:pan-y; }
   #over.show { display:flex; }
+  #why { position:fixed; inset:0; background:#000b; display:none; align-items:flex-start; justify-content:center; z-index:25; padding:16px; overflow-y:auto; }
+  #why.show { display:flex; }
+  #why .panel { margin:auto; max-width:520px; }
+  #why h2 { margin:0 0 6px; color:var(--accent, #ffd166); font-size:20px; }
+  #whyBody p { margin:8px 0; line-height:1.45; }
+  .whyEq { display:inline-flex; align-items:center; gap:.3em; font-weight:bold; white-space:nowrap; background:#0003; padding:1px 8px; border-radius:4px; }
+  .whyEq .frac { font-size:.85em; }
+  .whyBtn { margin-left:6px; font:inherit; font-size:.85em; padding:1px 10px; border:2px solid currentColor; background:transparent; color:inherit; cursor:pointer; border-radius:4px; }
   .panel { background:var(--panel); border:3px solid #000; max-width:640px; width:100%; margin:auto; padding:20px 22px; display:flex; flex-direction:column; gap:12px; }
   .panel h1 { margin:0; font-size:26px; color:var(--accent); }
   .panel h2 { margin:0; font-size:18px; color:var(--muted); font-weight:normal; }
@@ -259,6 +267,7 @@
   <div id="hand"></div>
 </div>
 <div id="over"><div class="panel" id="overPanel"></div></div>
+<div id="why"><div class="panel"><h2>Why that didn't work</h2><div id="whyBody"></div><div class="buttons"><button id="whyClose">Got it</button></div></div></div>
 <script>
 // =====================================================================
 //  Small helpers
@@ -671,6 +680,76 @@ function appliedText(s, card) {
 }
 
 // =====================================================================
+//  "Why?" explanations for wrong moves
+// =====================================================================
+// A wrong move shows a short message plus a "Why?" button that opens a longer explanation.
+// Explainers are tried newest first; each gets (ctx) = { state, card, correct } and returns
+// HTML, or null to pass. A card can also carry its own: card.why (a string or a function of ctx).
+// Act 2 and later register theirs with registerWhy(fn).
+const WHY_EXPLAINERS = [];
+function registerWhy(fn) { WHY_EXPLAINERS.unshift(fn); }
+function explainWhy(ctx) {
+  const own = ctx.card && ctx.card.why;
+  if (own) return typeof own === 'function' ? own(ctx) : own;
+  for (const fn of WHY_EXPLAINERS) { const h = fn(ctx); if (h) return h; }
+  return null;
+}
+function eqHtml(s) {
+  const toks = tokensFor(s), parts = [];
+  toks.forEach((t, i) => { const h = t.html || t.text; if (t.role === 'x' && toks[i - 1] && toks[i - 1].role === 'coef') parts[parts.length - 1] += h; else parts.push(h); });
+  return '<span class="whyEq">' + parts.map(h => `<span>${h}</span>`).join('') + '</span>';
+}
+
+// Act 1: coef·x + b = c
+function explainAct1({ state: s, card, correct }) {
+  if (!s || !s.coef || !card) return null;
+  const P = t => `<p>${t}</p>`, after = applyCard(s, card);
+  const result = P(`${cardText(card)} turns it into ${eqHtml(after)}`);
+  const { n, d } = s.coef, b = s.b;
+  const descCoef = f => f.d === 1 ? (f.n === -1 ? `has a minus sign in front (it's ${TIMES} ${MINUS}1)` : `is multiplied by ${numText(f.n)}`)
+    : Math.abs(f.n) === 1 ? `is divided by ${f.d}${f.n < 0 ? ' and has a minus sign' : ''}` : `is multiplied by ${fracText(f)}`;
+  const coefDesc = descCoef(s.coef);
+  const additive = card.op === '+' || card.op === '-';
+  const amount = c => F(c.op === '+' ? c.n : -c.n);
+  if (b.n !== 0) {                                   // a number is still added to the x term
+    const bt = `${b.n > 0 ? '+' : MINUS} ${fracText(fAbs(b))}`;
+    const fix = `${correct.op === '+' ? 'add' : 'subtract'} ${correct.n}, because ${fracText(b)} ${correct.op === '+' ? '+' : MINUS} ${correct.n} = 0`;
+    if (!additive && !fIs(s.coef, 1) && sameCard(card, correctMove({ ...s, b: F(0) })))
+      return P(`In ${eqHtml(s)} two things happen to x: first it ${coefDesc}, then ${bt} is added on.`) +
+        P(`To get x alone you undo them in reverse order, like taking off your shoes before your socks. The last thing done was ${bt}, so that comes off first.`) +
+        result + P(`It ${card.op === '/' ? 'divided' : 'multiplied'} the ${fracText(fAbs(b))} as well, so the numbers got messier and x still isn't alone.`) +
+        P(`<b>Instead:</b> ${fix}. Then ${cardText(card).replace(/^./, ch => ch.toLowerCase())}.`);
+    if (additive && amount(card).n === b.n * 1 && amount(card).d === b.d)
+      return P(`x has ${bt} next to it. ${cardText(card)} does the same thing again instead of undoing it.`) + result +
+        P(`<b>The idea:</b> to cancel a number, use its opposite. So ${fix}.`);
+    if (additive)
+      return P(`x has ${bt} next to it. To cancel it, the number you add or take away has to match it exactly.`) + result +
+        P(`The number next to x is now ${fracText(after.b)}, not 0, so x still isn't alone.`) + P(`<b>Instead:</b> ${fix}.`);
+    return P(`x has ${bt} added to it. Multiplying or dividing doesn't remove an added number, it only makes it bigger or smaller.`) + result +
+      P(`<b>Instead:</b> undo adding with subtracting (and subtracting with adding). Here, ${fix}.`);
+  }
+  // Only a coefficient is left: x ${coefDesc}
+  const idea = ({ '/': `divide by ${numText(correct.n)}, because ${numText(correct.n)} ${DIV} ${paren(F(correct.n))} = 1`,
+    '*': `multiply by ${numText(correct.n)}, because dividing by ${Math.abs(correct.n)} and then multiplying by ${Math.abs(correct.n)} cancel out`,
+    neg: `multiply by ${MINUS}1, because ${MINUS}1 ${TIMES} ${MINUS}1 = 1`,
+    frac: `multiply by the flipped fraction ${fracText(F(correct.n, correct.d))}, because ${fracText(s.coef)} ${TIMES} ${paren(F(correct.n, correct.d))} = 1` })[correct.op];
+  if (additive)
+    return P(`Here x ${coefDesc}. Adding or subtracting can't undo that: it only changes the number on the other side.`) + result +
+      P(`<b>The idea:</b> undo multiplying with dividing, and dividing with multiplying. Here, ${idea}.`);
+  return P(`Here x ${coefDesc}. To get x alone, that has to be undone so it's just 1x.`) + result +
+    P(fIs(after.coef, 1) ? `x is alone, but this skipped a step.` : `Now x ${descCoef(after.coef)}, so it still isn't alone.`) + P(`<b>Instead:</b> ${idea}.`);
+}
+registerWhy(explainAct1);
+
+function showWhy(html) {
+  const box = $('why'); $('whyBody').innerHTML = html; box.classList.add('show');
+}
+function hideWhy() { $('why').classList.remove('show'); }
+$('whyClose').addEventListener('click', hideWhy);
+$('why').addEventListener('click', e => { if (e.target.id === 'why') hideWhy(); });
+window.addEventListener('keydown', e => { if (e.key === 'Escape') hideWhy(); });
+
+// =====================================================================
 //  Operation animations
 // =====================================================================
 // Each operation plays its own animation on the equation when it's the correct move.
@@ -989,7 +1068,11 @@ function updateHud() {
   $('hpfill').style.width = (hp / MAX_HP * 100) + '%';
   $('hptext').textContent = `${hp} / ${MAX_HP}`;
 }
-function setMsg(t, cls = '') { const m = $('msg'); m.textContent = t; m.className = cls; }
+function setMsg(t, cls = '', why = null) {
+  const m = $('msg'); m.textContent = t; m.className = cls;
+  if (why) { const b = document.createElement('button'); b.className = 'whyBtn'; b.textContent = 'Why?';
+    b.addEventListener('click', e => { e.stopPropagation(); showWhy(why); }); m.append(' ', b); }
+}
 
 // ---------- Drag & drop (pointer events: mouse + touch) ----------
 // Two kinds of cards:
@@ -1070,11 +1153,11 @@ function playCard(card) {
   const why = s.b.n !== 0 && !fIs(s.coef, 1) && sameCard(card, undo)
     ? `That's allowed, but undo the + or ${MINUS} part first, then the ${TIMES} or ${DIV}.`
     : `That's allowed, but x still isn't alone: ${appliedText(s, card)}`;
-  takeDamage(why);
+  takeDamage(why, explainWhy({ state: s, card, correct: step.move }));
 }
 
 async function doStep(card) {
-  busy = true; setMsg('');
+  busy = true; setMsg(''); hideWhy();
   const s = cur.state, ns = applyCard(s, card);
   const additive = card.op === '+' || card.op === '-';
   const note = cur.path.length > 1 && cur.step === 0 && additive ? ` (undo + and ${MINUS} first, then ${TIMES} and ${DIV})` : '';
@@ -1124,9 +1207,10 @@ function equationSolved() {
   waitForNext(startNode);
 }
 
-function takeDamage(why) {
+// why: the short reason shown under the equation. more: HTML for the "Why?" button (optional).
+function takeDamage(why, more = null) {
   hp = Math.max(0, hp - DAMAGE); updateHud();
-  setMsg(`-${DAMAGE} HP. ${why}`, 'bad');
+  setMsg(`-${DAMAGE} HP. ${why}`, 'bad', more);
   const a = $('arena'); a.classList.remove('flash', 'shake'); void a.offsetWidth; a.classList.add('flash', 'shake');
   if (hp <= 0) { busy = true; setTimeout(runLost, 600); }
 }
@@ -1172,7 +1256,7 @@ window.addEventListener('pointerdown', e => { tapStart = { x: e.clientX, y: e.cl
 window.addEventListener('pointerup', e => {
   const t = tapStart; tapStart = null;
   if (!t || t.id !== e.pointerId || Math.hypot(e.clientX - t.x, e.clientY - t.y) > 12) return;
-  if (e.target.closest('.speed, button, #over, #dbgBtn')) return;
+  if (e.target.closest('.speed, button, #over, #why, #dbgBtn')) return;
   // A short grace period stops a burst of skip taps from also skipping the result screen.
   if (waiting) { if (performance.now() - waitingSince > 500) goNext(); }
   else if (animating) skipStep();
