@@ -19,13 +19,23 @@
   #enemy { width:96px; height:96px; image-rendering:pixelated; transition: transform .3s, opacity .5s; }
   #enemy.dead { transform: scale(0) rotate(90deg); opacity:0; }
   #equation { display:flex; align-items:center; gap:14px; font-size:60px; font-weight:bold; flex-wrap:wrap; justify-content:center; }
-  .tok { padding:20px 26px; border:4px dashed transparent; border-radius:10px; min-width:100px; min-height:110px; display:flex; align-items:center; justify-content:center; text-align:center; transition: background .15s, border-color .15s; }
+  .tok { padding:20px 26px; border:4px dashed transparent; border-radius:10px; min-width:100px; min-height:110px; display:flex; align-items:center; justify-content:center; text-align:center; max-width:320px; transition: background .15s, border-color .15s, max-width .45s, min-width .45s, padding .45s, opacity .45s, transform .45s, color .3s; }
   #arena.targeting .tok:not(.eq) { border-color: var(--muted); background:#ffffff0d; }
   #arena.anywhere { outline:4px dashed var(--muted); outline-offset:-10px; }
   #arena.anywhere.hover { outline-color: var(--accent); background:#2f2b4a; }
   .tok.hover { border-color: var(--accent); background:#ffd16633; }
   .tok.eq { color:var(--muted); min-width:40px; padding:20px 4px; }
   .tok.var { color:var(--accent); }
+  /* operation animation states */
+  .tok.op-new { color:#7bdff2; }
+  .tok.enter { animation: enter .55s cubic-bezier(.2,1.6,.4,1); }
+  @keyframes enter { from { transform: translateY(-60px) scale(.2); opacity:0; } }
+  .tok.cancel { color:var(--bad); text-decoration: line-through; transform: scale(1.12); }
+  .tok.gone { opacity:0; max-width:0; min-width:0; padding-left:0; padding-right:0; transform: scale(.3); overflow:hidden; border-width:0; }
+  .tok.merge { color:var(--good); transform: scale(1.1); }
+  .tok.pop { animation: pop .5s; color:var(--good); }
+  @keyframes pop { 0% { transform: scale(.4); } 60% { transform: scale(1.3); } 100% { transform: scale(1); } }
+  #equation.collapse { gap:0; }
   #step { font-size:22px; color:var(--muted); min-height:28px; text-align:center; }
   #msg { font-size:18px; min-height:24px; text-align:center; }
   #msg.bad { color:var(--bad); } #msg.good { color:var(--good); }
@@ -260,18 +270,70 @@ function takeDamage(why) {
   if (hp <= 0) { busy = true; setTimeout(() => { $('overText').textContent = `Out of HP. You beat ${score} equation${score === 1 ? '' : 's'}.`; $('over').style.display = 'flex'; }, 500); }
 }
 
-function solve(card) {
-  busy = true;
-  $('step').textContent = appliedText(card);
-  const xOnLeft = eq.tokens.findIndex(t => t.kind === 'var') < eq.tokens.findIndex(t => t.kind === 'eq');
-  setTimeout(() => {
-    renderEquation(xOnLeft ? [{text:'x', kind:'var'}, {text:'=', kind:'eq'}, {text:String(eq.answer), kind:'term'}]
-                           : [{text:String(eq.answer), kind:'term'}, {text:'=', kind:'eq'}, {text:'x', kind:'var'}], false);
-    setMsg(`Solved! x = ${eq.answer}`, 'good');
-    $('enemy').classList.add('dead');
-    score++; updateHud();
-    setTimeout(nextEnemy, 1300);
-  }, 900);
+// ---------- Operation animations ----------
+// Each operation plays its own animation on the equation when it's the correct move.
+// To add a new operation (Distribute, Combine like terms, Factor, ...), write an async
+// function (card) => {...} that edits the #equation DOM step by step, and register it here
+// under the card's op. Use the helpers below (chip, mark, removeTok, caption, sleep).
+const OPERATION_ANIMATIONS = {
+  '+': cancelAndCombine,
+  '-': cancelAndCombine,
+  '*': cancelAndCombine,
+  '/': cancelAndCombine,
+};
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const caption = t => { $('step').textContent = t; };
+function chip(text, cls = 'term op-new') {   // a new token that drops in
+  const s = document.createElement('div'); s.className = 'tok ' + cls + ' enter'; s.textContent = text; return s;
+}
+const mark = (els, cls) => els.forEach(e => e.classList.add(cls));
+async function removeTok(els) { mark(els, 'gone'); await sleep(460); els.forEach(e => e.remove()); }
+
+// Level 1: do the same thing to both sides, the pair next to x cancels, the other side simplifies.
+//   x + 3 = 7  ->  x + 3 − 3 = 7 − 3  ->  x = 7 − 3  ->  x = 4
+async function cancelAndCombine(card) {
+  const el = $('equation'), sym = cardLabel(card);
+  const toks = [...el.children];
+  const idx = pred => eq.tokens.findIndex(pred);
+  const eqEl = toks[idx(t => t.kind === 'eq')];
+  const target = toks[idx(t => t.target)];
+  const other = toks[idx(t => t.kind === 'term' && !t.target)];
+  const xEl = toks[idx(t => t.kind === 'var')];
+  const xOnLeft = idx(t => t.kind === 'var') < idx(t => t.kind === 'eq');
+  const additive = card.op === '+' || card.op === '-';
+
+  // 1. Apply the card to both sides.
+  caption(cardText(card));
+  const left = chip(sym), right = chip(sym);
+  el.insertBefore(left, eqEl); el.appendChild(right);
+  await sleep(1000);
+
+  // 2. The two operations next to x undo each other.
+  const xChip = xOnLeft ? left : right, otherChip = xOnLeft ? right : left;
+  caption(`${target.textContent.replace(/\s/g, '')} and ${sym} cancel out (they make ${additive ? 0 : 1})`);
+  mark([target, xChip], 'cancel');
+  await sleep(1000);
+  await removeTok([target, xChip]);
+  xEl.textContent = 'x';           // "+ x" becomes plain "x" once the front number is gone
+
+  // 3. The other side simplifies to the answer.
+  caption(`${other.textContent} ${sym} = ${eq.answer}`);
+  mark([other, otherChip], 'merge');
+  await sleep(800);
+  await removeTok([otherChip]);
+  other.classList.remove('merge'); other.textContent = String(eq.answer); other.classList.add('pop');
+  await sleep(600);
+}
+
+async function solve(card) {
+  busy = true; setMsg('');
+  const anim = OPERATION_ANIMATIONS[card.op];
+  if (anim) await anim(card);
+  setMsg(`Solved! x = ${eq.answer}`, 'good');
+  $('enemy').classList.add('dead');
+  score++; updateHud();
+  setTimeout(nextEnemy, 1300);
 }
 
 $('restart').addEventListener('click', start);
