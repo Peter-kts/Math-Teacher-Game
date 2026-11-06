@@ -2,30 +2,60 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Algebra Cards</title>
 <style>
-  :root { --k:1; --bg:#1d1b2a; --panel:#2a2740; --ink:#f1ecff; --muted:#a59fc4; --accent:#ffd166; --bad:#ef476f; --good:#06d6a0; --card:#f7f1e3; --cardInk:#2a2740; }
+  :root { --k:1; --bg:#1d1b2a; --panel:#2a2740; --ink:#f1ecff; --muted:#a59fc4; --accent:#ffd166; --bad:#ef476f; --good:#06d6a0; --card:#f7f1e3; --cardInk:#2a2740; --eqSize:56px; }
   * { box-sizing: border-box; }
   html, body { margin:0; height:100%; }
   body { background:var(--bg); color:var(--ink); font-family: "Courier New", ui-monospace, monospace; user-select:none; -webkit-user-select:none; overflow:hidden; touch-action:none; }
-  #app { max-width:900px; margin:0 auto; height:100%; display:flex; flex-direction:column; padding:16px; gap:12px; }
+  #app { max-width:960px; margin:0 auto; height:100%; display:flex; flex-direction:column; padding:12px 16px; gap:8px; }
   header { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
   .hpwrap { display:flex; align-items:center; gap:10px; }
-  .hpbar { width:220px; height:20px; background:#000a; border:2px solid var(--ink); position:relative; }
+  .hpbar { width:200px; height:20px; background:#000a; border:2px solid var(--ink); position:relative; }
   .hpfill { height:100%; background:var(--bad); transition:width .3s; }
   .hptext { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:bold; }
-  #arena { flex:1; background:var(--panel); border:3px solid #000; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px; position:relative; min-height:260px; }
-  #enemy { width:96px; height:96px; image-rendering:pixelated; transition: transform calc(.3s * var(--k)), opacity calc(.5s * var(--k)); }
-  #enemy.dead { transform: scale(0) rotate(90deg); opacity:0; }
-  #equation { display:flex; align-items:center; gap:6px; font-size:60px; font-weight:bold; flex-wrap:wrap; justify-content:center; }
-  .tok { padding:20px 16px; border:4px dashed transparent; border-radius:10px; min-width:80px; white-space:pre; min-height:110px; display:flex; align-items:center; justify-content:center; text-align:center; max-width:320px; transition: background .15s, border-color .15s, max-width calc(.45s * var(--k)), min-width calc(.45s * var(--k)), padding calc(.45s * var(--k)), opacity calc(.45s * var(--k)), transform calc(.45s * var(--k)), color calc(.3s * var(--k)); }
+  .topbtn { font-size:14px; padding:4px 10px; }
+
+  /* run map strip and skill meters */
+  #map { display:flex; align-items:center; justify-content:center; gap:4px; flex-wrap:wrap; font-size:13px; color:var(--muted); }
+  #map .node { width:28px; height:28px; display:flex; align-items:center; justify-content:center; border:2px solid #000; background:var(--panel); border-radius:6px; font-size:15px; }
+  #map .node.done { opacity:.35; }
+  #map .node.cur { background:var(--accent); color:#000; transform:scale(1.15); }
+  #map .node.tutorial { border-color:var(--good); }
+  #map .link { width:8px; height:2px; background:var(--muted); opacity:.5; }
+  #skills { display:flex; justify-content:center; gap:14px; flex-wrap:wrap; font-size:12px; }
+  .skill { display:flex; align-items:center; gap:6px; position:relative; }
+  .skill.locked { opacity:.4; }
+  .meter { width:90px; height:10px; background:#000a; border:1px solid var(--muted); position:relative; }
+  .meter .fill { height:100%; background:var(--good); transition: width .6s; }
+  .meter .goal { position:absolute; left:80%; top:-3px; bottom:-3px; width:2px; background:var(--accent); }
+  .skill .tag { font-size:11px; padding:0 4px; border-radius:3px; }
+  .tag.review { background:var(--bad); color:#000; } .tag.mastered { background:var(--good); color:#000; }
+  .delta { position:absolute; right:-6px; top:-14px; font-weight:bold; animation: floatup 1.8s forwards; pointer-events:none; }
+  .delta.up { color:var(--good); } .delta.down { color:var(--bad); }
+  @keyframes floatup { 0% { opacity:0; transform:translateY(6px); } 15% { opacity:1; } 100% { opacity:0; transform:translateY(-16px); } }
+
+  #arena { flex:1; background:var(--panel); border:3px solid #000; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; position:relative; min-height:250px; overflow:hidden; }
+  #foe { font-size:14px; color:var(--muted); text-align:center; min-height:18px; }
+  #foe b { color:var(--ink); }
+  #foe .rank { padding:0 5px; border:1px solid var(--muted); border-radius:3px; margin-left:4px; font-size:12px; }
+  #foe .pips { margin-left:8px; letter-spacing:2px; }
+  #enemyBox { transition: transform calc(.3s * var(--k)), opacity calc(.5s * var(--k)); line-height:0; }
+  #enemyBox svg { image-rendering:pixelated; }
+  #enemyBox.dead { transform: scale(0) rotate(90deg); opacity:0; }
+  #enemyBox.hit { animation: hit calc(.5s * var(--k)); }
+  @keyframes hit { 0%,100% { transform:none; filter:none; } 30% { transform: translateX(-8px) scale(.92); filter: brightness(3); } 60% { transform: translateX(6px); } }
+  #equation { display:flex; align-items:center; gap:4px; font-size:var(--eqSize); font-weight:bold; flex-wrap:wrap; justify-content:center; perspective:600px; }
+  .tok { padding:14px 12px; border:4px dashed transparent; border-radius:10px; min-width:64px; white-space:pre; min-height:96px; display:flex; align-items:center; justify-content:center; text-align:center; max-width:320px; transition: background .15s, border-color .15s, max-width calc(.45s * var(--k)), min-width calc(.45s * var(--k)), padding calc(.45s * var(--k)), opacity calc(.45s * var(--k)), transform calc(.45s * var(--k)), color calc(.3s * var(--k)); }
   #arena.targeting .tok:not(.eq) { border-color: var(--muted); background:#ffffff0d; }
   #arena.anywhere { outline:4px dashed var(--muted); outline-offset:-10px; }
   #arena.anywhere.hover { outline-color: var(--accent); background:#2f2b4a; }
   .tok.hover { border-color: var(--accent); background:#ffd16633; }
-  .tok.eq { color:var(--muted); min-width:0; padding:20px 10px; }
+  .tok.eq { color:var(--muted); min-width:0; padding:14px 8px; }
   .tok.var { color:var(--accent); }
+  .frac { display:inline-flex; flex-direction:column; align-items:center; font-size:.62em; line-height:1.05; vertical-align:middle; margin:0 .08em; }
+  .frac > span:last-child { border-top:.09em solid currentColor; padding-top:.05em; }
   /* operation animation states */
   .tok.op-new { color:#7bdff2; }
   .tok.enter { animation: enter calc(.55s * var(--k)) cubic-bezier(.2,1.6,.4,1); }
@@ -35,165 +65,711 @@
   .tok.merge { color:var(--good); transform: scale(1.1); }
   .tok.pop { animation: pop calc(.5s * var(--k)); color:var(--good); }
   @keyframes pop { 0% { transform: scale(.4); } 60% { transform: scale(1.3); } 100% { transform: scale(1); } }
-  #equation.collapse { gap:0; }
-  #step { font-size:22px; color:var(--muted); min-height:28px; text-align:center; }
-  #msg { font-size:18px; min-height:24px; text-align:center; }
+  .tok.flip { animation: flip calc(.44s * var(--k)) ease-in-out; }
+  @keyframes flip { 0% { transform: rotateX(0); } 50% { transform: rotateX(90deg); } 100% { transform: rotateX(0); } }
+  .tok.spin { animation: spin calc(.9s * var(--k)) ease-in-out; }
+  @keyframes spin { 0% { transform: rotateY(0); } 100% { transform: rotateY(360deg); } }
+  #step { font-size:20px; color:var(--muted); min-height:26px; text-align:center; padding:0 10px; }
+  #msg { font-size:17px; min-height:22px; text-align:center; padding:0 10px; }
   #msg.bad { color:var(--bad); } #msg.good { color:var(--good); }
-  #hand { display:flex; justify-content:center; gap:12px; min-height:130px; flex-wrap:wrap; padding-bottom:8px; }
-  .card { width:132px; height:160px; padding:8px; text-align:center; background:var(--card); color:var(--cardInk); border:3px solid #000; border-radius:8px; display:flex; flex-direction:column; align-items:center; justify-content:center; font-size:30px; font-weight:bold; cursor:grab; box-shadow: 0 4px 0 #000; touch-action:none; }
-  .card .badge { font-size:18px; font-weight:bold; margin-bottom:8px; padding:0 10px; line-height:1.4; border-radius:4px; border:2px solid #000; }
+  #unlock { font-size:17px; color:var(--accent); min-height:0; text-align:center; font-weight:bold; }
+  #hand { display:flex; justify-content:center; gap:12px; min-height:150px; flex-wrap:wrap; padding-bottom:6px; }
+  .card { width:132px; height:150px; padding:8px; text-align:center; background:var(--card); color:var(--cardInk); border:3px solid #000; border-radius:8px; display:flex; flex-direction:column; align-items:center; justify-content:center; font-size:28px; font-weight:bold; cursor:grab; box-shadow: 0 4px 0 #000; touch-action:none; }
+  .card .badge { font-size:18px; font-weight:bold; margin-bottom:6px; padding:0 10px; line-height:1.4; border-radius:4px; border:2px solid #000; }
   .key { display:flex; justify-content:center; align-items:center; gap:18px; flex-wrap:wrap; font-size:13px; color:var(--muted); }
   .key .badge { font-size:15px; font-weight:bold; padding:0 8px; border-radius:4px; border:2px solid #000; margin-right:4px; }
   .badge.both { background:#cfe8ff; color:#1d3b5c; }
   .badge.part { background:#ffd166; color:#5c3b00; }
-  .card small { font-size:14px; font-weight:bold; margin-top:10px; color:#4a4470; line-height:1.25; }
+  .card small { font-size:13px; font-weight:bold; margin-top:8px; color:#4a4470; line-height:1.25; }
   .card:hover { transform: translateY(-6px); }
   .card.dragging { position:fixed; z-index:10; cursor:grabbing; transform: rotate(-4deg) scale(1.08); pointer-events:none; }
   .card.placeholder { visibility:hidden; }
   .speed { display:flex; align-items:center; gap:6px; font-size:14px; color:var(--muted); }
   .speed button { font-size:14px; padding:4px 10px; background:var(--panel); color:var(--ink); border:2px solid #000; }
   .speed button.on { background:var(--accent); color:#000; }
-  #next { position:absolute; bottom:14px; left:0; right:0; text-align:center; color:var(--muted); font-size:14px; display:none; }
+  #next { position:absolute; bottom:10px; left:0; right:0; text-align:center; color:var(--muted); font-size:14px; display:none; }
   #next.show { display:block; animation: blink 1.2s infinite; }
   @keyframes blink { 50% { opacity:.4; } }
   .shake { animation: shake .35s; }
   @keyframes shake { 0%,100%{transform:translateX(0)} 20%{transform:translateX(-10px)} 40%{transform:translateX(10px)} 60%{transform:translateX(-6px)} 80%{transform:translateX(6px)} }
   .flash { animation: flash .35s; }
   @keyframes flash { 0%{box-shadow: inset 0 0 0 999px #ef476f66} 100%{box-shadow: inset 0 0 0 999px transparent} }
-  #over { position:absolute; inset:0; background:#000c; display:none; flex-direction:column; align-items:center; justify-content:center; gap:16px; font-size:28px; }
-  button { font-family:inherit; font-size:18px; padding:10px 18px; background:var(--accent); border:3px solid #000; cursor:pointer; font-weight:bold; }
+  button { font-family:inherit; font-size:18px; padding:10px 18px; background:var(--accent); border:3px solid #000; cursor:pointer; font-weight:bold; color:#000; }
+  button.ghost { background:var(--panel); color:var(--ink); }
   .help { color:var(--muted); font-size:13px; text-align:center; }
+
+  /* overlays: title, tutorial intro, run end, stats */
+  #over { position:fixed; inset:0; background:#000d; display:none; align-items:flex-start; justify-content:center; z-index:20; padding:16px; overflow-y:auto; touch-action:pan-y; }
+  #over.show { display:flex; }
+  .panel { background:var(--panel); border:3px solid #000; max-width:640px; width:100%; margin:auto; padding:20px 22px; display:flex; flex-direction:column; gap:12px; }
+  .panel h1 { margin:0; font-size:26px; color:var(--accent); }
+  .panel h2 { margin:0; font-size:18px; color:var(--muted); font-weight:normal; }
+  .panel p { margin:0; line-height:1.45; font-size:16px; }
+  .panel .example { background:#0004; padding:10px 12px; font-size:18px; line-height:1.6; border-left:4px solid var(--accent); }
+  .panel .buttons { display:flex; gap:10px; flex-wrap:wrap; margin-top:6px; }
+  .statrow { border-top:2px solid #0006; padding-top:10px; display:flex; flex-direction:column; gap:6px; }
+  .statrow .head { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .statrow .meter { width:160px; height:14px; }
+  .statrow dl { display:grid; grid-template-columns: max-content 1fr; gap:2px 14px; margin:0; font-size:14px; }
+  .statrow dt { color:var(--muted); } .statrow dd { margin:0; }
+
+  /* ---------- phones ---------- */
+  .short { display:none; }
+  button, .card, .speed button { touch-action:none; }
+  @supports (height: 100dvh) { #app { height:100dvh; } }
+
+  /* Portrait phones and narrow windows */
+  @media (max-width: 640px) {
+    :root { --eqSize: clamp(26px, min(10vw, 5.5vh), 48px); }
+    #app { padding:6px 8px calc(6px + env(safe-area-inset-bottom)); gap:5px; }
+    header { gap:6px; flex-wrap:nowrap; }
+    .hpwrap { gap:6px; flex:1; min-width:0; font-size:13px; }
+    .hpbar { width:auto; flex:1; min-width:60px; }
+    .speed { gap:3px; }
+    .speed button, .topbtn { font-size:13px; padding:6px 7px; min-height:36px; }
+    .long, .lbl, .help { display:none; }
+    .short { display:inline; }
+    #map { gap:2px; }
+    #map .node { width:19px; height:19px; font-size:10px; border-width:1px; border-radius:4px; }
+    #map .node.cur { transform:scale(1.2); }
+    #map .link { width:2px; }
+    #skills { gap:2px 10px; font-size:10px; }
+    #skills .meter { width:40px; }
+    #arena { min-height:0; gap:4px; }
+    #foe { font-size:12px; }
+    #enemyBox svg { width:52px; height:52px; }
+    .tok { min-height:calc(var(--eqSize) * 1.7); min-width:calc(var(--eqSize) * 1.1); padding:6px 5px; border-width:3px; }
+    .tok.eq { padding:6px 3px; }
+    #step, #msg, #unlock { font-size:13px; }
+    .key { font-size:11px; gap:10px; }
+    .key .badge { font-size:12px; }
+    #hand { gap:5px; flex-wrap:nowrap; min-height:0; padding-bottom:0; }
+    .card { width:calc((100vw - 16px - 15px) / 4); max-width:110px; height:clamp(112px, 19vh, 150px); font-size:clamp(16px, 5vw, 22px); padding:4px 3px; }
+    .card .badge { font-size:12px; margin-bottom:3px; padding:0 6px; }
+    .card small { font-size:clamp(9px, 2.7vw, 11px); margin-top:4px; }
+    .card:hover { transform:none; }
+    .panel { padding:14px; gap:10px; }
+    .panel h1 { font-size:21px; } .panel p { font-size:14px; } .panel .example { font-size:15px; }
+    .statrow .meter { width:90px; }
+    .statrow dl { font-size:12px; }
+    button { font-size:16px; padding:10px 14px; }
+  }
+
+  /* Landscape phones: the hand moves to a column on the right so the equation keeps the height */
+  @media (orientation: landscape) and (max-height: 520px) {
+    :root { --eqSize: clamp(22px, 9vh, 40px); }
+    #app { max-width:none; display:grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto auto minmax(0, 1fr);
+           gap:4px 10px; padding:6px max(10px, env(safe-area-inset-right)) 6px max(10px, env(safe-area-inset-left)); }
+    header { grid-column:1 / -1; grid-row:1; flex-wrap:nowrap; gap:8px; }
+    .hpwrap { flex:1; } .hpbar { flex:1; width:auto; max-width:220px; }
+    .speed button, .topbtn { font-size:13px; padding:5px 8px; min-height:34px; }
+    .lbl, .help, .long { display:none; }
+    .short { display:inline; }
+    #map { grid-column:1; grid-row:2; gap:2px; }
+    #map .node { width:20px; height:20px; font-size:11px; border-width:1px; }
+    #map .link { width:3px; }
+    #skills { grid-column:1; grid-row:3; font-size:10px; gap:2px 10px; }
+    #skills .meter { width:44px; }
+    #arena { grid-column:1; grid-row:4; min-height:0; gap:2px; }
+    #foe { font-size:11px; min-height:0; }
+    #enemyBox svg { width:40px; height:40px; }
+    .tok { min-height:calc(var(--eqSize) * 1.6); min-width:calc(var(--eqSize) * 1.1); padding:4px 5px; border-width:3px; }
+    .tok.eq { padding:4px 3px; }
+    #step, #msg, #unlock { font-size:12px; min-height:0; }
+    #next { bottom:4px; font-size:12px; }
+    .key { grid-column:2; grid-row:2 / 4; flex-direction:column; align-items:flex-start; gap:0; font-size:10px; justify-content:center; }
+    .key b { display:none; }
+    .key .badge { font-size:11px; }
+    #hand { grid-column:2; grid-row:4; display:grid; grid-template-columns: repeat(2, clamp(96px, 15vw, 130px)); grid-auto-rows: minmax(0, 1fr);
+            gap:6px; min-height:0; padding:0; align-content:stretch; }
+    .card { width:auto; height:auto; min-height:0; font-size:clamp(16px, 5.5vh, 24px); padding:3px; }
+    .card .badge { font-size:11px; margin-bottom:2px; padding:0 6px; }
+    .card small { font-size:10px; margin-top:2px; }
+    .card:hover { transform:none; }
+    .panel { padding:12px 14px; gap:8px; }
+    .panel h1 { font-size:20px; } .panel p { font-size:13px; } .panel .example { font-size:14px; padding:6px 10px; }
+    .statrow { padding-top:6px; } .statrow dl { font-size:12px; }
+    button { font-size:15px; padding:8px 14px; }
+  }
 </style>
 </head>
 <body>
 <div id="app">
   <header>
     <div class="hpwrap">HP <div class="hpbar"><div class="hpfill" id="hpfill"></div><div class="hptext" id="hptext"></div></div></div>
-    <div class="speed">Animation speed <button data-speed="0.5">0.5x</button><button data-speed="1">1x</button><button data-speed="2">2x</button></div>
-    <div>Defeated: <span id="score">0</span></div>
+    <div class="speed"><span class="lbl">Animation speed</span> <button data-speed="0.5">0.5x</button><button data-speed="1">1x</button><button data-speed="2">2x</button></div>
+    <button class="topbtn ghost" id="statsBtn"><span class="long">Skills &amp; stats</span><span class="short">Stats</span></button>
   </header>
+  <div id="map"></div>
+  <div id="skills"></div>
   <div id="arena">
-    <!-- stand-in enemy art (swap for a PNG later) -->
-    <svg id="enemy" viewBox="0 0 16 16" shape-rendering="crispEdges">
-      <rect x="3" y="5" width="10" height="9" fill="#7b5cff"/><rect x="2" y="7" width="12" height="7" fill="#7b5cff"/>
-      <rect x="4" y="4" width="8" height="1" fill="#7b5cff"/><rect x="5" y="7" width="2" height="2" fill="#fff"/><rect x="9" y="7" width="2" height="2" fill="#fff"/>
-      <rect x="6" y="8" width="1" height="1" fill="#000"/><rect x="10" y="8" width="1" height="1" fill="#000"/><rect x="6" y="11" width="4" height="1" fill="#000"/>
-    </svg>
+    <div id="foe"></div>
+    <!-- stand-in enemy art (swap for PNGs later) -->
+    <div id="enemyBox"></div>
     <div id="equation"></div>
     <div id="step"></div>
     <div id="msg"></div>
-    <div id="next">Click anywhere for the next equation</div>
-    <div id="over"><div id="overText">Defeated!</div><button id="restart">Play again</button></div>
+    <div id="unlock"></div>
+    <div id="next">Click anywhere to continue</div>
   </div>
   <div class="help">Pick the move that gets x alone. Wrong move = 10 damage.</div>
-  <div class="key"><b>Key</b> <span><span class="badge both">⇔</span> both sides: drop anywhere on the enemy</span> <span><span class="badge part">◎</span> one part: drop on that part of the equation</span></div>
+  <div class="key"><b>Key</b> <span><span class="badge both">⇔</span> both sides<span class="lbl">: drop anywhere on the enemy</span></span> <span><span class="badge part">◎</span> one part<span class="lbl">: drop on that part of the equation</span></span></div>
   <div id="hand"></div>
 </div>
+<div id="over"><div class="panel" id="overPanel"></div></div>
 <script>
-// ---------- Level 1 equation generator ----------
-// One-step linear equations with whole-number answers.
+// =====================================================================
+//  Small helpers
+// =====================================================================
 const rand = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
 const pick = arr => arr[Math.floor(Math.random() * arr.length)];
 const shuffle = arr => { for (let i = arr.length - 1; i > 0; i--) { const j = rand(0, i); [arr[i], arr[j]] = [arr[j], arr[i]]; } return arr; };
+const nonZero = (a, b) => { let v; do { v = rand(a, b); } while (v === 0); return v; };
 const MINUS = '−', TIMES = '×', DIV = '÷';
+const $ = id => document.getElementById(id);
 
-// A card is {op: '+','-','*','/', n}. Tokens: {text, kind, target?}
-function generateLevel1() {
-  // Re-roll equations whose two numbers match or are tiny, so there are enough distinct moves for a hand.
-  let e; do { e = rollLevel1(); } while (e.a === e.b || e.b < 2); return e;
+// Fractions {n, d}, always reduced with d > 0.
+const gcd = (a, b) => { a = Math.abs(a); b = Math.abs(b); while (b) [a, b] = [b, a % b]; return a || 1; };
+const F = (n, d = 1) => { if (d < 0) { n = -n; d = -d; } const g = gcd(n, d); return { n: n / g, d: d / g }; };
+const fAdd = (a, b) => F(a.n * b.d + b.n * a.d, a.d * b.d);
+const fMul = (a, b) => F(a.n * b.n, a.d * b.d);
+const fIs = (a, n, d = 1) => a.n === n && a.d === d;
+const isInt = a => a.d === 1;
+const fAbs = a => F(Math.abs(a.n), a.d);
+const numText = n => n < 0 ? MINUS + Math.abs(n) : String(n);
+const fracText = f => f.d === 1 ? numText(f.n) : (f.n < 0 ? MINUS : '') + Math.abs(f.n) + '/' + f.d;
+const fracHtml = f => f.d === 1 ? numText(f.n) : (f.n < 0 ? MINUS : '') + `<span class="frac"><span>${Math.abs(f.n)}</span><span>${f.d}</span></span>`;
+const paren = (f, html) => f.n < 0 ? `(${html ? fracHtml(f) : fracText(f)})` : (html ? fracHtml(f) : fracText(f));
+
+// =====================================================================
+//  Equations
+// =====================================================================
+// Every Act 1 equation has the shape   coef·x + b = c   (x side may be on the right).
+//   state = { coef: F, b: F, c: F, xLeft: bool, constFirst: bool }
+// constFirst writes the x side as "b + coef·x" (for 5 − x = 2).
+function st(coef, b, c, opts = {}) {
+  return { coef: typeof coef === 'number' ? F(coef) : coef, b: F(b), c: F(c),
+           xLeft: opts.xLeft ?? Math.random() >= 0.3, constFirst: !!opts.constFirst && b !== 0 };
 }
-function rollLevel1() {
-  const x = rand(1, 12);
-  const type = pick(['add', 'addFront', 'sub', 'mul', 'div']);
-  let side, a, b, correct;
-  if (type === 'add') {        // x + a = b
-    a = rand(1, 12); b = x + a;
-    side = [{text:'x', kind:'var'}, {text:'+ ' + a, kind:'term', target:true}];
-    correct = {op:'-', n:a};
-  } else if (type === 'addFront') { // a + x = b
-    a = rand(1, 12); b = x + a;
-    side = [{text:String(a), kind:'term', target:true}, {text:'+ x', kind:'var'}];
-    correct = {op:'-', n:a};
-  } else if (type === 'sub') { // x - a = b
-    a = rand(1, 12); b = x - a;
-    if (b < 0) { a = rand(1, x); b = x - a; }
-    side = [{text:'x', kind:'var'}, {text:MINUS + ' ' + a, kind:'term', target:true}];
-    correct = {op:'+', n:a};
-  } else if (type === 'mul') { // a x = b
-    a = rand(2, 10); b = a * x;
-    side = [{text:String(a), kind:'term', target:true}, {text:'x', kind:'var'}];
-    correct = {op:'/', n:a};
-  } else {                     // x / a = b
-    a = rand(2, 10); const xx = a * rand(1, 10); b = xx / a;
-    side = [{text:'x', kind:'var'}, {text:DIV + ' ' + a, kind:'term', target:true}];
-    correct = {op:'*', n:a};
-    return finish(side, b, correct, xx, a);
+
+// Cards: {op:'+'|'-'|'*'|'/', n}  or {op:'neg'} (multiply by −1)  or {op:'frac', n, d} (multiply by n/d).
+const cardFactor = c => ({ '*': F(c.n), '/': F(1, c.n), neg: F(-1), frac: F(c.n, c.d) })[c.op];
+function applyCard(s, c) {
+  const r = { ...s };
+  if (c.op === '+' || c.op === '-') { const a = F(c.op === '+' ? c.n : -c.n); r.b = fAdd(s.b, a); r.c = fAdd(s.c, a); }
+  else { const m = cardFactor(c); r.coef = fMul(s.coef, m); r.b = fMul(s.b, m); r.c = fMul(s.c, m); }
+  if (r.b.n === 0) r.constFirst = false;
+  return r;
+}
+const stepsLeft = s => (s.b.n !== 0 ? 1 : 0) + (fIs(s.coef, 1) ? 0 : 1);
+
+// The one move the game expects next: undo + and − first, then × and ÷.
+function correctMove(s) {
+  if (s.b.n !== 0) return s.b.n > 0 ? { op: '-', n: s.b.n } : { op: '+', n: -s.b.n };
+  const { n, d } = s.coef;
+  if (d === 1) return n === -1 ? { op: 'neg' } : { op: '/', n };
+  if (Math.abs(n) === 1) return { op: '*', n: n * d };
+  return { op: 'frac', n: Math.sign(n) * d, d: Math.abs(n) };   // the reciprocal
+}
+const isNegFracMove = m => m.op === 'neg' || m.op === 'frac' || ((m.op === '*' || m.op === '/') && m.n < 0);
+
+// Walks the solution and tags each step with the skill it exercises.
+function makeEquation(s, enemy) {
+  const path = []; let cur = s; const total = stepsLeft(s);
+  while (stepsLeft(cur) > 0 && path.length < 4) {
+    const move = correctMove(cur);
+    const skill = isNegFracMove(move) ? 'negfrac' : total > 1 ? 'twostep' : 'onestep';
+    path.push({ state: cur, move, skill });
+    cur = applyCard(cur, move);
   }
-  return finish(side, b, correct, x, a);
+  return { start: s, path, answer: cur.c, enemy, skills: [...new Set(path.map(p => p.skill))] };
+}
 
-  function finish(side, b, correct, answer, a) {
-    const other = [{text:String(b), kind:'term'}];
-    const flip = Math.random() < 0.3; // sometimes x is on the right
-    const eqTok = {text:'=', kind:'eq'};
-    const tokens = flip ? [...other, eqTok, ...side] : [...side, eqTok, ...other];
-    return { tokens, correct, answer, a, b };
+// ---------- Generators, one per stage ----------
+// Stage 1: one-step.  x + a = b, a + x = b, x − a = b, ax = b, x ÷ a = b
+function genOneStep(type) {
+  for (;;) {
+    const t = type || pick(['add', 'addFront', 'sub', 'mul', 'div']);
+    const x = rand(1, 12);
+    if (t === 'add' || t === 'addFront') { const a = rand(1, 12); if (a === x + a) continue; return { s: st(1, a, x + a, { constFirst: t === 'addFront' }), enemy: 'inkling' }; }
+    if (t === 'sub') { let a = rand(1, 12); if (x - a < 0) a = rand(1, x); const c = x - a; if (c < 2 || c === a) continue; return { s: st(1, -a, c), enemy: 'inkling' }; }
+    if (t === 'mul') { const a = rand(2, 10); if (x < 2 || x === 1) continue; return { s: st(a, 0, a * x), enemy: 'doubler' }; }
+    const a = rand(2, 10), k = rand(2, 10); if (k === a) continue;
+    return { s: st(F(1, a), 0, k), enemy: 'doubler' };
   }
 }
-
-const opSym = op => ({'+':'+', '-':MINUS, '*':TIMES, '/':DIV})[op];
-const cardLabel = c => opSym(c.op) + c.n;
-const cardText = c => ({'+':`Add ${c.n} to both sides`, '-':`Subtract ${c.n} from both sides`, '*':`Multiply both sides by ${c.n}`, '/':`Divide both sides by ${c.n}`})[c.op];
-// Writes out what the equation looks like after applying a card to both sides.
-function appliedText(card) {
-  const left = [], right = []; let onRight = false;
-  for (const t of eq.tokens) { if (t.kind === 'eq') { onRight = true; continue; } (onRight ? right : left).push(t.text); }
-  const wrap = s => s.length > 1 ? `(${s.join(' ')})` : s[0];
-  const sym = cardLabel(card);
-  return `${wrap(left)} ${sym}  =  ${wrap(right)} ${sym}`;
+// Stage 2: two-step.  ax + b = c, ax − b = c, x ÷ a + b = c, x ÷ a − b = c, b + ax = c
+function genTwoStep(type, big) {
+  const hi = big ? 15 : 10;
+  for (;;) {
+    const t = type || pick(['axb', 'axmb', 'xdivb', 'xdivmb', 'bax']);
+    if (t === 'axb' || t === 'bax') {
+      const a = rand(2, 6), x = rand(1, hi), b = rand(1, 12); if (b % a === 0) continue;
+      return { s: st(a, b, a * x + b, { constFirst: t === 'bax' }), enemy: 'doubler' };
+    }
+    if (t === 'axmb') { const a = rand(2, 6), x = rand(2, hi), b = rand(1, 12); if (b % a === 0 || a * x - b < 1) continue; return { s: st(a, -b, a * x - b), enemy: 'doubler' }; }
+    const a = rand(2, 5);
+    if (t === 'xdivb') { const k = rand(1, 8), b = rand(1, 9); return { s: st(F(1, a), b, k + b), enemy: 'inkling' }; }
+    const k = rand(3, hi), b = rand(1, k - 1); return { s: st(F(1, a), -b, k - b), enemy: 'inkling' };
+  }
+}
+// Stage 3: negatives and fractions.  −x = a, a − x = c, −nx = c, (p/q)x = c
+const FRACS = [[2, 3], [3, 4], [2, 5], [3, 2], [4, 3], [3, 5], [5, 2], [5, 3]];
+function genNegFrac(type) {
+  const t = type || pick(['negx', 'aminusx', 'negnx', 'frac']);
+  if (t === 'negx') { const x = nonZero(-12, 12); return { s: st(-1, 0, -x), enemy: 'minusmite' }; }
+  if (t === 'aminusx') { const a = rand(3, 15); let x; do { x = nonZero(-5, 15); } while (x === a); return { s: st(-1, a, a - x, { constFirst: true }), enemy: 'minusmite' }; }
+  if (t === 'negnx') { const n = rand(2, 9), x = nonZero(-10, 10); return { s: st(-n, 0, -n * x), enemy: 'minusmite' }; }
+  const [p, q] = pick(FRACS), k = rand(1, 6); return { s: st(F(p, q), 0, p * k), enemy: 'minusmite' };
+}
+// Elites stack the two newest concepts in one equation.
+function genStacked(skills) {
+  if (skills.includes('negfrac')) {
+    for (;;) {
+      const t = pick(['bminusnx', 'negnxb', 'fracb']);
+      if (t === 'bminusnx') { const n = rand(2, 6), b = rand(5, 20), x = rand(1, 8); if (b % n === 0) continue; return { s: st(-n, b, b - n * x, { constFirst: true }), enemy: 'stacker' }; }
+      if (t === 'negnxb') { const n = rand(2, 6), x = nonZero(-6, 8), b = rand(1, 12) * pick([1, -1]); if (b % n === 0) continue; return { s: st(-n, b, -n * x + b), enemy: 'stacker' }; }
+      const [p, q] = pick(FRACS), k = rand(1, 5), b = rand(1, 9) * pick([1, -1]);
+      return { s: st(F(p, q), b, p * k + b), enemy: 'stacker' };
+    }
+  }
+  if (skills.includes('twostep')) return { ...genTwoStep(null, true), enemy: 'stacker' };
+  return { ...genOneStep(), enemy: 'stacker' };
 }
 
-function makeHand(eq) {
-  // Every card is a legal "do the same thing to both sides" move, built only from
-  // numbers that appear in the equation. Only one of them gets x by itself.
-  const {correct, a, b} = eq;
-  const opposite = {'+':'-', '-':'+', '*':'/', '/':'*'}[correct.op];
-  const ok = c => !('*/'.includes(c.op) && c.n < 2);
-  const first = [{op: opposite, n: a}, {op: correct.op, n: b}].filter(ok); // the classic mistakes
-  const rest = [];
-  for (const op of ['+', '-', '*', '/']) for (const n of new Set([a, b])) rest.push({op, n});
-  const seen = new Set([cardLabel(correct)]);
-  const hand = [correct];
-  for (const c of [...shuffle(first), ...shuffle(rest)]) {
-    if (hand.length >= 4) break;
-    if (!ok(c) || seen.has(cardLabel(c))) continue;
+// =====================================================================
+//  Skills, stages and saved progress
+// =====================================================================
+const SKILLS = [
+  { id: 'onestep', stage: 1, name: 'One-step', gen: () => genOneStep(),
+    title: 'Stage 1: One-step equations',
+    intro: 'Each enemy is an equation. Get x alone by doing the same thing to both sides. Pick the card that undoes what is attached to x: subtracting undoes adding, dividing undoes multiplying.',
+    example: 'x + 3 = 7<br>Subtract 3 from both sides<br>x = 4',
+    tutorial: [() => genOneStep('add'), () => genOneStep('mul')] },
+  { id: 'twostep', stage: 2, name: 'Two-step', gen: () => genTwoStep(),
+    title: 'Stage 2: Two-step equations',
+    intro: 'Now x has two things attached. Undo the + or − first, then the × or ÷. No new cards: the order is the new idea.',
+    example: '3x + 4 = 19<br>Subtract 4 from both sides → 3x = 15<br>Divide both sides by 3 → x = 5',
+    tutorial: [() => genTwoStep('axb'), () => genTwoStep('xdivmb')] },
+  { id: 'negfrac', stage: 3, name: 'Negatives & fractions', gen: () => genNegFrac(),
+    title: 'Stage 3: Negatives and fractions',
+    intro: 'Two new cards. "Multiply both sides by −1" flips every sign, so −x becomes x. "Multiply by the reciprocal" flips a fraction over, and a fraction times its reciprocal is 1.',
+    example: '−x = 5<br>Multiply both sides by −1 → x = −5<br><br>(2/3)x = 8<br>Multiply both sides by 3/2 → x = 12',
+    tutorial: [() => genNegFrac('negx'), () => genNegFrac('frac')] },
+];
+const SKILL = Object.fromEntries(SKILLS.map(s => [s.id, s]));
+const MASTERED = 80;
+// Par is the fewest moves, and wrong moves never change the equation, so "at par" is the same as
+// "no wrong moves". The old separate +5 par bonus could never pay out on its own, so it is folded in here.
+const MASTERY = { clean: 25, wrong: -10, weeklyDecay: -5, reviewFloor: 60 };
+
+const STORE_KEY = 'algebraCards.progress.v1';
+const blankSkill = () => ({ mastery: 0, everMastered: false, attempted: 0, solved: 0, wrongByCard: {},
+  parDiffTotal: 0, parCount: 0, secondsTotal: 0, movesTimed: 0, hints: 0, lastPracticed: null, decayWeeks: 0 });
+function loadProgress() {
+  let p = null;
+  try { p = JSON.parse(localStorage.getItem(STORE_KEY)); } catch (e) {}
+  p = p && typeof p === 'object' ? p : {};
+  // A save can be old, hand-edited or corrupt, so every field is type-checked and clamped before use.
+  // Without this, one bad value (e.g. an unparseable date) turned mastery into NaN for good.
+  const isObj = v => v && typeof v === 'object' && !Array.isArray(v);
+  const num = (v, def, lo = 0, hi = Infinity) => Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : def;
+  if (!isObj(p.skills)) p.skills = {};
+  for (const s of SKILLS) {
+    const raw = isObj(p.skills[s.id]) ? p.skills[s.id] : {}, b = blankSkill(), k = { ...b, ...raw };
+    k.mastery = num(k.mastery, 0, 0, 100);
+    for (const f of ['attempted', 'solved', 'parCount', 'secondsTotal', 'movesTimed', 'hints', 'decayWeeks']) k[f] = num(k[f], 0);
+    k.parDiffTotal = num(k.parDiffTotal, 0, -Infinity);
+    k.everMastered = k.everMastered === true;
+    k.wrongByCard = isObj(k.wrongByCard) ? Object.fromEntries(Object.entries(k.wrongByCard).filter(([, v]) => Number.isFinite(v))) : {};
+    k.lastPracticed = typeof k.lastPracticed === 'string' && Number.isFinite(Date.parse(k.lastPracticed)) ? k.lastPracticed : null;
+    p.skills[s.id] = k;
+  }
+  const ids = SKILLS.map(s => s.id);
+  p.unlocked = Array.isArray(p.unlocked) ? p.unlocked.filter(id => ids.includes(id)) : [];
+  if (!p.unlocked.includes('onestep')) p.unlocked.unshift('onestep');
+  p.tutorialsDone = Array.isArray(p.tutorialsDone) ? p.tutorialsDone.filter(id => ids.includes(id)) : [];
+  applyDecay(p);
+  return p;
+}
+// Each week a skill goes unpracticed costs 5 mastery, down to 60 once it has been mastered.
+function applyDecay(p) {
+  const WEEK = 7 * 864e5;
+  for (const s of Object.values(p.skills)) {
+    if (!s.lastPracticed) continue;
+    const weeks = Math.floor((Date.now() - Date.parse(s.lastPracticed)) / WEEK);
+    const extra = weeks - (s.decayWeeks || 0);
+    if (extra <= 0) continue;
+    const dropped = s.mastery + MASTERY.weeklyDecay * extra;
+    s.mastery = s.everMastered ? Math.max(Math.min(s.mastery, MASTERY.reviewFloor), dropped) : Math.max(0, dropped);
+    s.decayWeeks = weeks;
+  }
+}
+let progress = loadProgress();
+function saveProgress() { try { localStorage.setItem(STORE_KEY, JSON.stringify(progress)); } catch (e) {} }
+const isUnlocked = id => progress.unlocked.includes(id);
+const unlockedSkills = () => SKILLS.filter(s => isUnlocked(s.id)).map(s => s.id);
+function skillStatus(id) {
+  const s = progress.skills[id];
+  if (!isUnlocked(id)) return 'locked';
+  if (s.mastery >= MASTERED) return 'mastered';
+  if (s.everMastered) return 'review';
+  return 'learning';
+}
+function changeMastery(id, delta) {
+  const s = progress.skills[id];
+  s.mastery = Math.max(0, Math.min(100, s.mastery + delta));
+  if (s.mastery >= MASTERED) s.everMastered = true;
+}
+// 80 mastery on a stage unlocks the next stage's tutorial fight. Stages never lock again.
+function checkUnlocks() {
+  const fresh = [];
+  for (let i = 0; i < SKILLS.length - 1; i++) {
+    const cur = SKILLS[i], next = SKILLS[i + 1];
+    if (isUnlocked(cur.id) && progress.skills[cur.id].mastery >= MASTERED && !isUnlocked(next.id)) {
+      progress.unlocked.push(next.id); fresh.push(next.id);
+    }
+  }
+  return fresh;
+}
+
+// =====================================================================
+//  Enemies (stand-in art; swap the SVG for a PNG later)
+// =====================================================================
+const ENEMIES = {
+  inkling:     { name: 'Inkling',          rank: 'Normal', color: '#7b5cff', size: 84 },
+  doubler:     { name: 'Doubler',          rank: 'Normal', color: '#3fa7d6', size: 84 },
+  minusmite:   { name: 'Minus Mite',       rank: 'Normal', color: '#e56b6f', size: 84 },
+  stacker:     { name: 'Stacker',          rank: 'Elite',  color: '#f4a259', size: 100, horns: true },
+  scalekeeper: { name: 'The Scale Keeper', rank: 'Boss',   color: '#5fad56', size: 120, crown: true },
+};
+function enemySvg(key) {
+  const e = ENEMIES[key], c = e.color;
+  const extra = (e.horns ? `<rect x="3" y="2" width="2" height="3" fill="#fff"/><rect x="11" y="2" width="2" height="3" fill="#fff"/>` : '')
+    + (e.crown ? `<rect x="4" y="1" width="8" height="2" fill="#ffd166"/><rect x="4" y="0" width="1" height="1" fill="#ffd166"/><rect x="7" y="0" width="2" height="1" fill="#ffd166"/><rect x="11" y="0" width="1" height="1" fill="#ffd166"/>` : '');
+  return `<svg width="${e.size}" height="${e.size}" viewBox="0 0 16 16" shape-rendering="crispEdges">${extra}
+    <rect x="3" y="5" width="10" height="9" fill="${c}"/><rect x="2" y="7" width="12" height="7" fill="${c}"/>
+    <rect x="4" y="4" width="8" height="1" fill="${c}"/><rect x="5" y="7" width="2" height="2" fill="#fff"/><rect x="9" y="7" width="2" height="2" fill="#fff"/>
+    <rect x="6" y="8" width="1" height="1" fill="#000"/><rect x="10" y="8" width="1" height="1" fill="#000"/><rect x="6" y="11" width="4" height="1" fill="#000"/></svg>`;
+}
+
+// =====================================================================
+//  Cards and hands
+// =====================================================================
+const opSym = op => ({ '+': '+', '-': MINUS, '*': TIMES, '/': DIV })[op];
+function cardLabel(c) {
+  if (c.op === 'neg') return TIMES + '(' + MINUS + '1)';
+  if (c.op === 'frac') return TIMES + paren(F(c.n, c.d));
+  if (c.op === '+' || c.op === '-') return opSym(c.op) + c.n;
+  return opSym(c.op) + paren(F(c.n));
+}
+function chipHtml(c) {   // how a card reads once it's written into the equation: "÷ 3", "× (−1)", "× 3/2"
+  if (c.op === 'neg') return TIMES + ' (' + MINUS + '1)';
+  if (c.op === 'frac') return TIMES + ' ' + paren(F(c.n, c.d), true);
+  if (c.op === '+' || c.op === '-') return opSym(c.op) + ' ' + c.n;
+  return opSym(c.op) + ' ' + paren(F(c.n));
+}
+function cardText(c) {
+  const n = c.n !== undefined ? numText(c.n) : '';
+  return ({ '+': `Add ${n} to both sides`, '-': `Subtract ${n} from both sides`, '*': `Multiply both sides by ${n}`,
+            '/': `Divide both sides by ${n}`, neg: `Multiply both sides by ${MINUS}1`,
+            frac: `Multiply both sides by ${fracText(F(c.n ?? 1, c.d ?? 1))}` })[c.op];
+}
+const cardKind = c => ({ '+': 'Add', '-': 'Subtract', '*': 'Multiply', '/': 'Divide', neg: `Multiply by ${MINUS}1`, frac: 'Reciprocal' })[c.op];
+const sameCard = (a, b) => cardLabel(a) === cardLabel(b);
+
+// Every card is a legal "do the same thing to both sides" move built from numbers in the equation.
+// Only one of them is the move that gets x closer to alone; cards that would also make real
+// progress some other way are left out so the hand has exactly one right answer.
+function makeHand(s, correct, size) {
+  const allowNeg = isUnlocked('negfrac');
+  const classic = [], rest = [];
+  const undoCoef = correctMove({ ...s, b: F(0) });
+  if (correct.op === '+' || correct.op === '-') {
+    classic.push({ op: correct.op === '+' ? '-' : '+', n: correct.n });
+    if (!fIs(s.coef, 1)) classic.push(undoCoef);            // the classic order mistake: × or ÷ first
+  } else if (correct.op === '*') classic.push({ op: '/', n: correct.n });
+  else if (correct.op === '/') classic.push({ op: '*', n: correct.n }, { op: '/', n: -correct.n });
+  else if (correct.op === 'frac') classic.push({ op: 'frac', n: s.coef.n, d: s.coef.d }, { op: '/', n: Math.abs(s.coef.n) }, { op: '*', n: s.coef.d });
+  const nums = new Set();
+  for (const f of [s.b, s.c]) if (isInt(f) && f.n !== 0) nums.add(Math.abs(f.n));
+  if (Math.abs(s.coef.n) > 1) nums.add(Math.abs(s.coef.n));
+  if (s.coef.d > 1) nums.add(s.coef.d);
+  for (const op of ['+', '-', '*', '/']) for (const n of nums) rest.push({ op, n });
+  if (allowNeg) {
+    rest.push({ op: 'neg' });
+    if (s.coef.n < -1) rest.push({ op: '*', n: s.coef.n }, { op: '/', n: s.coef.n });
+  }
+  const legal = c => {
+    if (c.op === 'neg' || c.op === 'frac') return allowNeg;
+    if (c.n === 0) return false;
+    if (c.op === '*' || c.op === '/') { if (Math.abs(c.n) < 2) return false; if (c.n < 0 && !allowNeg) return false; }
+    return true;
+  };
+  // A card is left out of the wrong cards if it makes real progress. Besides cutting a step, that
+  // includes shrinking the coefficient when x has nothing added to it (÷5 on −5x = 20 gives −x = 4,
+  // ×3 on (2/3)x = 8 gives 2x = 24) or clearing its minus sign (×(−1) on −5x = 20 gives 5x = −20).
+  // Those used to be dealt as wrong cards and cost HP, even though they are correct algebra.
+  const size_ = f => Math.abs(f.n) * f.d;
+  const useful = c => {
+    const a = applyCard(s, c);
+    if (!isInt(a.b) || !isInt(a.c)) return false;
+    if (stepsLeft(a) < stepsLeft(s)) return true;
+    if (s.b.n !== 0) return false;   // with a + or − term left, × or ÷ first stays a teachable order mistake
+    return size_(a.coef) < size_(s.coef) || (size_(a.coef) === size_(s.coef) && s.coef.n < 0 && a.coef.n > 0);
+  };
+  const seen = new Set([cardLabel(correct)]), hand = [correct];
+  const fallback = shuffle([2, 3, 4, 5, 6, 7, 8, 9]).flatMap(n => [{ op: '+', n }, { op: '-', n }]);
+  for (const c of [...shuffle(classic), ...shuffle(rest), ...fallback]) {
+    if (hand.length >= size) break;
+    if (!legal(c) || seen.has(cardLabel(c)) || useful(c)) continue;
     seen.add(cardLabel(c)); hand.push(c);
   }
   return shuffle(hand);
 }
 
-// ---------- Game state ----------
-const MAX_HP = 100, DAMAGE = 10;
-let hp, score, eq, hand, busy = false;
-const $ = id => document.getElementById(id);
-
-function start() { hp = MAX_HP; score = 0; $('over').style.display = 'none'; updateHud(); nextEnemy(); }
-
-function nextEnemy() {
-  eq = generateLevel1(); hand = makeHand(eq); busy = false;
-  $('enemy').classList.remove('dead');
-  $('step').textContent = ''; setMsg('');
-  renderEquation(eq.tokens); renderHand();
+// =====================================================================
+//  Equation rendering
+// =====================================================================
+// Turns a state into display tokens. Roles: coef, x, const, other, eq (animations find tokens by role).
+function tokensFor(s) {
+  const xs = [];
+  const lead = !(s.constFirst && s.b.n !== 0);           // is the x term first on its side?
+  const signed = (f, html) => (f.n < 0 ? MINUS + ' ' : '+ ') + (html ? fracHtml(fAbs(f)) : fracText(fAbs(f)));
+  const { n, d } = s.coef;
+  const xTok = neg => ({ role: 'x', text: lead ? (neg ? MINUS + 'x' : 'x') : (neg ? MINUS + ' x' : '+ x') });
+  if (d === 1 && Math.abs(n) === 1) xs.push(xTok(n < 0));
+  else if (d === 1) xs.push({ role: 'coef', text: lead ? numText(n) : signed(s.coef) }, { role: 'x', text: 'x' });
+  else if (Math.abs(n) === 1) xs.push(xTok(n < 0), { role: 'coef', text: DIV + ' ' + d });
+  else xs.push({ role: 'coef', text: lead ? fracText(s.coef) : signed(s.coef), html: lead ? fracHtml(s.coef) : signed(s.coef, true) }, { role: 'x', text: 'x' });
+  const side = [...xs];
+  if (s.b.n !== 0) {
+    const ct = s.constFirst ? { role: 'const', text: fracText(s.b), html: fracHtml(s.b) } : { role: 'const', text: signed(s.b), html: signed(s.b, true) };
+    s.constFirst ? side.unshift(ct) : side.push(ct);
+  }
+  const other = [{ role: 'other', text: fracText(s.c), html: fracHtml(s.c) }];
+  const eqT = { role: 'eq', text: '=' };
+  return s.xLeft ? [...side, eqT, ...other] : [...other, eqT, ...side];
 }
-
-function renderEquation(tokens, droppable) {
+const kindOf = role => role === 'x' ? 'var' : role === 'eq' ? 'eq' : 'term';
+function tokEl(t) {
+  const el = document.createElement('div');
+  el.className = 'tok ' + kindOf(t.role); el.dataset.role = t.role;
+  el.innerHTML = t.html || t.text;
+  return el;
+}
+function renderEquation(s) {
   const el = $('equation'); el.innerHTML = '';
-  tokens.forEach((t, i) => {
-    const s = document.createElement('div');
-    s.className = 'tok ' + t.kind + '';
-    s.textContent = t.text; s.dataset.idx = i;
-    el.appendChild(s);
-  });
+  tokensFor(s).forEach(t => el.appendChild(tokEl(t)));
 }
+function sideTexts(s) {
+  const left = [], right = []; let onRight = false;
+  for (const t of tokensFor(s)) { if (t.role === 'eq') { onRight = true; continue; } (onRight ? right : left).push(t.text); }
+  return [left, right];
+}
+// What the equation looks like after applying a card to both sides, for the wrong-move message.
+function appliedText(s, card) {
+  const wrap = arr => { const t = arr.join(' ').replace(/(\d) x/g, '$1x'); return arr.length > 1 ? `(${t})` : t; };
+  const sym = cardLabel(card).replace(/^(.)/, '$1 ');
+  const [l, r] = sideTexts(s);
+  return `${wrap(l)} ${sym}  =  ${wrap(r)} ${sym}`;
+}
+
+// =====================================================================
+//  Operation animations
+// =====================================================================
+// Each operation plays its own animation on the equation when it's the correct move.
+// To add a new operation, write an async function (card, before, after, note) => {...} that
+// edits the #equation DOM step by step, and register it here under the card's op. After it
+// finishes, the equation is re-rendered from the new state, so it only has to look right.
+const OPERATION_ANIMATIONS = {
+  '+': cancelAndCombine,
+  '-': cancelAndCombine,
+  '*': cancelAndCombine,
+  '/': cancelAndCombine,
+  neg: flipSigns,
+  frac: flipReciprocal,
+};
+
+// Animation speed: 1 = normal, 2 = twice as fast, 0.5 = half speed. Scales both sleep() and the CSS (--k).
+let speed = 1;
+try { speed = +localStorage.getItem('animSpeed') || 1; } catch (e) {}
+function setSpeed(v) {
+  speed = v;
+  document.documentElement.style.setProperty('--k', String(1 / v));
+  document.querySelectorAll('.speed button').forEach(b => b.classList.toggle('on', +b.dataset.speed === v));
+  try { localStorage.setItem('animSpeed', String(v)); } catch (e) {}
+}
+document.querySelectorAll('.speed button').forEach(b => b.addEventListener('click', () => setSpeed(+b.dataset.speed)));
+setSpeed(speed);
+const sleep = ms => new Promise(r => setTimeout(r, ms / speed));
+const caption = t => { $('step').textContent = t; };
+function chip(html, cls = 'term op-new') {   // a new token that drops in
+  const s = document.createElement('div'); s.className = 'tok ' + cls + ' enter'; s.dataset.role = 'chip'; s.innerHTML = html; return s;
+}
+const mark = (els, cls) => els.forEach(e => e && e.classList.add(cls));
+async function removeTok(els) { els = els.filter(Boolean); mark(els, 'gone'); await sleep(460); els.forEach(e => e.remove()); }
+const roleEl = role => $('equation').querySelector(`[data-role="${role}"]`);
+// Drops the card onto both sides: a chip at the end of each side. Returns [chip on x side, chip on other side].
+async function dropOnBothSides(card, s) {
+  const el = $('equation'), eqEl = roleEl('eq');
+  const left = chip(chipHtml(card)), right = chip(chipHtml(card));
+  el.insertBefore(left, eqEl); el.appendChild(right);
+  await sleep(1000);
+  return s.xLeft ? [left, right] : [right, left];
+}
+// Rewrites the remaining x-side tokens in their new form ("− x" becomes "−x" once the 5 in front is gone).
+function refreshXSide(ns) {
+  const fresh = tokensFor(ns);
+  for (const role of ['coef', 'x']) {
+    const el = roleEl(role), t = fresh.find(f => f.role === role);
+    if (el && t) el.innerHTML = t.html || t.text;
+  }
+}
+// The other side simplifies to its new value.
+async function combineOtherSide(card, s, ns, oChip) {
+  const other = roleEl('other');
+  caption(`${fracText(s.c)} ${cardLabel(card).replace(/^(.)/, '$1 ')} = ${fracText(ns.c)}`);
+  mark([other, oChip], 'merge');
+  await sleep(800);
+  await removeTok([oChip]);
+  other.classList.remove('merge'); other.innerHTML = fracHtml(ns.c); other.classList.add('pop');
+  await sleep(600);
+}
+
+// Stages 1-2: do the same thing to both sides, the pair next to x cancels, the other side simplifies.
+//   x + 3 = 7  ->  x + 3 − 3 = 7 − 3  ->  x = 7 − 3  ->  x = 4
+//   In a two-step equation the caption adds why the + or − goes first.
+async function cancelAndCombine(card, s, ns, note = '') {
+  const additive = card.op === '+' || card.op === '-';
+  const target = roleEl(additive ? 'const' : 'coef');
+  caption(cardText(card) + note);
+  const [xChip, oChip] = await dropOnBothSides(card, s);
+  caption(`${target.textContent.replace(/\s/g, '')} and ${cardLabel(card)} cancel out (they make ${additive ? 0 : 1})`);
+  mark([target, xChip], 'cancel');
+  await sleep(1000);
+  await removeTok([target, xChip]);
+  refreshXSide(ns);
+  await combineOtherSide(card, s, ns, oChip);
+}
+
+// Stage 3, multiply by −1: the card drops on both sides, then every sign flips in a ripple from left to right.
+//   −x = 5  ->  −x × (−1) = 5 × (−1)  ->  x = −5
+async function flipSigns(card, s, ns) {
+  caption(cardText(card));
+  await dropOnBothSides(card, s);
+  caption(`Multiplying by ${MINUS}1 flips the sign of every term`);
+  const fresh = tokensFor(ns);
+  for (const t of [...$('equation').children]) {
+    const role = t.dataset.role;
+    if (role === 'eq') continue;
+    t.classList.add('flip');
+    await sleep(220);                       // halfway through the flip, the term shows its new sign
+    if (role === 'chip') { t.classList.add('gone'); }
+    else { const nt = fresh.find(f => f.role === role); if (nt) t.innerHTML = nt.html || nt.text; t.classList.add('merge'); }
+    await sleep(260);
+  }
+  await sleep(500);
+  [...$('equation').querySelectorAll('[data-role="chip"]')].forEach(c => c.remove());
+  caption(`${fracText(s.c)} × (${MINUS}1) = ${fracText(ns.c)}, so x = ${fracText(ns.c)}`);
+  await sleep(700);
+}
+
+// Stage 3, multiply by the reciprocal: the fraction and its flipped twin spin together and cancel to 1.
+//   (2/3)x = 8  ->  (2/3)x × 3/2 = 8 × 3/2  ->  1x = 12  ->  x = 12
+async function flipReciprocal(card, s, ns) {
+  const coef = roleEl('coef'), f = F(card.n, card.d);
+  caption(cardText(card));
+  const [xChip, oChip] = await dropOnBothSides(card, s);
+  caption(`${fracText(f)} is ${fracText(s.coef)} flipped over`);
+  mark([coef, xChip], 'spin');
+  await sleep(1000);
+  caption(`${fracText(s.coef)} × ${fracText(f)} = 1, so they cancel`);
+  coef.classList.remove('spin'); xChip.classList.remove('spin');
+  mark([coef, xChip], 'cancel');
+  await sleep(900);
+  await removeTok([xChip]);
+  coef.classList.remove('cancel'); coef.textContent = '1'; coef.classList.add('merge');
+  await sleep(700);
+  await removeTok([coef]);
+  await combineOtherSide(card, s, ns, oChip);
+}
+
+// =====================================================================
+//  Run, fights and phases
+// =====================================================================
+const MAX_HP = 100, DAMAGE = 10, ELITE_HEAL = 20;
+const ACT1_LAYOUT = ['fight', 'fight', 'fight', 'elite', 'fight', 'fight', 'fight', 'elite', 'fight', 'fight', 'boss'];
+const NODE_ICON = { tutorial: '★', fight: '⚔', elite: '☠', boss: '♛' };
+let hp = MAX_HP, run = null, fight = null, cur = null, hand = [], busy = true;
+
+function newRun() {
+  hp = MAX_HP;
+  run = { nodes: ACT1_LAYOUT.map(type => ({ type })), i: 0 };
+  // Any unlocked stage whose tutorial hasn't been played yet goes first.
+  const pending = unlockedSkills().filter(id => !progress.tutorialsDone.includes(id));
+  run.nodes.unshift(...pending.map(skill => ({ type: 'tutorial', skill })));
+  hideOverlay(); updateHud(); startNode();
+}
+
+// Normal fights: ~60% the newest stage, ~40% review of earlier ones (needs-review skills weighted ×3).
+function pickFightSkill() {
+  const list = unlockedSkills();
+  if (list.length === 1 || Math.random() < 0.6) return list[list.length - 1];
+  const earlier = list.slice(0, -1);
+  const weights = earlier.map(id => skillStatus(id) === 'review' ? 3 : 1);
+  let r = Math.random() * weights.reduce((a, b) => a + b, 0);
+  for (let i = 0; i < earlier.length; i++) { r -= weights[i]; if (r <= 0) return earlier[i]; }
+  return earlier[earlier.length - 1];
+}
+
+function buildFight(node) {
+  const list = unlockedSkills();
+  if (node.type === 'tutorial') return { phases: SKILL[node.skill].tutorial, handSize: 3, rank: 'Tutorial' };
+  if (node.type === 'fight') { const id = pickFightSkill(); return { phases: [SKILL[id].gen], handSize: 4 }; }
+  if (node.type === 'elite') {
+    const recent = list.slice(-2);
+    const swapped = () => { const g = genOneStep(); g.s.xLeft = false; return g; };
+    const phases = recent.length > 1 ? [() => genStacked(recent)] : [() => genOneStep(), swapped];   // one stage only: two equations back to back
+    return { phases, handSize: 4, enemy: 'stacker' };
+  }
+  // Boss: one phase per unlocked stage (sides swap from phase 2), then everything at once.
+  const phases = list.map((id, i) => () => { const g = SKILL[id].gen(); if (i > 0) g.s.xLeft = false; return g; });
+  phases.push(() => { const g = list.length > 1 ? genStacked(list.slice(-2)) : genOneStep(); g.s.xLeft = Math.random() < 0.5; return g; });
+  if (list.length === 1) phases.splice(1, 0, () => { const g = genOneStep(); g.s.xLeft = false; return g; });
+  return { phases, handSize: 4, enemy: 'scalekeeper' };
+}
+
+function startNode() {
+  const node = run.nodes[run.i];
+  fight = { ...buildFight(node), node, phase: 0 };
+  renderMap();
+  $('enemyBox').classList.remove('dead');
+  if (node.type === 'tutorial') showIntro(node.skill); else startPhase();
+}
+
+function startPhase() {
+  const g = fight.phases[fight.phase]();
+  const enemy = fight.enemy || g.enemy;
+  cur = makeEquation(g.s, enemy);
+  cur.state = g.s; cur.step = 0; cur.wrong = 0; cur.moves = 0; cur.lastT = performance.now();
+  for (const id of cur.skills) progress.skills[id].attempted++;
+  saveProgress();
+  $('enemyBox').innerHTML = enemySvg(enemy);
+  $('enemyBox').classList.remove('dead', 'hit');
+  renderFoe();
+  caption(''); setMsg(''); $('unlock').textContent = '';
+  renderEquation(cur.state); dealHand(); busy = false;
+}
+
+function renderFoe() {
+  const e = ENEMIES[cur.enemy], n = fight.phases.length;
+  const rank = fight.rank || e.rank;
+  const pips = n > 1 ? `<span class="pips">${'●'.repeat(fight.phase)}${'○'.repeat(n - fight.phase)}</span> phase ${fight.phase + 1}/${n}` : '';
+  $('foe').innerHTML = `<b>${e.name}</b><span class="rank">${rank}</span>${pips}`;
+}
+
+function dealHand() { hand = makeHand(cur.state, cur.path[cur.step].move, fight.handSize); renderHand(); }
 
 function renderHand() {
   const el = $('hand'); el.innerHTML = '';
@@ -207,10 +783,25 @@ function renderHand() {
   });
 }
 
+function renderMap() {
+  $('map').innerHTML = `<span class="lbl">Act 1 · The Ink Cellar</span>&nbsp;` + run.nodes.map((n, i) =>
+    `${i ? '<span class="link"></span>' : ''}<span class="node ${n.type} ${i < run.i ? 'done' : ''} ${i === run.i ? 'cur' : ''}" title="${n.type === 'tutorial' ? 'Tutorial: ' + SKILL[n.skill].name : n.type}">${NODE_ICON[n.type]}</span>`).join('');
+}
+
+function renderSkills(deltas = []) {
+  $('skills').innerHTML = SKILLS.map(s => {
+    const p = progress.skills[s.id], status = skillStatus(s.id);
+    const tag = status === 'mastered' ? '<span class="tag mastered">mastered</span>' : status === 'review' ? '<span class="tag review">needs review</span>' : status === 'locked' ? '🔒' : '';
+    const d = deltas.find(x => x[0] === s.id);
+    const delta = d && d[1] ? `<span class="delta ${d[1] > 0 ? 'up' : 'down'}">${d[1] > 0 ? '+' : ''}${d[1]}</span>` : '';
+    return `<div class="skill ${status === 'locked' ? 'locked' : ''}" title="Stage ${s.stage}: mastery ${p.mastery}/100, 80 = mastered">
+      ${s.stage}. ${s.name} <div class="meter"><div class="fill" style="width:${p.mastery}%"></div><div class="goal"></div></div> ${p.mastery} ${tag}${delta}</div>`;
+  }).join('');
+}
+
 function updateHud() {
   $('hpfill').style.width = (hp / MAX_HP * 100) + '%';
   $('hptext').textContent = `${hp} / ${MAX_HP}`;
-  $('score').textContent = score;
 }
 function setMsg(t, cls = '') { const m = $('msg'); m.textContent = t; m.className = cls; }
 
@@ -218,11 +809,15 @@ function setMsg(t, cls = '') { const m = $('msg'); m.textContent = t; m.classNam
 // Two kinds of cards:
 //   scope 'both' (default): does the same thing to both sides, so it can be dropped anywhere on the arena.
 //   scope 'part': changes one part of the equation (Distribute, Combine like terms, Factor... for later
-//                 levels), so it must be dropped on the right box. Level 1 only deals 'both' cards.
+//                 acts), so it must be dropped on the right box. Act 1 only deals 'both' cards.
 const scopeOf = c => c.scope || 'both';
 
+let dragging = false;   // only one card can be dragged at a time
 function startDrag(e, el, card) {
-  if (busy) return;
+  // A second finger on another card used to start a second drag, and one lift then played both cards.
+  if (busy || dragging) return;
+  dragging = true;
+  const pid = e.pointerId;
   e.preventDefault();
   const r = el.getBoundingClientRect();
   const offX = e.clientX - r.left, offY = e.clientY - r.top;
@@ -234,6 +829,7 @@ function startDrag(e, el, card) {
   $('arena').classList.add(targeted ? 'targeting' : 'anywhere');
   let hover = null;
   const move = ev => {
+    if (ev.pointerId !== pid) return;   // ignore other fingers
     ghost.style.left = (ev.clientX - offX) + 'px'; ghost.style.top = (ev.clientY - offY) + 'px';
     let found = null;
     if (targeted) {
@@ -252,114 +848,102 @@ function startDrag(e, el, card) {
     if (hover && hover !== found) hover.classList.remove('hover');
     hover = found; if (found) found.classList.add('hover');
   };
-  const up = () => {
-    window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', up);
+  // pointerup drops the card. pointercancel (the OS took the touch: a call, a system gesture, palm
+  // rejection) now just puts it back; it used to count as a drop and could cost HP.
+  const end = (ev, drop) => {
+    if (ev.pointerId !== pid) return;
+    window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', cancel);
+    dragging = false;
     ghost.remove(); el.classList.remove('placeholder');
     $('arena').classList.remove('targeting', 'anywhere');
-    if (hover) { hover.classList.remove('hover'); playCard(card, targeted ? eq.tokens[+hover.dataset.idx] : null); }
+    if (hover) hover.classList.remove('hover');
+    if (hover && drop) playCard(card, targeted ? hover.dataset.role : null);
   };
+  const up = ev => end(ev, true), cancel = ev => end(ev, false);
   move(e);
-  window.addEventListener('pointermove', move); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up);
+  window.addEventListener('pointermove', move); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', cancel);
 }
 
-// ---------- Rules ----------
-function playCard(card, token) {
-  const rightCard = card.op === eq.correct.op && card.n === eq.correct.n;
-  const rightTarget = scopeOf(card) === 'both' || !!(token && token.target);
-  if (rightCard && rightTarget) return solve(card);
-  if (rightCard) return takeDamage(`Right move, wrong part. Drop it on the part it changes.`);
-  takeDamage(scopeOf(card) === 'both' ? `That's allowed, but x still isn't alone: ${appliedText(card)}` : `That move doesn't help here.`);
+// =====================================================================
+//  Rules and mastery
+// =====================================================================
+function playCard(card) {
+  if (busy) return;
+  const step = cur.path[cur.step], sk = progress.skills[step.skill];
+  const now = performance.now();
+  sk.secondsTotal += (now - cur.lastT) / 1000; sk.movesTimed++; cur.lastT = now;
+  sk.lastPracticed = new Date().toISOString(); sk.decayWeeks = 0;
+  cur.moves++;
+  if (sameCard(card, step.move)) { saveProgress(); return doStep(card); }
+  // Wrong move: -10 HP and -10 mastery on the skill this step uses.
+  cur.wrong++;
+  sk.wrongByCard[cardKind(card)] = (sk.wrongByCard[cardKind(card)] || 0) + 1;
+  changeMastery(step.skill, MASTERY.wrong);
+  saveProgress(); renderSkills([[step.skill, MASTERY.wrong]]);
+  const s = cur.state, undo = correctMove({ ...s, b: F(0) });
+  const why = s.b.n !== 0 && !fIs(s.coef, 1) && sameCard(card, undo)
+    ? `That's allowed, but undo the + or ${MINUS} part first, then the ${TIMES} or ${DIV}.`
+    : `That's allowed, but x still isn't alone: ${appliedText(s, card)}`;
+  takeDamage(why);
+}
+
+async function doStep(card) {
+  busy = true; setMsg('');
+  const s = cur.state, ns = applyCard(s, card);
+  const additive = card.op === '+' || card.op === '-';
+  const note = cur.path.length > 1 && cur.step === 0 && additive ? ` (undo + and ${MINUS} first, then ${TIMES} and ${DIV})` : '';
+  const anim = OPERATION_ANIMATIONS[card.op];
+  if (anim) await anim(card, s, ns, note);
+  cur.state = ns; cur.step++;
+  cur.lastT = performance.now();   // start the next move's clock after the animation, not before it
+  renderEquation(ns);
+  if (cur.step < cur.path.length) { dealHand(); busy = false; return; }
+  equationSolved();
+}
+
+function equationSolved() {
+  const par = cur.path.length, clean = cur.wrong === 0;
+  const deltas = [];
+  for (const id of cur.skills) {
+    const sk = progress.skills[id];
+    sk.solved++; sk.parDiffTotal += cur.moves - par; sk.parCount++;
+    const d = clean ? MASTERY.clean : 0;
+    if (d) changeMastery(id, d);
+    deltas.push([id, d]);
+  }
+  const fresh = checkUnlocks();
+  saveProgress(); renderSkills(deltas);
+  const gains = deltas.filter(d => d[1]).map(d => `${SKILL[d[0]].name} +${d[1]}`).join(', ');
+  setMsg(`Solved! x = ${fracText(cur.answer)}${gains ? ' · ' + gains : ''}`, 'good');
+  for (const id of fresh) run.nodes.splice(run.i + 1, 0, { type: 'tutorial', skill: id });
+  if (fresh.length) { renderMap(); $('unlock').textContent = `New stage unlocked: ${SKILL[fresh[0]].title.replace(/^Stage \d: /, '')}! Its tutorial fight is next.`; }
+
+  fight.phase++;
+  if (fight.phase < fight.phases.length) {
+    const b = $('enemyBox'); b.classList.remove('hit'); void b.offsetWidth; b.classList.add('hit');
+    return waitForNext(startPhase);
+  }
+  $('enemyBox').classList.add('dead');
+  const node = fight.node;
+  if (node.type === 'tutorial' && !progress.tutorialsDone.includes(node.skill)) { progress.tutorialsDone.push(node.skill); saveProgress(); }
+  if (node.type === 'elite') { hp = Math.min(MAX_HP, hp + ELITE_HEAL); updateHud(); setMsg($('msg').textContent + ` · Elite down: +${ELITE_HEAL} HP`, 'good'); }
+  if (node.type === 'boss') return waitForNext(actCleared);
+  run.i++;
+  waitForNext(startNode);
 }
 
 function takeDamage(why) {
   hp = Math.max(0, hp - DAMAGE); updateHud();
   setMsg(`-${DAMAGE} HP. ${why}`, 'bad');
   const a = $('arena'); a.classList.remove('flash', 'shake'); void a.offsetWidth; a.classList.add('flash', 'shake');
-  if (hp <= 0) { busy = true; setTimeout(() => { $('overText').textContent = `Out of HP. You beat ${score} equation${score === 1 ? '' : 's'}.`; $('over').style.display = 'flex'; }, 500); }
-}
-
-// ---------- Operation animations ----------
-// Each operation plays its own animation on the equation when it's the correct move.
-// To add a new operation (Distribute, Combine like terms, Factor, ...), write an async
-// function (card) => {...} that edits the #equation DOM step by step, and register it here
-// under the card's op. Use the helpers below (chip, mark, removeTok, caption, sleep).
-const OPERATION_ANIMATIONS = {
-  '+': cancelAndCombine,
-  '-': cancelAndCombine,
-  '*': cancelAndCombine,
-  '/': cancelAndCombine,
-};
-
-// Animation speed: 1 = normal, 2 = twice as fast, 0.5 = half speed. Scales both sleep() and the CSS (--k).
-let speed = 1;
-try { speed = +localStorage.getItem('animSpeed') || 1; } catch (e) {}
-function setSpeed(v) {
-  speed = v;
-  document.documentElement.style.setProperty('--k', String(1 / v));
-  document.querySelectorAll('.speed button').forEach(b => b.classList.toggle('on', +b.dataset.speed === v));
-  try { localStorage.setItem('animSpeed', String(v)); } catch (e) {}
-}
-document.querySelectorAll('.speed button').forEach(b => b.addEventListener('click', () => setSpeed(+b.dataset.speed)));
-setSpeed(speed);
-const sleep = ms => new Promise(r => setTimeout(r, ms / speed));
-const caption = t => { $('step').textContent = t; };
-function chip(text, cls = 'term op-new') {   // a new token that drops in
-  const s = document.createElement('div'); s.className = 'tok ' + cls + ' enter'; s.textContent = text; return s;
-}
-const mark = (els, cls) => els.forEach(e => e.classList.add(cls));
-async function removeTok(els) { mark(els, 'gone'); await sleep(460); els.forEach(e => e.remove()); }
-
-// Level 1: do the same thing to both sides, the pair next to x cancels, the other side simplifies.
-//   x + 3 = 7  ->  x + 3 − 3 = 7 − 3  ->  x = 7 − 3  ->  x = 4
-async function cancelAndCombine(card) {
-  const el = $('equation'), sym = cardLabel(card);
-  const toks = [...el.children];
-  const idx = pred => eq.tokens.findIndex(pred);
-  const eqEl = toks[idx(t => t.kind === 'eq')];
-  const target = toks[idx(t => t.target)];
-  const other = toks[idx(t => t.kind === 'term' && !t.target)];
-  const xEl = toks[idx(t => t.kind === 'var')];
-  const xOnLeft = idx(t => t.kind === 'var') < idx(t => t.kind === 'eq');
-  const additive = card.op === '+' || card.op === '-';
-
-  // 1. Apply the card to both sides.
-  caption(cardText(card));
-  const spaced = opSym(card.op) + ' ' + card.n;  // equation terms read "÷ 3", cards read "÷3"
-  const left = chip(spaced), right = chip(spaced);
-  el.insertBefore(left, eqEl); el.appendChild(right);
-  await sleep(1000);
-
-  // 2. The two operations next to x undo each other.
-  const xChip = xOnLeft ? left : right, otherChip = xOnLeft ? right : left;
-  caption(`${target.textContent.replace(/\s/g, '')} and ${sym} cancel out (they make ${additive ? 0 : 1})`);
-  mark([target, xChip], 'cancel');
-  await sleep(1000);
-  await removeTok([target, xChip]);
-  xEl.textContent = 'x';           // "+ x" becomes plain "x" once the front number is gone
-
-  // 3. The other side simplifies to the answer.
-  caption(`${other.textContent} ${sym} = ${eq.answer}`);
-  mark([other, otherChip], 'merge');
-  await sleep(800);
-  await removeTok([otherChip]);
-  other.classList.remove('merge'); other.textContent = String(eq.answer); other.classList.add('pop');
-  await sleep(600);
-}
-
-async function solve(card) {
-  busy = true; setMsg('');
-  const anim = OPERATION_ANIMATIONS[card.op];
-  if (anim) await anim(card);
-  setMsg(`Solved! x = ${eq.answer}`, 'good');
-  $('enemy').classList.add('dead');
-  score++; updateHud();
-  waitForNext();
+  if (hp <= 0) { busy = true; setTimeout(runLost, 600); }
 }
 
 // After a solve, hold the result for 3 seconds, or skip ahead with a click anywhere.
 const NEXT_DELAY_MS = 3000;
-let nextTimer = null;
-function waitForNext() {
+let nextTimer = null, nextAction = null;
+function waitForNext(action) {
+  busy = true; nextAction = action;
   $('next').classList.add('show');
   nextTimer = setTimeout(goNext, NEXT_DELAY_MS);
 }
@@ -367,11 +951,94 @@ function goNext() {
   if (!nextTimer) return;
   clearTimeout(nextTimer); nextTimer = null;
   $('next').classList.remove('show');
-  nextEnemy();
+  const a = nextAction; nextAction = null; a();
 }
-window.addEventListener('click', e => { if (nextTimer && !e.target.closest('.speed')) goNext(); });
-$('restart').addEventListener('click', start);
-start();
+window.addEventListener('click', e => { if (nextTimer && !e.target.closest('.speed, button, #over')) goNext(); });
+
+// =====================================================================
+//  Screens: title, tutorial intro, run end, stats
+// =====================================================================
+function showOverlay(html, buttons) {
+  const p = $('overPanel'); p.innerHTML = html;
+  const row = document.createElement('div'); row.className = 'buttons';
+  for (const [label, fn, ghost] of buttons) {
+    const b = document.createElement('button'); b.textContent = label; if (ghost) b.className = 'ghost';
+    b.addEventListener('click', fn); row.appendChild(b);
+  }
+  p.appendChild(row);
+  $('over').classList.add('show');
+}
+function hideOverlay() { $('over').classList.remove('show'); }
+
+function skillSummaryHtml() {
+  return SKILLS.map(s => {
+    const p = progress.skills[s.id], st = skillStatus(s.id);
+    const label = { locked: '🔒 locked', learning: 'learning', mastered: '✓ mastered', review: 'needs review' }[st];
+    return `<div class="statrow"><div class="head"><b>${s.stage}. ${s.name}</b> <div class="meter"><div class="fill" style="width:${p.mastery}%"></div><div class="goal"></div></div> ${p.mastery}/100 · ${label}</div></div>`;
+  }).join('');
+}
+
+function showTitle() {
+  busy = true;
+  showOverlay(`<h1>Act 1: The Ink Cellar</h1><h2>Balancing</h2>
+    <p>Equations have escaped their textbooks. Beat each one by getting x alone. Wrong moves cost 10 HP. Clear the map and defeat The Scale Keeper.</p>
+    <p>Each stage unlocks when the one before it reaches 80 mastery: +25 for a fight with no wrong moves, −10 for each wrong move. Mastery is saved, even if you run out of HP.</p>
+    ${skillSummaryHtml()}`,
+    [['Start run', newRun], ['Skills & stats', () => showStats(showTitle), true]]);
+}
+
+function showIntro(id) {
+  const s = SKILL[id];
+  busy = true;
+  showOverlay(`<h2>Tutorial fight</h2><h1>${s.title}</h1><p>${s.intro}</p><div class="example">${s.example}</div>`,
+    [['Start', () => { hideOverlay(); startPhase(); }]]);
+}
+
+function runLost() {
+  showOverlay(`<h1>Out of HP</h1><p>You reached node ${run.i + 1} of ${run.nodes.length}. Your mastery is saved, so the next run starts with every stage you've unlocked.</p>${skillSummaryHtml()}`,
+    [['New run', newRun], ['Skills & stats', () => showStats(runLost), true]]);
+}
+
+function actCleared() {
+  $('next').classList.remove('show');
+  showOverlay(`<h1>Act 1 cleared!</h1><p>The Scale Keeper is balanced at last. Act 2, the Bracket Halls, is next to be built. Until then, run Act 1 again to keep your skills sharp.</p>${skillSummaryHtml()}`,
+    [['New run', newRun], ['Skills & stats', () => showStats(actCleared), true]]);
+}
+
+function fmtDate(iso) { return iso ? iso.slice(0, 10) : 'never'; }
+function showStats(back) {
+  const rows = SKILLS.map(s => {
+    const p = progress.skills[s.id], st = skillStatus(s.id);
+    const label = { locked: '🔒 locked', learning: 'learning', mastered: '✓ mastered', review: 'needs review' }[st];
+    const wrong = Object.entries(p.wrongByCard).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(', ') || 'none';
+    const par = p.parCount ? (p.parDiffTotal / p.parCount) : null;
+    const secs = p.movesTimed ? (p.secondsTotal / p.movesTimed).toFixed(1) : '–';
+    return `<div class="statrow"><div class="head"><b>${s.stage}. ${s.name}</b> <div class="meter"><div class="fill" style="width:${p.mastery}%"></div><div class="goal"></div></div> ${p.mastery}/100 · ${label}</div>
+      <dl><dt>Skill tag</dt><dd>${s.id}</dd>
+      <dt>Fights attempted / solved</dt><dd>${p.attempted} / ${p.solved}</dd>
+      <dt>Wrong moves, by card</dt><dd>${wrong}</dd>
+      <dt>Moves vs par (average)</dt><dd>${par === null ? '–' : (par >= 0 ? '+' : '') + par.toFixed(1)}</dd>
+      <dt>Average seconds per move</dt><dd>${secs}</dd>
+      <dt>Hints used</dt><dd>${p.hints}</dd>
+      <dt>Last practiced</dt><dd>${fmtDate(p.lastPracticed)}</dd></dl></div>`;
+  }).join('');
+  const opened = performance.now();
+  // Time spent reading stats is not thinking time, so push the move clock forward by it.
+  const close = () => { if (cur && cur.lastT) cur.lastT += performance.now() - opened; if (back) back(); else hideOverlay(); };   // the overlay blocks input while open, so busy is left alone
+  showOverlay(`<h1>Skills &amp; stats</h1><p>Saved in this browser. 80 mastery unlocks the next stage. A mastered skill that drops below 80 is marked "needs review" and shows up more often.</p>${rows}`,
+    [['Close', close], ['Reset all progress', () => {
+      if (!confirm('Erase all mastery and stats in this browser?')) return;
+      try { localStorage.removeItem(STORE_KEY); } catch (e) {}
+      progress = loadProgress(); renderSkills(); showTitle();
+    }, true]]);
+}
+$('statsBtn').addEventListener('click', e => { e.stopPropagation(); if (!$('over').classList.contains('show')) showStats(null); });
+
+// Test hook: lets an automated playtest read the expected move. Not used by the game itself.
+window.__game = { get cur() { return cur; }, get hand() { return hand; }, get busy() { return busy; }, get run() { return run; }, get hp() { return hp; },
+  get progress() { return progress; }, playCard, correct: () => cur && cur.path[cur.step].move, goNext, newRun };
+
+renderSkills(); updateHud(); showTitle();
 </script>
 </body>
 </html>
