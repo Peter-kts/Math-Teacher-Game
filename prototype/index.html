@@ -47,7 +47,7 @@
   #enemyBox.hit { animation: hit calc(.5s * var(--k)); }
   @keyframes hit { 0%,100% { transform:none; filter:none; } 30% { transform: translateX(-8px) scale(.92); filter: brightness(3); } 60% { transform: translateX(6px); } }
   #equation { display:flex; align-items:center; gap:4px; font-size:var(--eqSize); font-weight:bold; flex-wrap:wrap; justify-content:center; perspective:600px; position:relative; padding-bottom:.5em; }
-  .tok { padding:14px 12px; border:4px dashed transparent; border-radius:10px; min-width:64px; white-space:pre; min-height:96px; display:flex; align-items:center; justify-content:center; text-align:center; max-width:320px; transition: background .15s, border-color .15s, max-width calc(.45s * var(--k)), min-width calc(.45s * var(--k)), padding calc(.45s * var(--k)), opacity calc(.45s * var(--k)), transform calc(.45s * var(--k)), color calc(.3s * var(--k)); }
+  .tok { padding:14px 12px; border:4px dashed transparent; border-radius:10px; min-width:64px; white-space:pre; min-height:96px; display:flex; align-items:center; justify-content:center; text-align:center; max-width:320px; transition: background .15s, border-color .15s, max-width .25s, min-width .25s, padding .25s, opacity .25s, transform .25s, color .2s; }
   #arena.targeting .tok:not(.eq) { border-color: var(--muted); background:#ffffff0d; }
   #arena.anywhere { outline:4px dashed var(--muted); outline-offset:-10px; }
   #arena.anywhere.hover { outline-color: var(--accent); background:#2f2b4a; }
@@ -58,16 +58,16 @@
   .frac > span:last-child { border-top:.09em solid currentColor; padding-top:.05em; }
   /* operation animation states */
   .tok.op-new { color:#7bdff2; }
-  .tok.enter { animation: enter calc(.55s * var(--k)) cubic-bezier(.2,1.6,.4,1); }
+  .tok.enter { animation: enter .3s cubic-bezier(.2,1.6,.4,1); }
   @keyframes enter { from { transform: translateY(-60px) scale(.2); opacity:0; } }
   .tok.cancel { color:var(--bad); text-decoration: line-through; transform: scale(1.12); }
   .tok.gone { opacity:0; max-width:0; min-width:0; padding-left:0; padding-right:0; transform: scale(.3); overflow:hidden; border-width:0; }
   .tok.merge { color:var(--good); transform: scale(1.1); }
-  .tok.pop { animation: pop calc(.5s * var(--k)); color:var(--good); }
+  .tok.pop { animation: pop .3s; color:var(--good); }
   @keyframes pop { 0% { transform: scale(.4); } 60% { transform: scale(1.3); } 100% { transform: scale(1); } }
-  .tok.flip { animation: flip calc(.44s * var(--k)) ease-in-out; }
+  .tok.flip { animation: flip .24s ease-in-out; }
   @keyframes flip { 0% { transform: rotateX(0); } 50% { transform: rotateX(90deg); } 100% { transform: rotateX(0); } }
-  .tok.spin { animation: spin calc(.9s * var(--k)) ease-in-out; }
+  .tok.spin { animation: spin .45s ease-in-out; }
   @keyframes spin { 0% { transform: rotateY(0); } 100% { transform: rotateY(360deg); } }
   /* difficulty picker */
   .diff { display:flex; flex-direction:column; gap:6px; }
@@ -78,18 +78,18 @@
   /* operations written under a term */
   .unote { position:absolute; transform:translateX(-50%); margin-top:.1em; font-size:.42em; color:#7bdff2; white-space:nowrap; pointer-events:none; z-index:2;
            display:flex; align-items:center; line-height:1.1; text-shadow:0 2px 0 #000;
-           transition: opacity calc(.4s * var(--k)), color calc(.3s * var(--k)); animation: noteIn calc(.55s * var(--k)) cubic-bezier(.2,1.6,.4,1); }
+           transition: opacity .2s, color .2s; animation: noteIn .15s ease-out; }
   .unote.divnote { margin-top:0; flex-direction:column; }
-  .unote .ubar { display:block; height:.14em; min-height:3px; background:currentColor; border-radius:2px; margin-bottom:.08em; animation: grow calc(.4s * var(--k)) ease-out; }
-  @keyframes noteIn { from { transform: translate(-50%, 40px) scale(.3); opacity:0; } }
+  .unote .ubar { display:block; height:.14em; min-height:3px; background:currentColor; border-radius:2px; margin-bottom:.08em; animation: grow .15s ease-out; }
+  @keyframes noteIn { from { transform: translate(-50%, 6px); opacity:0; } }
   .unote.cancel { color:var(--bad); text-decoration:line-through; }
   .unote.merge { color:var(--good); }
   .unote.out { opacity:0; }
-  .unote.spin { animation: spinNote calc(.9s * var(--k)) ease-in-out; }
+  .unote.spin { animation: spinNote .45s ease-in-out; }
   @keyframes spinNote { from { transform: translateX(-50%) rotateY(0); } to { transform: translateX(-50%) rotateY(360deg); } }
   /* division written as a fraction */
   .tok.var .den { color:var(--ink); }
-  .frac > span { transition: opacity calc(.45s * var(--k)), color calc(.3s * var(--k)); }
+  .frac > span { transition: opacity .25s, color .2s; }
   .frac .cancel { color:var(--bad); text-decoration:line-through; }
   .frac .gone { opacity:0; }
   @keyframes grow { from { transform: scaleX(0); } }
@@ -413,9 +413,13 @@ try { difficulty = DIFFICULTIES[+localStorage.getItem('algebraCards.difficulty')
 function applyDifficulty(s) {
   const D = difficulty;
   if (!D.level) return s;
-  const N = D.max, a = s.coef;
+  const N = D.max, C = [10, 12, 15, 20][D.level];                   // biggest coefficient or divisor
   for (let tries = 0; tries < 300; tries++) {
     const r = { ...s };
+    let a = s.coef;                                                    // bigger multipliers and divisors, same sign
+    if (a.d === 1 && Math.abs(a.n) > 1) a = F(Math.sign(a.n) * rand(2, C));
+    else if (Math.abs(a.n) === 1 && a.d > 1) a = F(a.n, rand(2, C));
+    r.coef = a;
     if (s.b.n !== 0) {
       const b = D.neg ? nonZero(-N, N) : rand(1, N);
       if (isInt(a) && Math.abs(a.n) > 1 && b % a.n === 0) continue;   // keep "undo + or − first" a real lesson
@@ -789,10 +793,15 @@ const sleep = ms => new Promise(r => {
   pendingSleeps.add(done);
 });
 const skipStep = () => [...pendingSleeps].forEach(done => done());
+// Operation timing: the motion itself (a note fading in, terms cancelling, the result appearing) is
+// quick and fixed; the holds, where you read what's written, follow the speed setting.
+const HOLD = 1200;                       // ms at 1x: hold on the written operation, and again on the result
+const hold = (ms = HOLD) => sleep(ms);   // scaled by speed
+const quick = ms => sleep(ms * speed);   // not scaled (sleep divides by speed)
 let animating = false;
 const caption = t => { $('step').textContent = t; };
 const mark = (els, cls) => els.forEach(e => e && e.classList.add(cls));
-async function removeTok(els) { els = els.filter(Boolean); mark(els, 'gone'); await sleep(460); els.forEach(e => e.remove()); }
+async function removeTok(els) { els = els.filter(Boolean); mark(els, 'gone'); await quick(260); els.forEach(e => e.remove()); }
 const roleEl = role => $('equation').querySelector(`[data-role="${role}"]`);
 
 // Operations are written under the term they act on, the way you'd write them by hand, so the
@@ -832,7 +841,7 @@ function note(html, anchors, opts = {}) {
   if (!notesRaf) notesRaf = requestAnimationFrame(trackNotes);
   return n;
 }
-async function dropNote(n) { n.classList.add('out'); await sleep(400); notes.delete(n); n.remove(); }
+async function dropNote(n) { n.classList.add('out'); await quick(200); notes.delete(n); n.remove(); }
 function clearNotes() { notes.forEach(n => n.remove()); notes.clear(); }
 const xSideEls = () => ['coef', 'x', 'const'].map(roleEl).filter(Boolean);
 
@@ -844,16 +853,19 @@ function refreshXSide(ns) {
     if (el && t) el.innerHTML = t.html || t.text;
   }
 }
-// The other side simplifies to its new value.
+// The other side simplifies to its new value, then the result holds so it can be read.
 async function combineOtherSide(s, ns, oNote, how) {
   const other = roleEl('other');
-  caption(how);
   mark([other, oNote], 'merge');
-  await sleep(800);
+  await quick(200);
   dropNote(oNote);
   other.classList.remove('merge'); other.innerHTML = fracHtml(ns.c); other.classList.add('pop');
-  await sleep(700);
+  caption(how);
+  await quick(300);
+  await hold();
 }
+// Shows the written operation for a moment: it fades in fast, then holds (scaled by speed).
+async function showOperation(text) { caption(text); await quick(150); await hold(); }
 
 // Stages 1-2 (+ and −), and × to undo a division: the operation is written under the term it undoes
 // and under the other side, the pair cancels, and the other side simplifies.
@@ -864,57 +876,53 @@ async function cancelAndCombine(card, s, ns, note_ = '') {
   const additive = card.op === '+' || card.op === '-';
   const target = roleEl(additive ? 'const' : 'coef');
   const anchor = target.classList.contains('den') ? roleEl('x') : target;   // x/3: write it under the whole fraction
-  caption(cardText(card) + note_);
   const xNote = note(chipHtml(card), [anchor]), oNote = note(chipHtml(card), [roleEl('other')]);
-  await sleep(1100);
-  caption(target.classList.contains('den')
-    ? `Dividing by ${target.textContent} and multiplying by ${target.textContent} cancel out (they make 1)`
-    : `${target.textContent.replace(/\s/g, '')} and ${cardLabel(card)} cancel out (they make ${additive ? 0 : 1})`);
+  await showOperation(cardText(card) + note_);
+  const cancelText = target.classList.contains('den')
+    ? `÷ ${target.textContent} and ${cardLabel(card)} cancel`
+    : `${target.textContent.replace(/\s/g, '')} and ${cardLabel(card)} cancel`;
   mark([target, xNote], 'cancel');
-  await sleep(1000);
+  await quick(250);
   dropNote(xNote);
   await removeTok([target]);
   refreshXSide(ns);
-  await combineOtherSide(s, ns, oNote, `${fracText(s.c)} ${cardLabel(card).replace(/^(.)/, '$1 ')} = ${fracText(ns.c)}`);
+  await combineOtherSide(s, ns, oNote, `${cancelText}, and ${fracText(s.c)} ${cardLabel(card).replace(/^(.)/, '$1 ')} = ${fracText(ns.c)}`);
 }
 
-// Divide both sides: a fraction bar with the divisor slides in under each whole side, the matching
+// Divide both sides: a fraction bar with the divisor appears under each whole side, the matching
 // numbers on the x side cancel to 1, and the other side divides out.
 //   3x = 15  ->  (3x over 3) = (15 over 3)  ->  x = 5
 async function divideAsFraction(card, s, ns) {
   const dn = paren(F(card.n));
-  caption(cardText(card));
   const xNote = note(dn, xSideEls(), { bar: true }), oNote = note(dn, [roleEl('other')], { bar: true });
-  await sleep(1100);
-  const coef = roleEl('coef');
-  caption(`${coef.textContent} over ${dn} is 1, so they cancel`);
+  await showOperation(cardText(card));
+  const coef = roleEl('coef'), ct = coef.textContent;
   mark([coef, xNote], 'cancel');
-  await sleep(1000);
+  await quick(250);
   dropNote(xNote);
   await removeTok([coef]);
-  await combineOtherSide(s, ns, oNote, `${fracText(s.c)} over ${dn} = ${fracText(ns.c)}`);
+  await combineOtherSide(s, ns, oNote, `${ct} over ${dn} is 1, and ${fracText(s.c)} over ${dn} = ${fracText(ns.c)}`);
 }
 
-// Stage 3, multiply by −1: "× (−1)" is written under both sides, then every sign flips in a ripple.
+// Stage 3, multiply by −1: "× (−1)" is written under both sides, then every sign flips in a quick ripple.
 //   −x = 5  ->  x = −5
 async function flipSigns(card, s, ns) {
-  caption(cardText(card));
   const notesHere = [note(chipHtml(card), xSideEls()), note(chipHtml(card), [roleEl('other')])];
-  await sleep(1100);
-  caption(`Multiplying by ${MINUS}1 flips the sign of every term`);
+  await showOperation(cardText(card));
   const fresh = tokensFor(ns);
   for (const t of [...$('equation').querySelectorAll('.tok')]) {
     const role = t.dataset.role;
     if (role === 'eq') continue;
     t.classList.add('flip');
-    await sleep(220);                       // halfway through the flip, the term shows its new sign
+    await quick(120);                       // halfway through the flip, the term shows its new sign
     const nt = fresh.find(f => f.role === role); if (nt) t.innerHTML = nt.html || nt.text;
     t.classList.add('merge');
-    await sleep(260);
+    await quick(120);
   }
   notesHere.forEach(dropNote);
-  caption(`${fracText(s.c)} × (${MINUS}1) = ${fracText(ns.c)}, so x = ${fracText(ns.c)}`);
-  await sleep(900);
+  caption(`Multiplying by ${MINUS}1 flips every sign: ${fracText(s.c)} × (${MINUS}1) = ${fracText(ns.c)}`);
+  await quick(200);
+  await hold();
 }
 
 // Stage 3, multiply by the reciprocal: the reciprocal is written under the fraction and under the other
@@ -922,21 +930,18 @@ async function flipSigns(card, s, ns) {
 //   (2/3)x = 8  ->  under 2/3 and under 8 write "× 3/2"  ->  x = 12
 async function flipReciprocal(card, s, ns) {
   const coef = roleEl('coef'), f = F(card.n, card.d);
-  caption(cardText(card));
   const xNote = note(chipHtml(card), [coef]), oNote = note(chipHtml(card), [roleEl('other')]);
-  await sleep(1100);
-  caption(`${fracText(f)} is ${fracText(s.coef)} flipped over`);
+  await showOperation(`${cardText(card)} (${fracText(s.coef)} flipped over)`);
   mark([coef, xNote], 'spin');
-  await sleep(1000);
-  caption(`${fracText(s.coef)} × ${fracText(f)} = 1, so they cancel`);
+  await quick(450);
   coef.classList.remove('spin'); xNote.classList.remove('spin');
   mark([coef, xNote], 'cancel');
-  await sleep(900);
+  await quick(200);
   dropNote(xNote);
   coef.classList.remove('cancel'); coef.textContent = '1'; coef.classList.add('merge');
-  await sleep(700);
+  await quick(200);
   await removeTok([coef]);
-  await combineOtherSide(s, ns, oNote, `${fracText(s.c)} × ${fracText(f)} = ${fracText(ns.c)}`);
+  await combineOtherSide(s, ns, oNote, `${fracText(s.coef)} × ${fracText(f)} = 1, and ${fracText(s.c)} × ${fracText(f)} = ${fracText(ns.c)}`);
 }
 
 // =====================================================================
