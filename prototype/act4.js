@@ -1034,7 +1034,7 @@
       default: return A2.render(w);
     }
   }
-  const banner = html => { const t = topEl(); t.innerHTML = html; t.classList.add('show'); };
+  const banner = html => { const t = topEl(), h = askLine() + (html || ''); t.innerHTML = h; t.classList.toggle('show', !!h); };
   const ruleHtml = fn => `${fn.name}(${XI(fn.vn)}) = ${treeHtml(fn.rule)}`;
   const treeHtml = n => treeText(n).replace(/(?<![a-z])([a-z])(?![a-z])/g, m => XI(m));   // playtest fix: \b missed the x in "2x"
   function templateToks(e, inTop) {
@@ -1046,6 +1046,55 @@
     el.appendChild(TOK(`${mT}${XI('x')}`, 'tm', 'T', 'tmpl'));
     if (bT) el.appendChild(TOK(bT, 'tb', 'T', 'tmpl'));
   }
+  // ---------------------------------------------------------------- test-style questions
+  // Every problem opens with one instruction worded the way a math test asks it ("Evaluate f(3).",
+  // "Find the slope of the line through (2, 1) and (5, 7)."). It is picked once per problem from a few
+  // real-test phrasings (never the same one twice in a row) and stays put while the state changes.
+  // index.html shows it in its own prompt line when it has one; otherwise it heads the Act 4 banner.
+  const PROMPT_CACHE = new WeakMap(), lastAsk = {};
+  const askPick = (kind, opts) => { const fresh = opts.filter(t => t !== lastAsk[kind]); return (lastAsk[kind] = pick(fresh.length ? fresh : opts)); };
+  const NW = h => `<span class="nw4">${h}</span>`;   // an equation or point in a question never breaks across lines
+  const fnHtml = fn => NW(`${fn.name}(${XI(fn.vn)}) = ${treeHtml(fn.rule)}`);
+  function promptOf(e) {
+    const pts = n => (e.graph && e.graph.labels === false ? (n === 2 ? 'the two points shown' : 'the point shown') : e.pts.slice(0, n).map(p => NW(ptText(p))).join(' and '));
+    const then = !e.then ? '' : e.then.q === 'out' ? ` Call the line f(${XI('x')}), then find f(${fracHtml(e.then.input)}).` : ` Then find ${XI('x')} where the line reaches ${XI('y')} = ${fracHtml(e.then.y)}.`;
+    switch (e.k4) {
+      case 'eval': {
+        if (e.fn && e.tree.t === 'call') {
+          const fx = `${e.fn.name}(${fracHtml(e.tree.arg)})`;
+          return askPick('out', [`Given ${fnHtml(e.fn)}, find ${fx}.`, `Evaluate ${fx} for ${fnHtml(e.fn)}.`, `If ${fnHtml(e.fn)}, what is ${fx}?`]);
+        }
+        const v = `${XI(e.vn)} = ${fracHtml(e.val)}`;
+        return askPick('eval', [`Evaluate the expression when ${v}.`, `Evaluate for ${v}.`, `Find the value of the expression when ${v}.`]);
+      }
+      case 'fin': {
+        const q = `${e.fn.name}(${XI(e.fn.vn)}) ${e.rel} ${fracHtml(e.rhs)}`, v = XI(e.fn.vn);
+        if (e.rel !== '=') return askPick('fin-ineq', [`Given ${fnHtml(e.fn)}, solve ${q}.`, `For ${fnHtml(e.fn)}, find all values of ${v} where ${q}.`]);
+        return askPick('fin', [`Given ${fnHtml(e.fn)}, solve ${q}.`, `For ${fnHtml(e.fn)}, find ${v} when ${q}.`, `If ${fnHtml(e.fn)}, for what value of ${v} is ${q}?`]);
+      }
+      case 'formula': return askPick('formula', [`Solve for ${XI(e.v)}.`, `Solve the formula for ${XI(e.v)}.`, `Solve ${NW(fText(e))} for ${XI(e.v)}.`]);
+      case 'slope':
+        if (e.src === 'slopeint' || e.src === 'standard') return askPick('slope-eq', ['Find the slope of the line.', 'What is the slope of this line?', 'Find the slope.']);
+        if (e.src === 'graph') return askPick('slope-graph', ['Find the slope of the line shown.', 'Find the slope of the graphed line.']);
+        return askPick('slope-pts', [`Find the slope of the line through ${pts(2)}.`, `Find the slope of the line that passes through ${pts(2)}.`]);
+      case 'line': {
+        const write = askPick('line', ['Write an equation of the line', 'Find the equation of the line', 'Write the equation, in slope-intercept form, of the line']);
+        if (e.q === 'twopts') return `${write} through ${pts(2)}.${then}`;
+        if (e.q === 'parallel' || e.q === 'perp') return `${write} through ${pts(1)} that is ${e.q === 'parallel' ? 'parallel' : 'perpendicular'} to ${NW(`${XI('y')} = ${lineHtml(e.ref.m, e.ref.b)}`)}.${then}`;
+        return `${write} with slope ${fracHtml(e.m0)} that passes through ${pts(1)}.${then}`;
+      }
+      case 'icept': return askPick('icept', [`Find the ${XI('x')}- and ${XI('y')}-intercepts of ${NW(stdHtml(e))}.`, `Where does ${NW(stdHtml(e))} cross the axes?`]) + (e.then ? then : '');
+    }
+    return '';
+  }
+  function prompt(e) {
+    if (!e || !e.k4) return '';
+    if (!PROMPT_CACHE.has(e)) PROMPT_CACHE.set(e, promptOf(e));
+    return PROMPT_CACHE.get(e);
+  }
+  // The question line inside the banner, only when index.html has no prompt line of its own.
+  const askLine = () => (!$('prompt') && cur && cur.act4 && cur.start ? `<div class="ask4">${prompt(cur.start)}</div>` : '');
+
   function render(e) {
     clear();
     const el = $('equation'); if (typeof clearNotes === 'function') clearNotes();
@@ -1053,15 +1102,14 @@
     const fit = () => { el.classList.add('a2'); if (A2.fitEq) A2.fitEq(); };
     switch (e.k4) {
       case 'eval':
-        if (e.fn) banner(`<span class="lab4">Rule</span> ${ruleHtml(e.fn)}`);
-        else if (e.val && !e.lhs) banner(`Evaluate when ${XI(e.vn)} = ${fracHtml(e.val)}`);
+        banner(e.lineDone ? `<span class="lab4">Line</span> ${ruleHtml(e.fn)}` : '');
         if (e.graph) drawGraph(e.graph);
         renderEval(e); fit(); return;
       case 'formula':
-        banner(`Solve for ${XI(e.v)}`);
+        banner('');
         renderFormula(e); fit(); return;
       case 'fin': {
-        banner(`<span class="lab4">Rule</span> ${ruleHtml(e.fn)}${e.ask === 'reach' ? ` · where does it reach y = ${fracText(e.rhs)}?` : ''}`);
+        banner(e.lineDone ? `<span class="lab4">Line</span> ${ruleHtml(e.fn)} · where does it reach ${XI('y')} = ${fracHtml(e.rhs)}?` : '');
         if (e.graph) drawGraph(e.graph);
         if (e.work) { renderWork(e.work); if (wKind(e.work) !== 'a3') fit(); return; }
         el.appendChild(TOK(`${e.fn.name}(${XI(e.fn.vn)})`, 'fx', 'F', 'fx4'));
@@ -1070,8 +1118,7 @@
         fit(); return;
       }
       case 'slope': {
-        const src = e.src === 'slopeint' || e.src === 'standard' ? '' : e.graph.labels ? ` through ${ptText(e.pts[0])} and ${ptText(e.pts[1])}` : ' of the line through the two marked points';
-        banner(`Find the slope <i>m</i>${src}`);
+        banner('');
         drawGraph(e.graph);
         if (e.m !== null && !(e.work && e.work.k4 === 'eval')) { el.appendChild(TOK('m', 'lhs', null, 'lhs4')); el.appendChild(EQTOK()); el.appendChild(TOK(e.m === 'undef' ? 'undefined' : fracHtml(e.m), 'result', null, e.m === 'undef' ? 'undef4' : '')); fit(); return; }
         if (e.work) { renderWork(e.work); fit(); return; }
@@ -1079,19 +1126,18 @@
         fit(); return;
       }
       case 'line': {
-        const pts = e.graph.labels ? e.pts.map(ptText) : e.pts.map(() => 'the marked point');
-        let give = '';
-        if (e.q === 'twopts') give = e.graph.labels ? `Line through ${pts[0]} and ${pts[1]}` : 'Line through the two marked points';
-        else if (e.q === 'parallel' || e.q === 'perp') give = `${e.q === 'parallel' ? 'Parallel' : 'Perpendicular'} to <span class="tok a4 r4-refm" data-role="refm" data-ref="Q">y = ${lineHtml(e.ref.m, e.ref.b)}</span>, through ${pts[0]}`;
-        else give = `Slope ${fracHtml(e.m0)}, through ${pts[0]}`;
-        banner(`${give}${e.work ? ` · ${templateToks(e, true)}` : ''}`);
+        // The given line stays in the banner as a drop target for Same m and −1/m.
+        const parts = [];
+        if (e.q === 'parallel' || e.q === 'perp') parts.push(`<span class="lab4">Given</span> <span class="tok a4 r4-refm" data-role="refm" data-ref="Q">${XI('y')} = ${lineHtml(e.ref.m, e.ref.b)}</span>`);
+        if (e.work) parts.push(templateToks(e, true));
+        banner(parts.join(' · '));
         drawGraph(e.graph);
         if (e.work) { renderWork(e.work); if (wKind(e.work) !== 'a3') fit(); return; }
         templateToks(e, false); fit(); return;
       }
       case 'icept': {
         const f = e.found, ic = (v, t) => (v === null || v === undefined ? `<span class="slot4">?</span>` : t(fracHtml(v)));
-        banner(`Where does ${stdHtml(e)} cross the axes? <span class="ic4">y-intercept ${ic(f.y, h => `(0, ${h})`)} · x-intercept ${ic(f.x, h => `(${h}, 0)`)}</span>`);
+        banner(`<span class="ic4">${XI('y')}-intercept ${ic(f.y, h => `(0, ${h})`)} · ${XI('x')}-intercept ${ic(f.x, h => `(${h}, 0)`)}</span>`);
         drawGraph(e.graph);
         if (e.work) { renderWork(e.work); fit(); return; }
         stdToks(e); fit(); return;
@@ -1838,6 +1884,9 @@
     @keyframes fmGear { to { transform: rotate(360deg); } }
     .fm4.out .fm4out { animation: fmOut .4s cubic-bezier(.2,1.4,.4,1) forwards; font-size:22px; }
     @keyframes fmOut { from { opacity:0; transform:translateY(-14px) scale(.6); } to { opacity:1; transform:none; } }
+    .nw4 { white-space:nowrap; }
+    #a4top .ask4 { color:var(--ink); font-size:1.08em; letter-spacing:.2px; }
+    #a4top .ask4 .xv { font-weight:bold; }
     #a4top { display:none; font-size:17px; color:var(--muted); text-align:center; padding:0 10px; line-height:1.5; }
     #a4top.show { display:block; }
     #a4top .lab4 { font-size:.75em; border:1px solid var(--muted); border-radius:3px; padding:0 4px; margin-right:4px; vertical-align:middle; }
@@ -1896,7 +1945,7 @@
 
   window.ACT4 = { apply: apply4, isSolved: isSolved4, makeEquation: makeEquation4, refreshPath, render, prefit, clear, makeHand: makeHand4,
     isCorrect, whyWrong, animFor, applyDifficulty, label, text, kind, icon, slot, targetSel, onDrag, buildFight: buildFight4,
-    genFormulaStacked, drawGraph, gens: GENS, eqText: textOf4,
+    genFormulaStacked, drawGraph, gens: GENS, eqText: textOf4, prompt,
     // test hooks
     _canon: canon4, _correct: correct4, _active: active, _evaluate: evaluate };
 })();
