@@ -1253,8 +1253,8 @@ const CARD_ICONS = {
   lcd:   { name: 'Least common denominator', svg: svgI('<path d="M3 8h7M14 8h7M2 15h20"/><path d="M6.5 4v1M17.5 4v1M12 19v1"/>') },
   flip:  { name: 'Flip the inequality sign', svg: svgI('<path d="M9 5l-5 5 5 5M15 9l5 5-5 5"/>') },
   split: { name: 'Split the bars into two cases', svg: svgI('<path d="M4 4v16M20 4v16M12 4v5M12 9l-4 6M12 9l4 6"/>') },
-  between: { name: 'Split: between (less than)', svg: svgI('<path d="M3 12h18M7 8v8M17 8v8"/><path d="M8 12h8" stroke-width="4"/>') },
-  outside: { name: 'Split: outside (more than)', svg: svgI('<path d="M3 12h18M9 8v8M15 8v8"/><path d="M2 12h6M16 12h6" stroke-width="4"/>') },
+  between: { name: 'Between: close to 0 (for < and ≤)', svg: svgI('<path d="M3 12h18M7 8v8M17 8v8"/><path d="M8 12h8" stroke-width="4"/>') },
+  outside: { name: 'Outside: far from 0 (for > and ≥)', svg: svgI('<path d="M3 12h18M9 8v8M15 8v8"/><path d="M2 12h6M16 12h6" stroke-width="4"/>') },
   none:  { name: 'No solution', svg: svgI('<circle cx="12" cy="12" r="8"/><path d="M6 18L18 6"/>') },
   all:   { name: 'Every number works', svg: svgI('<path d="M12 12c-2-3-4-4.5-6-4.5a4.5 4.5 0 000 9c2 0 4-1.5 6-4.5s4-4.5 6-4.5a4.5 4.5 0 010 9c-2 0-4-1.5-6-4.5z"/>') },
 };
@@ -1631,7 +1631,7 @@ function showTitle() {
 function showIntro(id) {
   const s = SKILL[id];
   busy = true;
-  showOverlay(`<h2>Tutorial fight</h2><h1>${s.title}</h1><p>${s.intro}</p><div class="example">${s.example}</div>`,
+  showOverlay(`<h2>Tutorial fight</h2><h1>${s.title}</h1><p>${s.intro}</p>${s.introArt || ''}<div class="example">${s.example}</div>`,
     [['Start', () => { hideOverlay(); startPhase(); }]]);
 }
 

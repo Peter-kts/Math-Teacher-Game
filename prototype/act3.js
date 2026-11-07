@@ -57,6 +57,30 @@
   const SPLIT = (way, d, incl) => ({ op: 'split', scope: 'part', ref: 'abs', way, d, incl });
   // Review fix: ≤ and ≥ read "at most" / "at least", not "less than" / "more than".
   const awayWord = rel => ({ '<': 'Less than', '≤': 'At most', '>': 'More than', '≥': 'At least' })[rel] || 'Less than';
+  // The "distance from 0" picture behind Between and Outside: a number line with 0 in the middle, −d and d
+  // marked d away on each side, and the shading either between them (close to 0) or outside them (far
+  // from 0). way 'ask' leaves it unshaded, with the question. Not to scale: −d, 0 and d always sit at the
+  // same places, so it reads the same for any d. opts: { incl, bad (red shading), anim, caption }.
+  function distPic(d, way, opts = {}) {
+    const dt = fracText(d), nd = fracText(fMul(d, F(-1))), W = 360, y = 54, x0 = 180, xl = 80, xr = 280;
+    const shade = way === 'between' ? [[xl, xr]] : way === 'outside' ? [[xl, 8], [xr, W - 8]] : [];
+    const zone = way === 'between' ? [[x0, 'close to 0']] : way === 'outside' ? [[40, 'far'], [W - 40, 'far']] : [[x0, 'close to 0, or far from 0?']];
+    const cap = opts.caption ? `<text class="dpCap" x="${x0}" y="${y + 42}">${opts.caption}</text>` : '';
+    let svg = `<svg viewBox="0 0 ${W} ${opts.caption ? 124 : 104}" class="dp ${way} ${opts.bad ? 'bad' : ''} ${opts.anim ? 'anim' : ''}" role="img" aria-label="${way === 'between' ? `Between ${nd} and ${dt}` : way === 'outside' ? `Below ${nd} or above ${dt}` : 'Number line'}">`;
+    svg += `<defs><marker id="dpA" viewBox="0 0 10 10" refX="5" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker>
+      <marker id="dpS${opts.bad ? 'b' : 'g'}" viewBox="0 0 10 10" refX="4" refY="5" markerUnits="userSpaceOnUse" markerWidth="16" markerHeight="16" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="dpHead"/></marker></defs>`;
+    // the two distances, as brackets above the line: 0 to d and 0 to −d are both "d away"
+    for (const x of [xl, xr]) svg += `<path class="dpBr" d="M${x0} ${y - 14} V${y - 22} H${x} V${y - 14}"/><text class="dpAway" x="${(x0 + x) / 2}" y="${y - 28}">${dt} away</text>`;
+    svg += `<line class="dpAxis" x1="4" y1="${y}" x2="${W - 4}" y2="${y}" marker-start="url(#dpA)" marker-end="url(#dpA)"/>`;
+    svg += `<line class="dpTick" x1="${x0}" y1="${y - 6}" x2="${x0}" y2="${y + 6}"/><text class="dpNum" x="${x0}" y="${y + 22}">0</text>`;
+    shade.forEach(([a, b], i) => {
+      const len = Math.abs(b - a), arrow = b === 8 || b === W - 8 ? ` marker-end="url(#dpS${opts.bad ? 'b' : 'g'})"` : '';
+      svg += `<line class="dpShade" x1="${a}" y1="${y}" x2="${b}" y2="${y}"${arrow} style="stroke-dasharray:${len + 20}; --len:${len + 20}; animation-delay:${0.2 + i * 0.15}s"/>`;
+    });
+    for (const [x, t] of [[xl, nd], [xr, dt]]) svg += `<circle class="dpDot ${way === 'ask' ? 'ask' : opts.incl ? 'closed' : 'open'}" cx="${x}" cy="${y}" r="6.5"/><text class="dpEnd" x="${x}" y="${y + 22}">${t}</text>`;
+    for (const [x, t] of zone) svg += `<text class="dpZone" x="${x}" y="${y + (opts.caption ? 62 : 42)}">${t}</text>`;
+    return `<div class="distPic">${svg}${cap}</svg></div>`;
+  }
 
   // Cases. Every difficulty covers every case of a stage (the difficulty only changes how hard each one
   // is to solve). Normal fights go through them with index.html's shared cycle (SKILL.cases + cycled():
@@ -136,10 +160,10 @@
   function text(c) {
     if (isFlip(c)) return c.parts3 ? 'Flip both signs' : 'Flip the inequality sign';
     if (c.op === 'split') {
-      if (!c.d) return c.way === 'between' ? 'Split: between (one chain)' : c.way === 'outside' ? 'Split: outside (two cases)' : 'Split into two cases';
-      const d = fracText(c.d), nd = fracText(fMul(c.d, F(-1))), inc = c.incl ? ', ends in' : '';
-      if (c.way === 'between') return `Split: between ${nd} and ${d}${inc}`;
-      if (c.way === 'outside') return `Split: below ${nd} or above ${d}${inc}`;
+      if (!c.d) return c.way === 'between' ? 'Close to 0: one chain' : c.way === 'outside' ? 'Far from 0: two cases' : 'Split into two cases';
+      const d = fracText(c.d), nd = fracText(fMul(c.d, F(-1)));
+      if (c.way === 'between') return `Close to 0: between ${nd} and ${d}`;
+      if (c.way === 'outside') return `Far from 0: below ${nd} or above ${d}`;
       return 'Split into two cases';
     }
     if (c.op === 'trap') return c.text || null;
@@ -243,6 +267,7 @@
     ($('cases') || $('equation')).insertAdjacentElement('afterend', line);
     return line;
   }
+  function showDist(d, way, opts) { const el = lineEl(); el.dataset.key = ''; el.innerHTML = distPic(d, way, opts); el.classList.add('show'); }
   function clearLine() { const l = $('numline'); if (l) { l.innerHTML = ''; l.dataset.key = ''; l.classList.remove('show'); } }
   function markSign(e) {
     const q = $('equation').querySelector('.tok.eq');
@@ -633,6 +658,8 @@
     const q = document.createElement('div'); q.className = 'tok eq rel'; q.dataset.role = 'eq'; q.textContent = e.rel; el.appendChild(q);
     el.appendChild(tokEl({ role: 'other', text: fracText(e.d), html: fracHtml(e.d) }));
     clearLine(); clearCases(); fit();
+    // Tutorials: once the bars are alone in an inequality, the picture asks the question Between/Outside answers.
+    if (isTutorial() && barsAlone(e) && e.rel !== '=' && e.d.n > 0) showDist(e.d, 'ask', { caption: `|${innerText(e)}| ${e.rel} ${fracText(e.d)}: ${awayWord(e.rel).toLowerCase()} ${fracText(e.d)} away` });
   }
   function renderBoard(e) {
     if (boardSolved(e)) {
@@ -698,8 +725,9 @@
     if (card.op === 'split') {
       if (!alone) return 'Get the bars alone on their side before splitting.';
       if (e.d.n < 0) return `A distance from 0 can't be negative, so there's nothing to split: ${negVerdict(e) === 'none' ? 'no number works' : 'every number works'}.`;
-      if ((card.way || 'two') !== wayFor(e.rel)) return gtRel(e.rel) ? `${awayWord(e.rel)} ${d} away from 0 is outside: below ${fracText(fMul(e.d, F(-1)))} or above ${d}. Use Outside.`
-        : `${awayWord(e.rel)} ${d} away from 0 is between ${fracText(fMul(e.d, F(-1)))} and ${d}. Use Between.`;
+      if ((card.way || 'two') !== wayFor(e.rel)) return gtRel(e.rel)
+        ? `${u} ${e.rel} ${d} means ${innerText(e)} is ${awayWord(e.rel).toLowerCase()} ${d} away from 0: far from 0, below ${fracText(fMul(e.d, F(-1)))} or above ${d}. That's Outside. Tap Why? for a picture.`
+        : `${u} ${e.rel} ${d} means ${innerText(e)} is ${awayWord(e.rel).toLowerCase()} ${d} away from 0: close to 0, between ${fracText(fMul(e.d, F(-1)))} and ${d}. That's Between. Tap Why? for a picture.`;
       return 'Drop Split on the bars.';
     }
     if (alone) return e.d.n < 0 ? `That's allowed, but look at the number: ${u} ${e.rel} ${d}. Can a distance be negative?` : `That's allowed, but the bars are alone now: split them into cases.`;
@@ -718,13 +746,21 @@
     else if (card.op === 'split') {
       if (!barsAlone(e)) out.push(P(`Split works on the bars only once they are alone on their side. Here the bars still have ${fIs(e.m, 1) ? '' : `${fracText(e.m)} in front`}${!fIs(e.m, 1) && e.c.n ? ' and ' : ''}${e.c.n ? `${e.c.n < 0 ? MINUS : '+'} ${fracText(fAbs(e.c))} next to them` : ''}. Undo those first, treating |${u}| as one block, like x.`));
       else if (e.d.n < 0) out.push(P(`${NEVER} Splitting |${u}| ${e.rel} ${d} into cases would treat ${d} like a real distance. Look at the sign of the number instead.`));
-      else if ((card.way || 'two') !== wayFor(e.rel)) out.push(P(gtRel(e.rel) ? `${OUTSIDE} Between is for "less than": it would keep the numbers close to 0, the opposite of what ${e.rel} asks.` : `${BETWEEN} Outside is for "more than": it would keep the numbers far from 0, the opposite of what ${e.rel} asks.`));
+      else if ((card.way || 'two') !== wayFor(e.rel)) {
+        const want = wayFor(e.rel), incl = e.rel === '≤' || e.rel === '≥';
+        out.push(P(`|${u}| is how far ${u} is from 0. |${u}| ${e.rel} ${d} asks for ${u} to be <b>${awayWord(e.rel).toLowerCase()} ${d} away</b> from 0. Those numbers are ${want === 'between' ? `close to 0, <b>between</b> ${nd} and ${d}` : `far from 0, <b>outside</b>: below ${nd} or above ${d}`}:`));
+        out.push(distPic(e.d, want, { incl }));
+        out.push(P(`${want === 'between' ? 'Outside' : 'Between'} shades the ${want === 'between' ? 'numbers far from 0' : 'numbers close to 0'}, the opposite of what ${e.rel} asks:`));
+        out.push(distPic(e.d, want === 'between' ? 'outside' : 'between', { incl, bad: true }));
+        out.push(P(`Memory trick: less th<b>and</b> → Between (one chain), great<b>or</b> → Outside (two cases).`));
+      }
       else out.push(P('Split goes on the bars themselves.'));
     } else out.push(P(`${cardText(card)} is allowed, but it turns it into ${absH(absApply(e, card))}, which doesn't get the bars alone.`));
     let how;
     if (isDeclare(correct)) how = `${NEVER} So |${u}| ${e.rel} ${d} is ${correct.op === 'all' ? 'true for every number: play All x' : 'never true: play No solution'}.`;
     else if (correct.op === 'split') how = e.rel === '=' ? `The bars are alone. |${u}| = ${d} means ${u} is ${d} away from 0, so it is ${d} or ${nd}. Drop Split on the bars to make the two cases.`
-      : gtRel(e.rel) ? `The bars are alone. ${OUTSIDE} Drop Outside on the bars.` : `The bars are alone. ${BETWEEN} Drop Between on the bars.`;
+      : gtRel(e.rel) ? `The bars are alone. ${OUTSIDE} Drop Outside on the bars.${card.op === 'split' ? '' : distPic(e.d, 'outside', { incl: e.rel === '≥' })}`
+      : `The bars are alone. ${BETWEEN} Drop Between on the bars.${card.op === 'split' ? '' : distPic(e.d, 'between', { incl: e.rel === '≤' })}`;
     else if (correct.op === '+' || correct.op === '-') how = `Treat the bars as one block and undo the number added to it: ${cardText(correct).toLowerCase()}.`;
     else how = `Treat the bars as one block. ${cardText(correct)} leaves them alone on their side.`;
     out.push(P(`<b>What works here:</b> ${how}`));
@@ -757,8 +793,9 @@
     caption(s.rel === '=' ? `|${u}| = ${d}: ${u} is ${d} away from 0, so it is ${d} or ${nd}`
       : s.rel === '<' || s.rel === '≤' ? `${awayWord(s.rel)} ${d} away from 0 means between ${nd} and ${d}`
       : `${awayWord(s.rel)} ${d} away from 0 means above ${d} or below ${nd}`);
+    if (s.rel !== '=') showDist(s.d, wayFor(s.rel), { incl: s.rel === '≤' || s.rel === '≥', anim: true });
     mark(bars, 'glow'); await quick(500);
-    mark(bars, 'fade'); await quick(350);
+    mark(bars, 'fade'); await quick(s.rel === '=' ? 350 : 900);
     await hold();
     if (ns.board && boardSolved(ns)) {     // review fix: both cases solved by the split itself
       renderBoard(ns); caption(`Both cases are already solved: ${boardAnswer(ns)}`);
@@ -1163,7 +1200,8 @@
       tutorial: [() => genAbsEq('plain', 'two-int', true), () => genAbsEq('front', 'two-int', true)] },
     { id: 'absineq', stage: 13, act: 3, name: 'Abs. inequalities', cases: CASES.absineq, gen: cycled('absineq', c => genAbsIneq(null, c)),
       title: 'Stage 13: Absolute value inequalities',
-      intro: 'For inequalities there are two Split cards, and you choose. Less than 7 away from 0 means <b>between</b> −7 and 7, so drop ◎ Between on |u| &lt; 7 to get one chain, −7 &lt; u &lt; 7. More than 7 away means <b>outside</b>, so drop ◎ Outside on |u| &gt; 7 to get two cases, u &lt; −7 or u &gt; 7. If the number is negative, a distance is never below it (|u| &lt; −2: No solution) and always above it (|u| &gt; −2: All x).',
+      intro: '|u| is how far u is from 0. Get the bars alone, then ask one question: <b>close to 0, or far from 0?</b> There are two Split cards, one for each answer.<br><br><b>Less than:</b> |u| &lt; 3 means u is less than 3 away from 0. It is stuck close to 0, <b>between</b> −3 and 3. Drop ◎ Between to get one chain: −3 &lt; u &lt; 3.<br><br><b>More than:</b> |u| &gt; 3 means u is more than 3 away from 0. It is far from 0, <b>outside</b> −3 and 3: below −3 or above 3. Drop ◎ Outside to get two cases: u &lt; −3 or u &gt; 3.<br><br>Memory trick: less th<b>and</b> → Between, great<b>or</b> → Outside. If the number is negative, a distance is never below it (|u| &lt; −2: No solution) and always above it (|u| &gt; −2: All x).',
+      get introArt() { return `<div class="dpPair"><div><b>|u| &lt; 3</b> → Between${distPic(F(3), 'between')}</div><div><b>|u| &gt; 3</b> → Outside${distPic(F(3), 'outside')}</div></div>`; },
       example: '|2x − 1| &lt; 7<br>Between → −7 &lt; 2x − 1 &lt; 7<br>Add 1 → −6 &lt; 2x &lt; 8<br>Divide by 2 → −3 &lt; x &lt; 4<br><br>|x + 2| ≥ 4<br>Outside → x + 2 ≤ −4 or x + 2 ≥ 4<br>→ x ≤ −6 or x ≥ 2<br><br>|x − 1| ≥ −3 → All x',
       tutorial: [() => genAbsIneq('plain', 'between-int', true), () => genAbsIneq('plain', 'outside-int', true)] },
   );
@@ -1210,6 +1248,30 @@
     @keyframes splitIn { from { transform: translate(-50%, -40px) scale(.4); opacity:0; } }
     .card .ftag { display:block; font-size:max(10px, .45em); letter-spacing:1px; color:#b00045; text-transform:uppercase; margin-top:2px; white-space:nowrap; }
     .card .ftag.keep { color:#4a4470; }
+    .distPic { color:var(--muted); line-height:0; width:100%; max-width:380px; margin:4px auto; }
+    .distPic svg { width:100%; height:auto; overflow:visible; }
+    .distPic .dpAxis { stroke:currentColor; stroke-width:2.5; }
+    .distPic .dpTick { stroke:currentColor; stroke-width:2; }
+    .distPic .dpNum { fill:currentColor; font: bold 14px "Courier New", monospace; text-anchor:middle; }
+    .distPic .dpEnd { fill:var(--accent); font: bold 15px "Courier New", monospace; text-anchor:middle; }
+    .distPic .dpBr { stroke:var(--accent); stroke-width:2; fill:none; opacity:.8; }
+    .distPic .dpAway { fill:var(--accent); font: bold 12px "Courier New", monospace; text-anchor:middle; }
+    .distPic .dpZone { fill:var(--good); font: bold 13px "Courier New", monospace; text-anchor:middle; }
+    .distPic .dpCap { fill:var(--ink); font: bold 13px "Courier New", monospace; text-anchor:middle; }
+    .distPic .ask .dpZone { fill:var(--ink); }
+    .distPic .dpShade { stroke:var(--good); stroke-width:7; stroke-linecap:round; opacity:.9; }
+    .distPic .dpHead { fill:var(--good); }
+    .distPic .dpDot { stroke:var(--good); stroke-width:3; fill:var(--panel); }
+    .distPic .dpDot.closed { fill:var(--good); }
+    .distPic .dpDot.ask { stroke:var(--accent); fill:var(--accent); }
+    .distPic .bad .dpShade, .distPic .bad .dpDot { stroke:var(--bad); }
+    .distPic .bad .dpHead, .distPic .bad .dpDot.closed { fill:var(--bad); }
+    .distPic .bad .dpZone { fill:var(--bad); }
+    .distPic .anim .dpShade { stroke-dashoffset:var(--len); animation: nlGrow .6s ease-out forwards; }
+    .dpPair { display:flex; gap:14px; text-align:center; }
+    .dpPair > div { flex:1; min-width:0; }
+    @media (max-width: 640px) { .dpPair { flex-direction:column; gap:4px; } }
+    #numline .distPic { margin:0 auto; }
     #numline { display:none; width:min(360px, 92%); color:var(--muted); line-height:0; }
     #numline.show { display:block; }
     #numline svg { width:100%; height:auto; overflow:visible; }
