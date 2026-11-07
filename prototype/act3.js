@@ -150,6 +150,7 @@
   const scaleText = c => (c.parts3 ? `${c.op === '/' ? 'Divide' : 'Multiply'} all three parts by ${byText(c)}`
     : `${c.op === '/' ? 'Divide both sides by' : 'Multiply both sides by'} ${byText(c)}`);
   function label(c) {
+    if (c.op === 'graph') return miniLine(c.segs);
     if (isFlip(c)) return '<span class="clong">Flip ⇅</span>';
     if (c.op === 'split') return `<span class="clong">${c.way === 'between' ? 'Between' : c.way === 'outside' ? 'Outside' : 'Split | |'}</span>`;
     if (c.op === 'trap' && c.trap === 'flip negative') return `${scaleBase({ ...c, op: c.scaleOp })}<span class="ftag">and flip</span>`;
@@ -158,6 +159,7 @@
   }
   // Stage 11: every ⇔ card on a chain says it hits all three parts.
   function text(c) {
+    if (c.op === 'graph') return graphWords(c.segs);
     if (isFlip(c)) return c.parts3 ? 'Flip both signs' : 'Flip the inequality sign';
     if (c.op === 'split') {
       if (!c.d) return c.way === 'between' ? 'Close to 0: one chain' : c.way === 'outside' ? 'Far from 0: two cases' : 'Split into two cases';
@@ -172,6 +174,7 @@
     return null;
   }
   function kind(c) {
+    if (c.op === 'graph') return 'Graph the answer';
     if (isFlip(c)) return 'Flip sign';
     if (c.op === 'split') return 'Split';
     return null;
@@ -281,7 +284,7 @@
     if (inBoard) return;
     clearCases();
     const sol = solution(e);
-    if (sol) drawLine(segmentsOf(sol), false); else clearLine();
+    if (sol && e.graphed) drawLine(segmentsOf(sol), false); else clearLine();
   }
   // Act 2 sizes the equation once before an animation by laying out the result and then the current
   // equation again (its own render, which writes "="), so the sign is put back afterwards.
@@ -352,7 +355,7 @@
   // + − × ÷, Distribute and Combine play Act 2's animations unchanged. A × or ÷ by a negative leaves the
   // sign as it was (on Easy and Normal it then glows red, as a hint that it is owed a flip).
   // Flip: the sign spins around and lands the other way.  −3x ≥ 12  ->  ÷(−3)  ->  x ≥ −4  ->  Flip  ->  x ≤ −4
-  // When a move solves it, the answer is shaded on the number line.
+  // When the algebra is done, the player graphs the answer with a graph card (see graphChoices).
   async function flipAnim(s, ns) {
     const q = $('equation').querySelector('.tok.eq'); if (!q) return;
     caption(`Flip: ${s.rel} becomes ${ns.rel}, because the last move ${'multiplied or divided'} by a negative`);
@@ -363,11 +366,10 @@
     q.classList.remove('relflip'); q.classList.add('relnew');
     await hold();
   }
+  // When the algebra is done the answer is not graphed for the player: they pick the right number line.
   async function showAnswerLine(ns) {
     const sol = solution(ns); if (!sol) return;
-    caption(lineCaption(sol));
-    drawLine(segmentsOf(sol), true);
-    await quick(1100);
+    caption(`Solved: x ${sol.rel} ${fracText(sol.v)}. Now pick the number line that shows it`);
     await hold();
   }
   async function singleAnim(card, s, ns, ref, inBoard) {
@@ -443,7 +445,7 @@
     el.appendChild(relTok(e.rel2, 'rel2'));
     el.appendChild(tokEl({ role: 'hi', text: fracText(e.hi), html: fracHtml(e.hi) }));
     clearCases(); fit();
-    if (chainSteps(e) === 0) drawLine(chainSegs(e), false); else clearLine();
+    if (chainSteps(e) === 0 && e.graphed) drawLine(chainSegs(e), false); else clearLine();
   }
   // Hand: Act 1's hand builder fits, since the middle is an Act 1 x side, plus the Flip card. Every
   // card is marked as hitting all three parts.
@@ -542,9 +544,8 @@
   }
   async function chainLine(ns) {
     renderChain(ns);
-    caption(chainCaption(ns));
-    drawLine(chainSegs(ns), true);
-    await quick(1100); await hold();
+    caption(`Solved: ${chainText(ns)}. Now pick the number line that shows it`);
+    await hold();
   }
   // ================================================================ Stages 12 and 13: absolute value
   // Before the split, an absolute value equation or inequality is  m|ax + b| + c  rel  d.  The bars are
@@ -582,7 +583,7 @@
       const u = innerSide(e), d = e.d, nd = fMul(d, F(-1));
       // Review fix: with nothing added inside the bars (|x| > 3), both cases are already solved. The board
       // used to stay on case 1, so the fight ended showing only "x < −3" and no number line.
-      const skipSolved = bd => { while (bd.active < bd.branches.length && isSolved(bd.branches[bd.active])) bd.active++; return bd; };
+      const skipSolved = bd => { while (bd.active < bd.branches.length && algSolved(bd.branches[bd.active])) bd.active++; return bd; };
       if (e.rel === '=') return skipSolved({ board: true, join: 'or', active: 0, branches: [I(u, [N(d)], '='), I(clone(u), [N(nd)], '=')] });
       if (e.rel === '<' || e.rel === '≤') return CH(nd, e.rel, e.a, e.b, e.rel, d);
       return skipSolved({ board: true, join: 'or', active: 0, branches: [I(u, [N(nd)], FLIP[e.rel]), I(clone(u), [N(d)], e.rel)] });
@@ -618,7 +619,7 @@
   function boardApply(e, c, ref) {
     const r = clone(e);
     r.branches[r.active] = apply(boardActive(e), c, ref);
-    while (r.active < r.branches.length && isSolved(r.branches[r.active])) r.active++;
+    while (r.active < r.branches.length && algSolved(r.branches[r.active])) r.active++;
     return r;
   }
   const boardText = e => e.branches.map(b => eqText(b)).join(` ${e.join} `);
@@ -637,7 +638,7 @@
   function drawCases(e, fresh) {
     const box = casesEl();
     box.innerHTML = e.branches.map((b, i) => {
-      const s = isSolved(b) ? solution(b) : null, on = i === e.active;
+      const s = algSolved(b) ? solution(b) : null, on = i === e.active;
       return `${i ? `<span class="cjoin">${e.join}</span>` : ''}<div class="case ${on ? 'on' : ''} ${s ? 'done' : ''} ${fresh ? 'split' : ''}" style="animation-delay:${i * 0.18}s">
         <span class="clabel">Case ${i + 1}</span> ${s ? `x ${s.rel} ${fracText(s.v)} ✓` : eqText(b)}</div>`;
     }).join('');
@@ -669,7 +670,7 @@
         const s = solution(b), t = tokEl({ role: 'other', text: `x ${s.rel} ${fracText(s.v)}`, html: `<i class="xv">x</i> ${s.rel} ${fracHtml(s.v)}` });
         el.appendChild(t);
       });
-      clearCases(); fit(); drawLine(boardSegs(e), false);
+      clearCases(); fit(); if (e.graphed) drawLine(boardSegs(e), false); else clearLine();
       return;
     }
     renderSingle(boardActive(e), true);
@@ -798,8 +799,8 @@
     mark(bars, 'fade'); await quick(s.rel === '=' ? 350 : 900);
     await hold();
     if (ns.board && boardSolved(ns)) {     // review fix: both cases solved by the split itself
-      renderBoard(ns); caption(`Both cases are already solved: ${boardAnswer(ns)}`);
-      drawLine(boardSegs(ns), true); await quick(1100); await hold();
+      renderBoard(ns); caption(`Both cases are already solved: ${boardAnswer(ns)}. Now pick the number line that shows it`);
+      await hold();
     } else if (ns.board) {
       drawCases(ns, true);
       $('equation').classList.add('absSplitOut'); await quick(450); $('equation').classList.remove('absSplitOut');
@@ -838,14 +839,13 @@
   async function boardAnim(card, s, ns, ref) {
     const b = boardActive(s), nb = ns.branches[s.active];
     await singleAnim(card, b, nb, ref, true);
-    if (!isSolved(nb)) return;
+    if (!algSolved(nb)) return;
     const sol = solution(nb);
     if (boardSolved(ns)) {
       renderBoard(ns);
       const segs = boardSegs(ns);
-      caption(segs.every(g => g.lo === g.hi) ? `Both cases work: ${boardAnswer(ns)}` : `Either case works: ${boardAnswer(ns)}`);
-      drawLine(segs, true);
-      await quick(1100); await hold();
+      caption(`${segs.every(g => g.lo === g.hi) ? 'Both cases work' : 'Either case works'}: ${boardAnswer(ns)}. Now pick the number line that shows it`);
+      await hold();
     } else {
       caption(`Case ${s.active + 1} done: x ${sol.rel} ${fracText(sol.v)}. Now case ${ns.active + 1}.`);
       drawCases({ ...ns, active: s.active });
@@ -1008,8 +1008,110 @@
 
   }
 
+  // ================================================================ graphing the answer
+  const P = t => `<p>${t}</p>`;
+  // Once the algebra is done, the answer still has to be graphed: the player picks the number line that
+  // shows it from a few cards (open or filled dots, which way, between or outside). Verdicts (No solution,
+  // Every number) are already a picture of their own, so they skip this.
+  //   card = { op: 'graph', segs, way }   segs as drawLine takes them; way is a word for the "why" text
+  const algSolved = e => {
+    switch (kindOf(e)) {
+      case 'board': return boardSolved(e);
+      case 'abs': return !!e.result;
+      case 'chain': return chainSteps(e) === 0;
+      default: return sSolved(e);
+    }
+  };
+  const needsGraph = e => algSolved(e) && !(kindOf(e) === 'abs') && !e.graphed;
+  function answerSegs(e) {
+    switch (kindOf(e)) {
+      case 'board': return boardSegs(e);
+      case 'chain': return chainSegs(e);
+      default: return segmentsOf(solution(e));
+    }
+  }
+  const segKey = segs => JSON.stringify(segs.map(g => [g.lo, g.hi, !!g.loC, !!g.hiC]).sort((a, b) => a[0] - b[0]));
+  const sameSegs = (a, b) => segKey(a) === segKey(b);
+  const GRAPH = (segs, way) => ({ op: 'graph', segs, way });
+  // The right picture and its look-alikes: dots swapped (open/filled), the other direction, between vs outside.
+  function graphChoices(e) {
+    const right = answerSegs(e), out = [GRAPH(right, 'right')];
+    const dots = segs => segs.map(g => ({ ...g, loC: Number.isFinite(g.lo) ? !g.loC : g.loC, hiC: Number.isFinite(g.hi) ? !g.hiC : g.hiC }));
+    const ends = right.flatMap(g => [[g.lo, g.loC, g.loF], [g.hi, g.hiC, g.hiF]]).filter(([v]) => Number.isFinite(v)).sort((a, b) => a[0] - b[0]);
+    const pts = right.every(g => g.lo === g.hi);
+    if (ends.length === 1) {                                   // one ray: x > 3
+      const [v, c, f] = ends[0], toRight = !Number.isFinite(right[0].hi);
+      const ray = (rt, cl) => [rt ? { lo: v, hi: Infinity, loC: cl, loF: f } : { lo: -Infinity, hi: v, hiC: cl, hiF: f }];
+      out.push(GRAPH(ray(toRight, !c), 'dot'), GRAPH(ray(!toRight, c), 'dir'), GRAPH(ray(!toRight, !c), 'both'));
+    } else if (ends.length === 2) {
+      const [[a, ac, af], [b, bc, bf]] = ends;
+      const between = (c1, c2) => [{ lo: a, hi: b, loC: c1, hiC: c2, loF: af, hiF: bf }];
+      const outside = (c1, c2) => [{ lo: -Infinity, hi: a, hiC: c1, hiF: af }, { lo: b, hi: Infinity, loC: c2, loF: bf }];
+      const two = [{ lo: a, hi: a, loC: true, hiC: true, loF: af, hiF: af }, { lo: b, hi: b, loC: true, hiC: true, loF: bf, hiF: bf }];
+      if (pts) out.push(GRAPH(between(true, true), 'between'), GRAPH(outside(true, true), 'outside'), GRAPH([two[1]], 'one'));
+      else if (right.length === 1) out.push(GRAPH(dots(right), 'dot'), GRAPH(outside(ac, bc), 'outside'), GRAPH(outside(!ac, !bc), 'both'));
+      else out.push(GRAPH(dots(right), 'dot'), GRAPH(between(ac, bc), 'between'), GRAPH(between(!ac, !bc), 'both'));
+    }
+    const seen = new Set();
+    return out.filter(c => { const k = segKey(c.segs); if (seen.has(k)) return false; seen.add(k); return true; });
+  }
+  function graphHand(e, correct, size) {
+    const cards = graphChoices(e);
+    const hand = [correct, ...cards.filter(c => !sameSegs(c.segs, correct.segs))].slice(0, Math.max(3, Math.min(size, 4)));
+    return shuffle(hand);
+  }
+  // The number line on a card: not to scale, just the order of the ends, the dots and the shading.
+  function miniLine(segs) {
+    const ends = [...new Set(segs.flatMap(g => [g.lo, g.hi]).filter(Number.isFinite))].sort((a, b) => a - b);
+    const X = v => (v === -Infinity ? 4 : v === Infinity ? 96 : ends.length === 1 ? 50 : 26 + 48 * ends.indexOf(v) / (ends.length - 1));
+    let svg = '<svg class="mini3" viewBox="0 0 100 34" aria-hidden="true"><line class="m3axis" x1="2" y1="14" x2="98" y2="14"/>';
+    for (const g of segs) {
+      if (g.lo !== g.hi) svg += `<line class="m3shade" x1="${X(g.lo)}" y1="14" x2="${X(g.hi)}" y2="14"/>`;
+      if (g.lo === -Infinity) svg += '<path class="m3head" d="M1,14 L8,9 L8,19 z"/>';
+      if (g.hi === Infinity) svg += '<path class="m3head" d="M99,14 L92,9 L92,19 z"/>';
+    }
+    for (const g of segs) for (const [v, c, f] of [[g.lo, g.loC, g.loF], [g.hi, g.hiC, g.hiF]]) {
+      if (!Number.isFinite(v)) continue;
+      svg += `<circle class="m3dot ${c ? 'closed' : 'open'}" cx="${X(v)}" cy="14" r="4.5"/><text class="m3num" x="${X(v)}" y="31">${f ? fracText(f) : numText(v)}</text>`;
+      if (g.lo === g.hi) break;
+    }
+    return svg + '</svg>';
+  }
+  // The picture in a few words, for the card's small text (the numbers are on the picture itself).
+  function graphWords(segs) {
+    const nm = (v, f) => (f ? fracText(f) : numText(v));
+    if (segs.every(g => g.lo === g.hi)) return segs.length === 1 ? `Just ${nm(segs[0].lo, segs[0].loF)}` : 'Two dots, no shading';
+    const ends = segs.flatMap(g => [[g.lo, g.loC, g.loF], [g.hi, g.hiC, g.hiF]]).filter(([v]) => Number.isFinite(v));
+    const shape = segs.length === 2 ? 'Outward' : !Number.isFinite(segs[0].lo) ? 'Shade left' : !Number.isFinite(segs[0].hi) ? 'Shade right' : 'Between';
+    const dots = ends.every(e => e[1]) ? (ends.length > 1 ? 'filled dots' : 'filled dot') : ends.every(e => !e[1]) ? (ends.length > 1 ? 'open dots' : 'open dot')
+      : ends.map(([v, c, f]) => `${c ? 'filled' : 'open'} ${nm(v, f)}`).join(', ');
+    return `${shape}, ${dots}`;
+  }
+  function answerWords(e) {
+    if (kindOf(e) === 'chain') return chainText(e);
+    if (kindOf(e) === 'board') return boardAnswer(e);
+    const sol = solution(e); return `x ${sol.rel} ${fracText(sol.v)}`;
+  }
+  // Why a picked number line is wrong: what each part of the answer means on the line.
+  function graphWhy(e, card, long) {
+    const right = answerSegs(e), ans = answerWords(e);
+    const ends = r => r.flatMap(g => [[g.lo, g.loC], [g.hi, g.hiC]]).filter(([v]) => Number.isFinite(v));
+    const dotsWrong = segKey(right.map(g => ({ ...g, loC: false, hiC: false }))) === segKey(card.segs.map(g => ({ ...g, loC: false, hiC: false })));
+    const re = ends(right);
+    const closedWord = re.some(([, c]) => c) ? (re.every(([, c]) => c) ? 'every end counts (≤, ≥ or =), so the dots are filled' : 'an end with ≤ or ≥ gets a filled dot, an end with < or > an open one')
+      : 'with < or > the end itself doesn\'t count, so the dots are open';
+    let short, more;
+    if (dotsWrong) { short = `Check the dots: ${closedWord}.`; more = `The shading is right, but look at the dots. A <b>filled</b> dot means that number is part of the answer (≤, ≥, =); an <b>open</b> dot means it isn't (&lt;, &gt;). For ${ans}, ${closedWord}.`; }
+    else if (kindOf(e) === 'single') { const sol = solution(e), big = gtRel(sol.rel); short = `x ${sol.rel} ${fracText(sol.v)} means numbers ${big ? 'bigger' : 'smaller'} than ${fracText(sol.v)}: shade ${big ? 'right' : 'left'}.`; more = `Read the answer with x first: x ${sol.rel} ${fracText(sol.v)}. ${big ? 'Greater' : 'Less'} than means ${big ? 'to the <b>right</b>' : 'to the <b>left</b>'} on the number line, where the numbers are ${big ? 'bigger' : 'smaller'}. ${closedWord[0].toUpperCase() + closedWord.slice(1)}.`; }
+    else if (right.every(g => g.lo === g.hi)) { short = `${ans}: just those two numbers, two dots and no shading.`; more = `An equation's answer is a list of numbers, not a range: ${ans} is exactly two points on the line, with nothing shaded between or beyond them.`; }
+    else if (right.length === 1) { short = `${ans} is between the two numbers: shade between.`; more = `${ans} means x is bigger than one end <b>and</b> smaller than the other, so the answer is the piece <b>between</b> them. "Outside" (two arrows going away) is for "or" answers.`; }
+    else { short = `${ans} is two pieces going outward ("or").`; more = `${ans} uses <b>or</b>: x can be in either piece, one going left from the smaller number and one going right from the bigger one. Shading between would mean "and", both at once.`; }
+    return long ? P(more) : short;
+  }
+
   // ================================================================ the engine (index.html calls these)
   function apply(e, c, ref) {
+    if (c.op === 'graph') return { ...clone(e), graphed: true };
     switch (kindOf(e)) {
       case 'board': return boardApply(e, c, ref);
       case 'abs': return absApply(e, c);
@@ -1017,16 +1119,9 @@
       default: return sApply(e, c, ref);
     }
   }
-  function isSolved(e) {
-    switch (kindOf(e)) {
-      case 'board': return boardSolved(e);
-      case 'abs': return !!e.result;
-      case 'chain': return chainSteps(e) === 0;
-      default: return sSolved(e);
-    }
-  }
+  const isSolved = e => algSolved(e) && !needsGraph(e);
   // The expected moves from a state to the answer, each tagged with the skill it practises.
-  function pathOf(e, main) {
+  function algPath(e, main) {
     switch (kindOf(e)) {
       case 'board': return e.branches.slice(e.active).flatMap(b => sPath(b, main));
       case 'chain': return chainPath(e, main);
@@ -1034,10 +1129,17 @@
         if (e.result) return [];
         const path = []; let s = e;
         for (let i = 0; i < 4 && s.abs && !s.result; i++) { const m = absCanon(s); if (!m) break; path.push({ state: s, move: m, skill: main }); s = absApply(s, m); }
-        return path.concat(pathOf(s, main));
+        return path.concat(algPath(s, main));
       }
       default: return sPath(e, main);
     }
+  }
+  // The algebra, then graphing the answer.
+  function pathOf(e, main) {
+    const path = algPath(e, main);
+    let end = e; for (const p of path) end = apply(end, p.move, p.move.ref);
+    if (needsGraph(end)) path.push({ state: end, move: GRAPH(answerSegs(end), 'right'), skill: main });
+    return path;
   }
   function answerOf(e) {
     const k = kindOf(e);
@@ -1068,6 +1170,8 @@
   function refreshPath(cur) { cur.path = cur.path.slice(0, cur.step).concat(pathOf(cur.state, cur.main)); }
   function isCorrect(cur, card, target) {
     const e = cur.state;
+    if (needsGraph(e)) return card.op === 'graph' && sameSegs(card.segs, answerSegs(e));
+    if (card.op === 'graph') return false;
     switch (kindOf(e)) {
       case 'board': return sCorrect(boardActive(e), card, target);
       case 'abs': return absCorrect(e, card, target);
@@ -1076,6 +1180,7 @@
     }
   }
   function makeHand3(e, correct, size) {
+    if (needsGraph(e)) return graphHand(e, correct, size);
     switch (kindOf(e)) {
       case 'board': return sHand(boardActive(e), correct, size, true);
       case 'abs': return absHand(e, correct, size);
@@ -1085,6 +1190,8 @@
   }
   function whyWrong(cur, card, target) {
     const e = cur.state, want = cur.path[cur.step].move;
+    if (needsGraph(e)) return card.op === 'graph' ? graphWhy(e, card, false) : `It's solved: ${answerWords(e)}. Now pick the number line that shows it.`;
+    if (card.op === 'graph') return 'Finish solving first, then graph the answer.';
     if (isFlip(card) && !onSign(target) && isCorrect({ state: e }, card, 'rel')) return 'Right card, but Flip goes on the sign itself: drop it on the < or >.';
     if (card.op === 'split' && !(roleOf(target) === 'abs') && kindOf(e) === 'abs' && absCorrect(e, card, 'abs')) return 'Right card, but Split goes on the bars: drop it on the | |.';
     switch (kindOf(e)) {
@@ -1097,6 +1204,9 @@
   // "Why?" for every Act 3 state. Trap cards carry their own text (card.why), which explainWhy shows first.
   function explain3({ state: e, card, correct, ref }) {
     if (!e || !card || !correct) return null;
+    if (!e.rel && !e.chain && !e.abs && !e.board) return null;
+    if (needsGraph(e)) return card.op === 'graph' ? graphWhy(e, card, true) : P(`The algebra is done: ${answerWords(e)}. The last step is to show it on a number line: pick the card whose picture matches.`);
+    if (card.op === 'graph') return P('A number line shows the answer, so it comes last: get x alone first.');
     switch (kindOf(e)) {
       case 'board': return explainSingle(boardActive(e), card, correct, ref);
       case 'abs': return explainAbs(e, card, correct);
@@ -1113,8 +1223,17 @@
       default: return renderSingle(e);
     }
   }
+  // Graphing: the chosen picture is drawn on the big number line, dots popping in and the shading growing.
+  async function graphAnim(c, s, ns) {
+    render(ns);
+    const segs = answerSegs(ns);
+    caption(kindOf(ns) === 'single' ? lineCaption(solution(ns)) : kindOf(ns) === 'chain' ? chainCaption(ns) : `${segs.every(g => g.lo === g.hi) ? 'Both cases work' : 'Either case works'}: ${boardAnswer(ns)}`);
+    drawLine(segs, true);
+    await quick(1100); await hold();
+  }
   function animFor() {
     return async (c, s, ns, ref) => {
+      if (c.op === 'graph') return graphAnim(c, s, ns);
       switch (kindOf(s)) {
         case 'board': return boardAnim(c, s, ns, ref);
         case 'abs': return c.op === 'split' ? splitAnim(c, s, ns) : isDeclare(c) ? verdictAnim(c, s, ns) : absStepAnim(c, s, ns);
@@ -1185,7 +1304,7 @@
   SKILLS.push(
     { id: 'ineq', stage: 10, act: 3, name: 'Inequalities', cases: CASES.ineq, gen: cycled('ineq', c => genIneq(null, c)),
       title: 'Stage 10: Inequalities',
-      intro: 'An inequality uses &lt;, &gt;, ≤ or ≥ instead of =, and its answer is a whole range of numbers. Solve it the same way as an equation, with one new rule: after multiplying or dividing both sides by a <b>negative</b> number, the sign has to flip. That is its own move: drop the new ◎ Flip card on the sign. Flipping at any other time is a wrong move. The answer is then shaded on a number line.',
+      intro: 'An inequality uses &lt;, &gt;, ≤ or ≥ instead of =, and its answer is a whole range of numbers. Solve it the same way as an equation, with one new rule: after multiplying or dividing both sides by a <b>negative</b> number, the sign has to flip. That is its own move: drop the new ◎ Flip card on the sign. Flipping at any other time is a wrong move. Last, graph the answer: pick the card with the right number line. A filled dot means the number counts (≤, ≥), an open dot means it does not (&lt;, &gt;), and the shading goes the way the sign points once x is on the left.',
       example: '2x + 1 &lt; 9<br>Subtract 1 from both sides → 2x &lt; 8<br>Divide both sides by 2 → x &lt; 4<br><br>−3x ≥ 12<br>Divide both sides by −3 → x ≥ −4 (not true yet!)<br>Flip the sign → x ≤ −4',
       tutorial: [() => genIneq('two', null, true), () => genIneq('negmul', null, true)] },
     { id: 'compound', stage: 11, act: 3, name: 'Compound inequalities', cases: CASES.compound, gen: cycled('compound', c => genCompound(null, c)),
@@ -1272,6 +1391,13 @@
     .dpPair > div { flex:1; min-width:0; }
     @media (max-width: 640px) { .dpPair { flex-direction:column; gap:4px; } }
     #numline .distPic { margin:0 auto; }
+    .card svg.mini3 { width:100%; max-width:104px; height:auto; display:block; margin:2px auto 0; overflow:visible; color:#2b2540; }
+    .card .m3axis { stroke:currentColor; stroke-width:2; }
+    .card .m3shade { stroke:#1e9e5a; stroke-width:5; stroke-linecap:round; }
+    .card .m3head { fill:#1e9e5a; }
+    .card .m3dot { stroke:#1e9e5a; stroke-width:2.2; }
+    .card .m3dot.closed { fill:#1e9e5a; } .card .m3dot.open { fill:#fffaf0; }
+    .card .m3num { font: bold 9px "Courier New", monospace; text-anchor:middle; fill:currentColor; }
     #numline { display:none; width:min(360px, 92%); color:var(--muted); line-height:0; }
     #numline.show { display:block; }
     #numline svg { width:100%; height:auto; overflow:visible; }
@@ -1299,6 +1425,7 @@
     @media (orientation: landscape) and (max-height: 520px) { #numline { width:min(300px, 80%); } }
   `;
   document.head.appendChild(css);
+  if (typeof CARD_ICONS === 'object') CARD_ICONS.graph3 = { name: 'Graph the answer on a number line', svg: svgI('<path d="M2 14h20"/><circle cx="9" cy="14" r="2.6" fill="currentColor"/><path d="M9 9h12M18 6l3 3-3 3"/>') };
 
   window.ACT3 = { apply, isSolved, solution, segmentsOf, drawLine, clearLine: () => { clearLine(); clearCases(); }, makeEquation: makeEquation3, refreshPath, render, prefit,
     eqText: textOf, makeHand: makeHand3, isCorrect, whyWrong, animFor, applyDifficulty: applyDifficulty3, label, text, kind, kindOf,

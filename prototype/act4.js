@@ -412,7 +412,7 @@
       case 'line': {
         if (e.done) return null;
         if (e.work) return wCanon(e.work);
-        if (e.m === null) return e.q === 'parallel' ? { op: 'same', scope: 'part', ref: 'Q' } : e.q === 'perp' ? { op: 'perp', scope: 'part', ref: 'Q' } : { op: 'rise', scope: 'part', ref: 'P0' };
+        if (e.m === null) return e.q === 'parallel' ? { op: 'same', scope: 'part', ref: 'Q' } : e.q === 'perp' ? { op: 'perp', scope: 'part', ref: 'Q', v: fDiv(F(-1), e.ref.m) } : { op: 'rise', scope: 'part', ref: 'P0' };
         if (e.b === null) return { op: e.q === 'ptslope' ? 'ptslope' : 'plugpt', scope: 'part', ref: 'P0' };
         return { op: 'write', scope: 'part', ref: 'T' };
       }
@@ -462,7 +462,7 @@
           const i = ref === 'P1' ? 1 : 0, a = e.pts[i], b = e.pts[1 - i];
           r.work = slopeEval(a, b); r.graph.marks = [{ t: 'tri', a, b }];
         } else if (c.op === 'same') r.m = e.ref.m;
-        else if (c.op === 'perp') r.m = fDiv(F(-1), e.ref.m);
+        else if (c.op === 'perp') r.m = c.v || fDiv(F(-1), e.ref.m);   // the slope the player picked
         else if (c.op === 'plugpt') {
           const p = e.pts[ref === 'P1' ? 1 : 0], mx = fMul(e.m, p.x);
           r.work = { L: [{ t: 'n', k: p.y }], R: fz(mx) ? [{ t: 'x', k: F(1) }] : [{ t: 'n', k: mx }, { t: 'x', k: F(1) }], result: null, v: 'b' };
@@ -527,7 +527,7 @@
         if (e.m === null) {
           if (e.q === 'twopts') return c.op === 'rise' && pointRef(ref);
           if (e.q === 'parallel') return c.op === 'same' && (ref === 'Q' || ref === 'G0');
-          if (e.q === 'perp') return c.op === 'perp' && (ref === 'Q' || ref === 'G0');
+          if (e.q === 'perp') return c.op === 'perp' && !!c.v && fEq(c.v, fDiv(F(-1), e.ref.m)) && (ref === 'Q' || ref === 'G0');
           return false;
         }
         if (e.b === null) return (c.op === 'plugpt' || c.op === 'ptslope') && pointRef(ref) && !!e.pts[ref === 'P1' ? 1 : 0];
@@ -598,7 +598,7 @@
     plugpt:   { label: 'Plug point', text: 'Plug the point into y = mx + b', kind: 'Plug the point' },
     ptslope:  { label: 'Point-slope', text: `Point-slope: y ${MINUS} y₁ = m(x ${MINUS} x₁)`, kind: 'Point-slope form' },
     same:     { label: 'Same m', text: 'Parallel: same slope', kind: 'Same slope' },
-    perp:     { label: `${MINUS}1/m`, text: 'Perpendicular: negative reciprocal slope', kind: 'Negative reciprocal' },
+    perp:     { label: `${MINUS}1/m`, text: 'Perpendicular: negative reciprocal slope', kind: 'Pick the slope' },
     write:    { label: 'Write y =', text: 'Write the line y = mx + b', kind: 'Write the line' },
     setx:     { label: 'x = 0', text: 'Set x = 0 (finds the y-intercept)', kind: 'Set x = 0' },
     sety:     { label: 'y = 0', text: 'Set y = 0 (finds the x-intercept)', kind: 'Set y = 0' },
@@ -608,6 +608,7 @@
     if (c.op === 'trap' && c.a4) return `<span class="clong">${c.label}</span>`;
     if (c.op === 'plug') return `<span class="clong">${c.vn || 'x'} = ${fracText(c.v)}</span>`;
     if (c.op === 'plugf') return `<span class="clong">${c.fname}(${fracText(c.v)})</span>`;
+    if (c.op === 'perp' && c.v) return `<span class="clong">m = ${fracText(c.v)}</span>`;
     if (OWN_CARD[c.op]) return `<span class="clong">${OWN_CARD[c.op].label}</span>`;
     return null;
   }
@@ -616,6 +617,7 @@
     if (c.op === 'trap' && c.a4) return c.text;
     if (c.op === 'plug') return `Plug in ${c.vn || 'x'} = ${fracText(c.v)}`;
     if (c.op === 'plugf') return `Plug ${fracText(c.v)} into ${c.fname}`;
+    if (c.op === 'perp' && c.v) return `The new line's slope is ${fracText(c.v)}`;
     if (OWN_CARD[c.op]) return OWN_CARD[c.op].text;
     return null;
   }
@@ -722,7 +724,9 @@
         P(`In ${ptText(p)} the first number is x and the second is y, so it goes in as ${fracText(p.y)} = ${fracText(e.m)}(${fracText(p.x)}) + b. Swapping them gives a different line that misses the point.`), 'plugpt', { points: true }));
     }
     if (e.k4 === 'line' && (e.q === 'parallel' || e.q === 'perp') && e.m === null) {
-      out.rule.push(...(tut ? [] : [{ op: e.q === 'parallel' ? 'perp' : 'same', scope: 'part' }]));
+      out.rule.push(...(tut ? [] : [e.q === 'parallel' ? { op: 'perp', scope: 'part', v: fDiv(F(-1), e.ref.m) } : { op: 'same', scope: 'part' }]));
+      // Perpendicular: the slope is the player's pick. The classic slips (flip only, sign only) are always dealt.
+      if (e.q === 'perp') out.must = perpChoices(e.ref.m).slice(1);
       if (!fz(e.ref.b)) out.traps.push(trap('intercept as slope', `m = ${fracText(e.ref.b)}`, `Use ${fracText(e.ref.b)} as the slope`,
         P(`In y = ${lineTextOf(e.ref.m, e.ref.b)} the slope is ${fracText(e.ref.m)}, the number in front of x. ${fracText(e.ref.b)} is where it crosses the y-axis, which has nothing to do with the direction of the line.`), 'read'));
     }
@@ -740,14 +744,20 @@
     }
     if (e.k4 === 'fin') return [{ op: 'writeout', scope: 'part' }, ...evalFamily(null, e.fn.vn).slice(1)];
     if (e.k4 === 'slope') return [{ op: 'rise', scope: 'part' }, { op: 'read', scope: 'part' }, { op: 'undef', scope: 'part' }, ...evalFamily(null).slice(1, 4)];
-    if (e.k4 === 'line') return ['rise', 'plugpt', 'ptslope', 'same', 'perp', 'write'].map(op => ({ op, scope: 'part' }));
+    if (e.k4 === 'line') return [...['rise', 'plugpt', 'ptslope', 'same', 'write'].map(op => ({ op, scope: 'part' })),
+      ...(e.ref ? perpChoices(e.ref.m) : [{ op: 'perp', scope: 'part', v: F(-1, 2) }]).filter(c => !(e.q === 'parallel' && fEq(c.v, e.ref.m)))];
     if (e.k4 === 'icept') return [{ op: 'setx' }, { op: 'sety' }, { op: 'plugpt', scope: 'part' }, { op: 'write', scope: 'part' }, { op: 'read', scope: 'part' }];
     return [];
+  }
+  // The slope cards for a perpendicular line: the negative reciprocal first, then flip only, sign only, the same slope.
+  function perpChoices(m) {
+    return [fDiv(F(-1), m), fDiv(F(1), m), fNeg(m), m].map(v => ({ op: 'perp', scope: 'part', v }));
   }
   function ownHand(e, correct, size) {
     const tut = isTutorial(), L = lvl(), sp = specials(e, correct, L, tut);
     const hand = [correct], seen = new Set([cardLabel(correct)]);
     const tryAdd = c => { if (hand.length >= size) return; const k = cardLabel(c); if (seen.has(k)) return; if (c.op !== 'trap' && alsoRight(e, c)) return; seen.add(k); hand.push(c); };
+    (sp.must || []).forEach(tryAdd);
     if (!tut && L >= 3) sp.traps.slice(0, 1).forEach(tryAdd);
     sp.rule.forEach(tryAdd);
     if (!tut) shuffle(sp.decoys).slice(0, DECOYS[L]).forEach(tryAdd);
@@ -893,7 +903,13 @@
       if (card.op === 'rise' && e.m === null && e.pts && e.pts.length === 2) return long ? P('Rise over run goes on one of the two points on the graph: it measures from that point to the other.') : 'Drop it on one of the points on the graph.';
       if (e.k4 === 'slope' && card.op === 'read') return long ? P('There\'s no equation to read the slope from: the line is given by two points. Use rise over run.') : 'Use rise over run from the points.';
       if (e.k4 === 'line') {
-        if (e.m === null && (card.op === 'plugpt' || card.op === 'ptslope' || card.op === 'write')) return long ? P(`The slope isn't known yet. ${e.q === 'twopts' ? 'Find it with rise over run between the two points.' : e.q === 'parallel' ? 'Parallel lines have the same slope: use Same m on the given line.' : 'Perpendicular lines have negative reciprocal slopes: use −1/m on the given line.'}`) : 'Find the slope first.';
+        if (e.m === null && (card.op === 'plugpt' || card.op === 'ptslope' || card.op === 'write')) return long ? P(`The slope isn't known yet. ${e.q === 'twopts' ? 'Find it with rise over run between the two points.' : e.q === 'parallel' ? 'Parallel lines have the same slope: use Same m on the given line.' : 'Perpendicular lines have negative reciprocal slopes: pick the slope that is the given one flipped over with its sign changed.'}`) : 'Find the slope first.';
+        if (e.m === null && card.op === 'perp' && card.v && e.q === 'perp') {
+          const m = e.ref.m, want = fDiv(F(-1), m), v = card.v;
+          if (fEq(v, want)) return long ? P('Right slope: drop it on the given line.') : `Drop it on the given line's slope.`;
+          const what = fEq(v, fDiv(F(1), m)) ? `You flipped ${fracText(m)} over but kept its sign.` : fEq(v, fNeg(m)) ? `You changed the sign of ${fracText(m)} but didn't flip it over.` : fEq(v, m) ? `${fracText(m)} is the same slope: that's a parallel line.` : `${fracText(v)} isn't the negative reciprocal of ${fracText(m)}.`;
+          return long ? P(`${what} Perpendicular slopes are <b>negative reciprocals</b>: flip the fraction over <b>and</b> change the sign. ${fracText(m)} becomes ${fracText(want)}, and ${fracText(m)} ${TIMES} ${paren(want)} = ${MINUS}1.`) : `${what} Flip it and change the sign.`;
+        }
         if (e.m === null && (card.op === 'same' || card.op === 'perp')) {
           if (e.q === 'twopts') return long ? P('There is no given line to copy a slope from. Use rise over run between the two points.') : 'Use rise over run between the points.';
           if ((card.op === 'same') === (e.q === 'parallel')) return long ? P('Right card: drop it on the given line\'s slope.') : `Drop it on the given line's slope.`;
@@ -903,14 +919,14 @@
         if (e.b === null && (card.op === 'plugpt' || card.op === 'ptslope')) return long ? P('Drop it on a point the line goes through.') : 'Drop it on the point.';
         // Playtest fix: on slope-and-point, parallel and perpendicular questions these fell through to
         // "Start with rise over run", which told the player to use the card they had just played wrongly.
-        if (e.m === null && card.op === 'rise' && (e.q === 'parallel' || e.q === 'perp')) return long ? P(`There's only one point, so there's no rise over run to measure. The slope comes from the given line: ${e.q === 'parallel' ? 'parallel lines have the same slope, so use Same m' : 'perpendicular slopes are negative reciprocals, so use −1/m'} on its slope.`) : `The slope comes from the given line: use ${e.q === 'parallel' ? 'Same m' : '−1/m'}.`;
+        if (e.m === null && card.op === 'rise' && (e.q === 'parallel' || e.q === 'perp')) return long ? P(`There's only one point, so there's no rise over run to measure. The slope comes from the given line: ${e.q === 'parallel' ? 'parallel lines have the same slope, so use Same m' : 'perpendicular slopes are negative reciprocals, so pick that slope'} on its slope.`) : `The slope comes from the given line: use ${e.q === 'parallel' ? 'Same m' : 'its negative reciprocal'}.`;
         if (e.m !== null && (card.op === 'same' || card.op === 'perp')) return long ? P(`The slope is already known: ${fracText(e.m)}. ${e.q === 'parallel' || e.q === 'perp' ? '' : 'There is no other line here to copy a slope from. '}Now find b.`) : 'The slope is already known. Now find b.';
         if (e.m !== null && card.op === 'rise') return long ? P(`The slope is already known: ${fracText(e.m)}.`) : 'The slope is already known.';
         if (e.b !== null && card.op === 'write') return long ? P('Drop Write the line on y = mx + b.') : 'Drop it on y = mx + b.';
         if (e.b !== null) return long ? P(`Both m and b are known: write the line, y = ${lineTextOf(e.m, e.b)}.`) : 'm and b are known: write the line.';
       }
       if (card.op === 'undef') return long ? P('Declare undefined is for a fraction with 0 underneath, once the slope has been worked out.') : 'Nothing is undefined yet.';
-      if (e.k4 === 'line' && e.m === null && (e.q === 'parallel' || e.q === 'perp')) return long ? P(`Start with the slope: it comes from the given line. Use ${e.q === 'parallel' ? 'Same m' : '−1/m'} on its slope.`) : `Start with the slope of the given line.`;
+      if (e.k4 === 'line' && e.m === null && (e.q === 'parallel' || e.q === 'perp')) return long ? P(`Start with the slope: it comes from the given line. ${e.q === 'parallel' ? 'Use Same m on its slope' : 'Pick its negative reciprocal'}.`) : `Start with the slope of the given line.`;
       if (e.k4 === 'line' && e.m !== null) return long ? P(`The slope is ${fracText(e.m)}. Next find b: plug the point in.`) : 'Next find b: plug the point in.';
       return long ? P('Start with rise over run between the two points.') : 'Start with rise over run.';
     }

@@ -1297,7 +1297,7 @@ function iconKey(c) {
   if (c.flip) return 'flip';
   if (c.lcd) return 'lcd';
   if (c.op === 'frac') return 'recip';
-  return { '+': 'add', '-': 'sub', '*': 'mul', '/': 'div', neg: 'neg', comb: 'comb', dist: 'dist', none: 'none', all: 'all', flip: 'flip', split: c.way === 'between' ? 'between' : c.way === 'outside' ? 'outside' : 'split' }[c.op] || 'add';
+  return { '+': 'add', '-': 'sub', '*': 'mul', '/': 'div', neg: 'neg', comb: 'comb', dist: 'dist', none: 'none', all: 'all', flip: 'flip', graph: 'graph3', split: c.way === 'between' ? 'between' : c.way === 'outside' ? 'outside' : 'split' }[c.op] || 'add';
 }
 const cardIcon = c => { const k = iconKey(c); return `<span class="cicon k-${k}" aria-label="${CARD_ICONS[k].name}">${CARD_ICONS[k].svg}</span>`; };
 function showKey() {
