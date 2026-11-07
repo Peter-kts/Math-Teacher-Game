@@ -54,7 +54,9 @@
   // for |u| > d. For inequalities both Between and Outside are in the hand, and choosing is the skill.
   const gtRel = rel => rel === '>' || rel === '≥';
   const wayFor = rel => (rel === '=' ? 'two' : gtRel(rel) ? 'outside' : 'between');
-  const SPLIT = (way, d) => ({ op: 'split', scope: 'part', ref: 'abs', way, d });
+  const SPLIT = (way, d, incl) => ({ op: 'split', scope: 'part', ref: 'abs', way, d, incl });
+  // Review fix: ≤ and ≥ read "at most" / "at least", not "less than" / "more than".
+  const awayWord = rel => ({ '<': 'Less than', '≤': 'At most', '>': 'More than', '≥': 'At least' })[rel] || 'Less than';
 
   // Cases. Every difficulty covers every case of a stage (the difficulty only changes how hard each one
   // is to solve). Normal fights go through them with index.html's shared cycle (SKILL.cases + cycled():
@@ -134,9 +136,10 @@
   function text(c) {
     if (isFlip(c)) return c.parts3 ? 'Flip both signs' : 'Flip the inequality sign';
     if (c.op === 'split') {
-      const d = c.d ? fracText(c.d) : 'd', nd = c.d ? fracText(fMul(c.d, F(-1))) : `${MINUS}d`;
-      if (c.way === 'between') return `Split: between ${nd} and ${d} (one chain)`;
-      if (c.way === 'outside') return `Split: below ${nd} or above ${d} (two cases)`;
+      if (!c.d) return c.way === 'between' ? 'Split: between (one chain)' : c.way === 'outside' ? 'Split: outside (two cases)' : 'Split into two cases';
+      const d = fracText(c.d), nd = fracText(fMul(c.d, F(-1))), inc = c.incl ? ', ends in' : '';
+      if (c.way === 'between') return `Split: between ${nd} and ${d}${inc}`;
+      if (c.way === 'outside') return `Split: below ${nd} or above ${d}${inc}`;
       return 'Split into two cases';
     }
     if (c.op === 'trap') return c.text || null;
@@ -164,8 +167,10 @@
   function flipNegTrap(correct, before, after, parts3) {
     const by = byText(correct);
     return { op: 'trap', trap: 'flip negative', scaleOp: correct.op, n: correct.n, d: correct.d, parts3,
-      text: `${correct.op === '/' ? 'Divide' : 'Multiply'} by ${by} and flip (a number is negative)`,
-      why: `<p>Only multiplying or dividing by a <b>negative</b> number flips the sign. Here you ${correct.op === '*' ? 'multiply' : 'divide'} by ${by}, which is positive, so the sign stays: ${before} becomes ${after}. A negative number on the other side doesn't matter: x &lt; ${MINUS}4 is a perfectly good answer.</p>` };
+      // Review fix: shorter text (the old one overflowed 6-card hands on phones), and "divide" only for ÷
+      // (a reciprocal ×3/2 used to say "divide").
+      text: `${correct.op === '/' ? 'Divide' : 'Multiply'} by ${by}, then flip`,
+      why: `<p>Only multiplying or dividing by a <b>negative</b> number flips the sign. Here you ${correct.op === '/' ? 'divide' : 'multiply'} by ${by}, which is positive, so the sign stays: ${before} becomes ${after}. A negative number on the other side doesn't matter: x &lt; ${MINUS}4 is a perfectly good answer.</p>` };
   }
   // plain: a case on a board (one x-term, one number each side), where Act 2's Combine, Distribute and
   // x-term decoys make no sense; number cards fill in instead.
@@ -209,7 +214,7 @@
     const P = t => `<p>${t}</p>`, out = [];
     if (isFlip(card)) {
       if (e.owe) return P('Flip was the right card. It goes on the sign itself, so drop it right on the &lt; or &gt;.');
-      out.push(P(`The sign only flips right after multiplying or dividing by a <b>negative</b> number: ${FLIP_IDEA}. Nothing like that has happened since the last flip, so ${eqH(e)} keeps its sign.`));
+      out.push(P(`The sign only flips right after multiplying or dividing by a <b>negative</b> number: ${FLIP_IDEA}. Nothing like that has just happened, so ${eqH(e)} keeps its sign.`));
     } else if (e.owe) {
       out.push(P(`The last move ${'multiplied or divided'} by a negative number, and ${FLIP_IDEA}. Right now ${eqH(e)} has the old sign, so it isn't true yet. Flip comes first, before anything else.`));
       out.push(P('<b>What works here:</b> drop Flip on the sign.'));
@@ -225,7 +230,7 @@
     else if (m.x) how = `x is on both sides. ${A2.text(m)} so x is left on one side only. Adding or subtracting never flips the sign.`;
     else if (m.op === '+' || m.op === '-') how = `Get the x-term alone first: ${cardText(m).toLowerCase()}. Adding or subtracting the same number on both sides keeps the sign as it is.`;
     else if (negScale(m)) how = `x has a negative number in front of it. ${scaleText(m)}, then play Flip on the sign: ${FLIP_IDEA}.`;
-    else how = `x is alone apart from the number in front of it. ${cardText(m)} turns it into 1. It's a positive number, so the sign stays ${e.rel}.`;
+    else how = `x is alone apart from the number in front of it. ${cardText(m)} turns it into 1.${e.rel === '=' ? '' : ` It's a positive number, so the sign stays ${e.rel}.`}`;   // review fix: no "the sign stays =" on equation cases
     out.push(P(`<b>What works here:</b> ${how}`));
     return out.join('');
   }
@@ -443,7 +448,7 @@
     const P = t => `<p>${t}</p>`, out = [];
     if (isFlip(card)) {
       if (e.owe) return P('Flip was the right card. It goes on the signs, so drop it on the &lt; or ≤.');
-      out.push(P(`The signs only flip right after multiplying or dividing by a <b>negative</b> number: ${FLIP_IDEA}. Nothing like that has happened, so ${chainH(e)} keeps its signs.`));
+      out.push(P(`The signs only flip right after multiplying or dividing by a <b>negative</b> number: ${FLIP_IDEA}. Nothing like that has just happened, so ${chainH(e)} keeps its signs.`));
     } else if (e.owe) {
       out.push(P(`The last move ${'multiplied or divided'} by a negative number, and ${FLIP_IDEA}. Look at ${chainH(e)}: the left number is now bigger than the right one, so it can't be true. Both signs flip first, and then it reads from the other end.`));
       out.push(P('<b>What works here:</b> drop Flip on a sign.'));
@@ -536,7 +541,8 @@
   const negVerdict = e => (gtRel(e.rel) ? 'all' : 'none');
   const innerTokens = e => tokensFor(toS({ coef: e.a, b: e.b, constFirst: false })).filter(t => t.role !== 'eq' && t.role !== 'other');
   const innerText = e => innerTokens(e).map(t => t.text).join(' ').replace(/(\d) x/g, '$1x');
-  const innerHtml = e => innerTokens(e).map(t => t.html || t.text).join(' ');
+  // Review fix: no space between the number and x inside the bars ("|2x − 7|", not "|2 x − 7|").
+  const innerHtml = e => innerTokens(e).map((t, i, a) => (i && !(a[i - 1].role === 'coef' && t.role === 'x') ? ' ' : '') + (t.html || t.text)).join('');
   const innerSide = e => noZero([X(e.a), N(e.b)]);
   function absText(e) {
     if (e.result) return e.result === 'none' ? 'No solution' : 'Every number works';
@@ -565,9 +571,11 @@
   }
   const absCanon = e => (e.c.n !== 0 ? (e.c.n > 0 ? { op: '-', n: e.c.n } : { op: '+', n: -e.c.n })
     : !fIs(e.m, 1) ? correctMove({ coef: e.m, b: F(0) })
-    : e.d.n < 0 ? { op: negVerdict(e), scope: 'part' } : SPLIT(wayFor(e.rel), e.d));
+    : e.d.n < 0 ? { op: negVerdict(e), scope: 'part' } : e.d.n === 0 ? null : SPLIT(wayFor(e.rel), e.d));
   function absCorrect(e, c, target) {
-    if (c.op === 'trap' || isFlip(c)) return false;
+    // Review fix: × or ÷ by a negative on the bars is rejected. It used to be accepted and flip the sign by
+    // itself (3|x − 6| < 6 ÷(−3) gave −1|x − 6| > −2), against the Flip rule; the number in front is positive anyway.
+    if (c.op === 'trap' || isFlip(c) || negScale(c)) return false;
     if (isDeclare(c)) return barsAlone(e) && e.d.n < 0 && c.op === negVerdict(e);
     if (c.op === 'split') return barsAlone(e) && e.d.n > 0 && (c.way || 'two') === wayFor(e.rel) && roleOf(target) === 'abs';
     if (isPart(c)) return false;
@@ -644,19 +652,23 @@
   // Hands
   // The classic mistake with bars: dropping them. It's a rule decoy, in the hand at every difficulty
   // (outside tutorials) once the bars are alone.
+  // Review fix: scope 'part', so it shows ◎ like the real Split (the ⇔ badge used to give it away).
   function dropBars(e) {
     const u = innerText(e), dt = fracText(e.d), nd = fracText(fMul(e.d, F(-1)));
     const lost = e.d.n < 0 ? `that would give ${u} ${e.rel} ${dt}, but a distance from 0 can't be negative, so the bars change everything here`
       : e.rel === '=' ? `x would only get one answer. ${dt} and ${nd} are both ${dt} away from 0, so ${u} can be either one: there are two cases`
-      : e.rel === '<' || e.rel === '≤' ? `it would lose the left end. Being less than ${dt} away from 0 means ${u} is between ${nd} and ${dt}, not just below ${dt}`
-      : `it would lose half the answer. Being more than ${dt} away from 0 means ${u} is above ${dt} <b>or</b> below ${nd}`;
-    return { op: 'trap', trap: 'drop bars', text: `Remove the bars: ${u} ${e.rel} ${dt}`,
+      : e.rel === '<' || e.rel === '≤' ? `it would lose the left end. Being ${awayWord(e.rel).toLowerCase()} ${dt} away from 0 means ${u} is between ${nd} and ${dt}, not just below ${dt}`
+      : `it would lose half the answer. Being ${awayWord(e.rel).toLowerCase()} ${dt} away from 0 means ${u} is above ${dt} <b>or</b> below ${nd}`;
+    return { op: 'trap', trap: 'drop bars', scope: 'part', text: `Remove the bars: ${u} ${e.rel} ${dt}`,
       why: `<p>The bars mean "distance from 0", so they can't just be removed. Removing them, ${lost}.</p>` };
   }
   function absHand(e, correct, size) {
     const tut = isTutorial(), alone = barsAlone(e);
     const nums = new Set([e.d, e.a, e.b, e.c, e.m].filter(f => f.n && isInt(f)).map(f => Math.abs(f.n)));
-    const splits = e.rel === '=' ? [SPLIT('two', fAbs(e.d))] : [SPLIT('between', fAbs(e.d)), SPLIT('outside', fAbs(e.d))];
+    // Review fix: the numbers go on the Split cards only once the bars are alone with a positive number.
+    // fAbs(e.d) used to show "between −2 and 2" on |x − 3| < −2, or the current right side before the bars were alone.
+    const sd = alone && e.d.n > 0 ? e.d : null, incl = e.rel === '≤' || e.rel === '≥';
+    const splits = e.rel === '=' ? [SPLIT('two', sd)] : [SPLIT('between', sd, incl), SPLIT('outside', sd, incl)];
     let hand;
     if (alone) {
       // In order of importance, so trimming to the hand size drops number cards first: the right card, the
@@ -686,8 +698,8 @@
     if (card.op === 'split') {
       if (!alone) return 'Get the bars alone on their side before splitting.';
       if (e.d.n < 0) return `A distance from 0 can't be negative, so there's nothing to split: ${negVerdict(e) === 'none' ? 'no number works' : 'every number works'}.`;
-      if ((card.way || 'two') !== wayFor(e.rel)) return gtRel(e.rel) ? `More than ${d} away from 0 is outside: below ${fracText(fMul(e.d, F(-1)))} or above ${d}. Use Outside.`
-        : `Less than ${d} away from 0 is between ${fracText(fMul(e.d, F(-1)))} and ${d}. Use Between.`;
+      if ((card.way || 'two') !== wayFor(e.rel)) return gtRel(e.rel) ? `${awayWord(e.rel)} ${d} away from 0 is outside: below ${fracText(fMul(e.d, F(-1)))} or above ${d}. Use Outside.`
+        : `${awayWord(e.rel)} ${d} away from 0 is between ${fracText(fMul(e.d, F(-1)))} and ${d}. Use Between.`;
       return 'Drop Split on the bars.';
     }
     if (alone) return e.d.n < 0 ? `That's allowed, but look at the number: ${u} ${e.rel} ${d}. Can a distance be negative?` : `That's allowed, but the bars are alone now: split them into cases.`;
@@ -696,8 +708,8 @@
   }
   function explainAbs(e, card, correct) {
     const P = t => `<p>${t}</p>`, out = [], d = fracText(e.d), nd = fracText(fMul(e.d, F(-1))), u = innerText(e);
-    const BETWEEN = `Less than ${d} away from 0 means <b>between</b> ${nd} and ${d}: one chain, ${nd} ${e.rel} ${u} ${e.rel} ${d}.`;
-    const OUTSIDE = `More than ${d} away from 0 means <b>outside</b>: ${u} ${FLIP[e.rel]} ${nd} or ${u} ${e.rel} ${d}, two cases.`;
+    const BETWEEN = `${awayWord(e.rel)} ${d} away from 0 means <b>between</b> ${nd} and ${d}: one chain, ${nd} ${e.rel} ${u} ${e.rel} ${d}.`;
+    const OUTSIDE = `${awayWord(e.rel)} ${d} away from 0 means <b>outside</b>: ${u} ${FLIP[e.rel]} ${nd} or ${u} ${e.rel} ${d}, two cases.`;
     const NEVER = `|${u}| is a distance from 0, and a distance is never negative.`;
     if (isFlip(card)) out.push(P('Flip only comes right after multiplying or dividing by a negative number. Nothing like that has happened here.'));
     else if (isDeclare(card)) out.push(P(!barsAlone(e) ? 'Get the bars alone first. Only then does the number on the other side tell you if there is no solution.'
@@ -743,8 +755,8 @@
     const t = roleEl('abs'), bars = t ? [...t.querySelectorAll('.bar')] : [];
     const d = fracText(s.d), nd = fracText(fMul(s.d, F(-1))), u = innerText(s);
     caption(s.rel === '=' ? `|${u}| = ${d}: ${u} is ${d} away from 0, so it is ${d} or ${nd}`
-      : s.rel === '<' || s.rel === '≤' ? `Less than ${d} away from 0 means between ${nd} and ${d}`
-      : `More than ${d} away from 0 means above ${d} or below ${nd}`);
+      : s.rel === '<' || s.rel === '≤' ? `${awayWord(s.rel)} ${d} away from 0 means between ${nd} and ${d}`
+      : `${awayWord(s.rel)} ${d} away from 0 means above ${d} or below ${nd}`);
     mark(bars, 'glow'); await quick(500);
     mark(bars, 'fade'); await quick(350);
     await hold();
@@ -825,6 +837,8 @@
     const m = t === 'times' || t === 'both' ? rand(2, D.level >= 2 ? 5 : 3) : 1;
     let c = t === 'front' || t === 'both' ? nonZero(-9, 9) * (D.level >= 2 ? 2 : 1) : 0;
     if (c && m * dd + c === 0) c += c > 0 ? 1 : -1;              // keep the right side off 0, so it doesn't look like |u| = 0
+    // Review note: dd (the number once the bars are alone) is never 0 here. Split and the verdicts have no
+    // rule for |u| rel 0, so a 0 would leave no card that works; absCanon guards it too.
     return AB(m, a, b, c, rel, m * dd + c);
   }
   function genAbsEq(type, want, tut = isTutorial()) {
@@ -982,7 +996,7 @@
       case 'abs': {
         if (e.result) return [];
         const path = []; let s = e;
-        for (let i = 0; i < 4 && s.abs && !s.result; i++) { const m = absCanon(s); path.push({ state: s, move: m, skill: main }); s = absApply(s, m); }
+        for (let i = 0; i < 4 && s.abs && !s.result; i++) { const m = absCanon(s); if (!m) break; path.push({ state: s, move: m, skill: main }); s = absApply(s, m); }
         return path.concat(pathOf(s, main));
       }
       default: return sPath(e, main);
@@ -1111,7 +1125,9 @@
     const want = flips(g.ineq);
     let out;
     for (let i = 0; i < 25; i++) {
-      const { eq, ...rest } = A2.applyDifficulty(asEq(g), again, { noXadd: want, keepAnswer: true, messyOK: /frac/.test(g.case || '') });
+      // Review fix: only questions made for a case keep their answer. Elites and the boss's stacked phase
+      // have no case, and keeping theirs took every fraction answer away from Expert elites.
+      const { eq, ...rest } = A2.applyDifficulty(asEq(g), again, { noXadd: want, keepAnswer: !!g.case, messyOK: !!g.case && /frac/.test(g.case) });
       out = { ...rest, ineq: { ...eq, rel: eq.rel || g.ineq.rel } };
       if (!want || flips(out.ineq)) return out;
     }
