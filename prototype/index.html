@@ -2026,7 +2026,11 @@ function actCleared() {
     ? `The Cartographer\'s maps are true again. ${isUnlocked('subst') ? 'Act 5, the Twin Observatory, is open.' : 'Act 5, the Twin Observatory, opens when Lines reaches 80 mastery.'}`
     : run.act === 5
     ? `The Twin Moons line up at last. ${isUnlocked('exprules') ? 'Act 6, the Power Forge, is open.' : 'Act 6, the Power Forge, opens when the last Act 5 skill reaches 80 mastery.'}`
-    : 'The Forgemaster\'s fires burn steady again. Act 7 is still to be built, so run Act 6 again to keep your skills sharp.';
+    : run.act === 6
+    ? `The Forgemaster\'s fires burn steady again. ${isUnlocked('gcf7') ? 'Act 7, the Archery Gallery, is open.' : 'Act 7, the Archery Gallery, opens when the last Act 6 skill reaches 80 mastery.'}`
+    : run.act === 7
+    ? `The Grand Archer lowers the bow. ${(() => { const n = SKILLS.find(k => k.act === 8); return !n ? 'Act 8 is still to be built, so run Act 7 again to keep your skills sharp.' : isUnlocked(n.id) ? `Act 8, ${ACTS[8].name}, is open.` : `Act 8, ${ACTS[8].name}, opens when the last Act 7 skill reaches 80 mastery.`; })()}`
+    : 'Run this act again to keep your skills sharp.';
   showOverlay(`<h1>Act ${run.act} cleared!</h1><p>${text}</p>${skillSummaryHtml()}`,
     [['New run', () => newRun(run.act)], ['Title screen', showTitle, true], ['Skills & stats', () => showStats(actCleared), true]]);
 }

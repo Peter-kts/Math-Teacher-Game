@@ -379,7 +379,7 @@
         const [a, u, w, k] = f.ts.map(t => t.c.n), g1 = gcd(a, u), B = PL([u / g1, a / g1]), kk = w * g1 / a;
         x.fs[i] = { t: 'gp', A: { c: F(g1), e: 1 }, B, C: { c: F(kk), e: 0 }, D: PL([k / kk, w / kk]) }; break;
       }
-      case 'out7': x.fs.splice(i, 1, { t: 'p', p: PL([f.C.c, f.A.c]) }, { t: 'p', p: f.B }); break;
+      case 'out7': { const A = PL([f.C.c, f.A.c]); x.fs.splice(i, 1, ...(pEq(A, f.B) ? [{ t: 'sq', p: A }] : [{ t: 'p', p: A }, { t: 'p', p: f.B }])); break; }
       case 'dos7': { const a = isqrt(f.p[2].n), b = isqrt(f.p[0].n); x.fs.splice(i, 1, { t: 'p', p: PL([b, a]) }, { t: 'p', p: PL([-b, a]) }); break; }
       case 'psq7': x.fs[i] = { t: 'sq', p: psqBase(f.p) }; break;
     }
@@ -456,6 +456,7 @@
       }
       case 'sqrt7': {
         const L = r.L, base = isSqSide(L) ? L.fs[0].p : PL([0, 1]);
+        // the generators keep this side a whole number (b even, divisions exact), so .n is the whole radicand
         return keep({ k7: 'rt', ...lin(base), q: F(0), s: F(1), rad: constOf(r.R).n, n: null, pm: false });
       }
       case 'qf7': { const p = plainP(r.L); return keep({ k7: 'qf', a: p[2], b: pcoef(p, 1), c: pcoef(p, 0) }); }
@@ -510,12 +511,11 @@
     const root = e.rad !== null && e.rad !== undefined ? (html ? `√<span class="rad7">${numText(e.rad)}</span>` : `√${e.rad < 0 ? '(' + numText(e.rad) + ')' : e.rad}`)
       : e.n === 1 ? '' : e.n === -1 ? (html ? XV('i') : 'i') : e.n < 0 ? (html ? XV('i') : 'i') + (html ? `√<span class="rad7">${-e.n}</span>` : `√${-e.n}`) : (html ? `√<span class="rad7">${e.n}</span>` : `√${e.n}`);
     const d = lcm(e.q.d, e.s.d), qn = e.q.n * (d / e.q.d), sn = e.s.n * (d / e.s.d);
-    const sAbs = Math.abs(sn), pm = e.pm ? '±' : sn < 0 ? MINUS : '';
+    const sAbs = Math.abs(sn);
     const sPart = (root && sAbs === 1 ? '' : String(sAbs)) + root;
     let num;
     if (qn === 0) num = (e.pm ? '±' : sn < 0 ? MINUS : '') + (sPart || '1');
     else num = `${numText(qn)} ${e.pm ? '±' : sn < 0 ? MINUS : '+'} ${sPart || '1'}`;
-    void pm;
     if (d === 1) return num;
     return html ? `<span class="frac f7"><span>${num}</span><span>${d}</span></span>` : `(${num})/${d}`;
   }
@@ -596,8 +596,9 @@
     return { start: state, end, path, main, skills: [...new Set([main, ...path.map(p => p.skill)])], enemy, act2: true, act7: true, answer: F(0), answerText: answerOf(end) };
   }
   function refreshPath(cur) {
-    const fresh = pathOf7(cur.state, cur.main).path;
+    const { path: fresh, end } = pathOf7(cur.state, cur.main);
     cur.path = cur.path.slice(0, cur.step).concat(fresh);
+    cur.answerText = answerOf(end);   // the answer the player is heading to, which can differ from the first plan (the other split, etc.)
   }
   const isSolved7 = e => !movesOf(e).length;
 
@@ -867,7 +868,6 @@
 
   // ================================================================ wrong moves
   const S = (long, short, more) => (long ? P(more || short) : short);
-  const H = s => s;   // html passthrough, for readability
   function why7(e, card, target, long) {
     const ref = refOf(target), ms = movesOf(e), want = ms[0] && ms[0].card;
     if (card.op === 'trap') return long ? card.why : 'That\'s a trap: it isn\'t true. Tap Why? to see why.';
@@ -919,8 +919,9 @@
     if (op === 'spl7') return ['Nothing to split yet.', 'Split the ± into two answers once x is alone and the ± part is a plain number.'];
     if (op === 'mv7' && card.t) {
       const t = card.t;
-      if (e.k7 === 'eq' && e.method === 'square' && want && want.op === 'mv7' && !t.e && t.c.n > 0) {
-        const p = plainP(e.L), b = p ? pcoef(p, 1) : F(0), h = fMul(b, F(1, 2));
+      const sqP = e.k7 === 'eq' && e.method === 'square' ? plainP(e.L) : null, sqH = sqP ? fMul(pcoef(sqP, 1), F(1, 2)) : null;
+      if (sqP && want && want.op === 'mv7' && !want.t.e && fEq(want.t.c, fMul(sqH, sqH)) && !t.e && t.c.n > 0) {
+        const p = sqP, b = pcoef(p, 1), h = sqH;
         return [`To complete the square, add (b/2)² = ${fracText(fMul(h, h))}.`, `Half of ${fracText(b)} is ${fracText(h)}, and ${fracText(h)} squared is ${fracText(fMul(h, h))}. Adding that to both sides makes the left side ${XV()}² ${pmT(b)}${XV()} + ${fracText(fMul(h, h))} = (${XV()} ${pmT(h)})², a perfect square.`];
       }
       if (want && want.op === 'mv7') {
@@ -948,11 +949,13 @@
         sign4ac: [`Inside the root it's b² ${MINUS} 4ac.`, `4ac = 4 · ${fracText(card.e7.a)} · ${paren(card.e7.c)} = ${fracText(fMul(F(4), fMul(card.e7.a, card.e7.c)))}, and you subtract it. This card flips that sign.`],
         negb2: ['b² is never negative.', `Squaring ${paren(card.e7.b)} gives ${fracText(fMul(card.e7.b, card.e7.b))}: a negative times a negative is positive. Write (${fracText(card.e7.b)})², not ${MINUS}${fracText(fAbs(card.e7.b))}².`] }[card.v];
       if (t) return t;
+      if (e.k7 === 'eq' && e.ask === 'count') return ['The question only asks how many real solutions.', `No need to solve: work out b² ${MINUS} 4ac. Its sign tells how many: positive two, zero one, negative none.`];
       return ['Get it into standard form first: ax² + bx + c = 0.', 'The formula needs a, b and c from an equation equal to 0.'];
     }
     if (op === 'dsc7') {
       const p = e.k7 === 'qf' ? PL([e.c, e.b, e.a]) : e.k7 === 'eq' ? plainP(e.L) : null;
-      if (p && pdeg(p) === 2 && (e.k7 === 'qf' || isZero(e.R))) { const D = discOf(p); return [`b² ${MINUS} 4ac = ${fracText(D)}.`, `b² ${MINUS} 4ac = ${paren(pcoef(p, 1))}² ${MINUS} 4 · ${paren(p[2])} · ${paren(pcoef(p, 0))} = ${fracText(D)}. ${D.n > 0 ? 'Positive: two real answers (± gives two different values).' : D.n === 0 ? 'Zero: one answer (± 0 changes nothing).' : 'Negative: no real answers (no real number squares to a negative).'}`]; }
+      if (p && pdeg(p) === 2 && (e.k7 === 'qf' || (e.ask !== 'count' && isZero(e.R)))) { const D = discOf(p); return ['This asks for the solutions, not how many.', `b² ${MINUS} 4ac = ${fracText(D)} tells how many real answers there are, but the question wants the values of ${XV()}. ${e.k7 === 'qf' ? 'Work out the formula' : 'Use the formula'} to find them.`]; }
+      if (p && pdeg(p) === 2 && isZero(e.R)) { const D = discOf(p); return [`b² ${MINUS} 4ac = ${fracText(D)}.`, `b² ${MINUS} 4ac = ${paren(pcoef(p, 1))}² ${MINUS} 4 · ${paren(p[2])} · ${paren(pcoef(p, 0))} = ${fracText(D)}. ${D.n > 0 ? 'Positive: two real answers (± gives two different values).' : D.n === 0 ? 'Zero: one answer (± 0 changes nothing).' : 'Negative: no real answers (no real number squares to a negative).'}`]; }
       return ['Get it into standard form first.', 'The discriminant uses a, b and c from ax² + bx + c = 0.'];
     }
     if (op === 'i27') return ['There\'s no i² to replace yet.', 'Multiply out first; i² shows up when i meets i.'];
@@ -972,7 +975,6 @@
     return why7(e, card, ref, true);
   }
   if (typeof registerWhy === 'function') registerWhy(explain7);
-  void H;
 
   // ================================================================ rendering
   const sym = (html, cls = '') => { const d = document.createElement('div'); d.className = 'tok a4 s7 ' + cls; d.innerHTML = html; return d; };
@@ -1186,8 +1188,6 @@
   }
   const slotAt = (s, c, ref) => slotFor(s, c, ref) || movesOf(s).find(o => o.op === c.op && o.ok(c));
   const facAt = (s, c, ref) => { const sl = slotAt(s, c, ref); const r = sl.refs[0]; const x = s.L; return { r, i: +r.slice(2), f: x.fs[+r.slice(2)], x }; };
-  const newRefs = ns => allToks().length ? [...$('equation').querySelectorAll('.tok[data-ref]')].map(t => t.dataset.ref) : [];
-  void newRefs;
 
   // ---------------------------------------------------------------- stages 27 to 29: factoring
   async function animGcf(c, s, ns, ref) {
@@ -1340,7 +1340,9 @@
     const t = tk('R'); t.classList.remove('owe7');
     const chip = document.createElement('span'); chip.className = 'pm7c'; chip.textContent = '±';
     t.querySelector('.w7').prepend(chip); kickClass(chip, 'pop');
-    caption(`Both ${s.rad >= 0 ? isqrt(s.rad) : '…'} and ${MINUS}${s.rad >= 0 ? isqrt(s.rad) : '…'} square to ${s.rad}: the answer splits into + and ${MINUS}`);
+    const r = s.rad >= 0 && isSq(s.rad) ? String(isqrt(s.rad)) : s.rad >= 0 ? `√${s.rad}` : `√(${fNum(F(s.rad))})`;
+    caption(s.rad >= 0 ? `Both ${r} and ${MINUS}${r} square to ${s.rad}: the answer splits into + and ${MINUS}`
+      : `A square root has two signs, + and ${MINUS}: the answer splits into + ${r} and ${MINUS} ${r}`);
     await quick(200); await hold();
     if (s.rad >= 0 && isSq(s.rad)) { const n = await written(`√${s.rad} = ${isqrt(s.rad)}`, [t], `${isqrt(s.rad)}² = ${s.rad}`); dropNote(n); }
     await result(ns, ['R'], `${linText(ns.a, ns.b)} = ${rhsText(ns)}`);
@@ -1525,7 +1527,6 @@
     }
     return [5, 1, 1];
   };
-  const withG = q => q;
   const fxG = (p, skill, enemy) => ({ q7: fxState(p, { skill }), enemy });
 
   const GCF_CASES = ['num', 'x', 'numx', 'cube', 'neg', 'three'];
@@ -1735,7 +1736,6 @@
   const GENS = { gcf7: genGcf, trinom: genTri, facpat: genPat, zprod: genZp, sqroot: genSq, cmpsq: genCs, qform: genQf, cplx: genCx, qgraph: genGr };
   if (typeof ENGINES === 'object') ENGINES.q7 = { text: textOf7 };
   const applyDifficulty = g => g;   // generators read the difficulty themselves; tutorials stay on Easy
-  void withG;
 
   // ================================================================ skills, enemies, act
   const ex = (...lines) => lines.join('<br>');
@@ -1805,7 +1805,7 @@
   ACTS[7] = { name: 'The Archery Gallery', sub: 'Factoring and quadratics', boss: 'The Grand Archer', firstSkill: 'gcf7',
     blurb: 'In the Archery Gallery every arrow flies on a parabola. Factor expressions, solve quadratics four ways (factoring, square roots, completing the square, the formula), meet i, and read the arcs. Defeat The Grand Archer.' };
 
-  const svgI = body => `<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">${body}</svg>`;
+  // svgI is the shared icon wrapper from index.html
   Object.assign(CARD_ICONS, {
     gcf7:   { name: 'Factor out the GCF', svg: svgI('<path d="M3 12h4M5 10v4" stroke-width="2"/><path d="M11 5c-3 4-3 10 0 14M21 5c3 4 3 10 0 14" transform="translate(-2 0)"/>') },
     tri7:   { name: 'Factor a trinomial into two brackets', svg: svgI('<path d="M4 5c-2 4-2 10 0 14M10 5c2 4 2 10 0 14M14 5c-2 4-2 10 0 14M20 5c2 4 2 10 0 14"/>') },
