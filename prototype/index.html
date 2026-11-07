@@ -672,6 +672,7 @@ function enemySvg(key) {
 // =====================================================================
 const opSym = op => ({ '+': '+', '-': MINUS, '*': TIMES, '/': DIV })[op];
 function cardLabel(c) {
+  if (window.ACT6 && ACT6.label(c)) return ACT6.label(c);
   if (window.ACT5 && ACT5.label(c)) return ACT5.label(c);
   if (window.ACT4 && ACT4.label(c)) return ACT4.label(c);
   if (window.ACT3 && ACT3.label(c)) return ACT3.label(c);
@@ -688,6 +689,7 @@ function chipHtml(c) {   // how a card reads once it's written into the equation
   return opSym(c.op) + ' ' + paren(F(c.n));
 }
 function cardText(c) {
+  if (window.ACT6 && ACT6.text(c)) return ACT6.text(c);
   if (window.ACT5 && ACT5.text(c)) return ACT5.text(c);
   if (window.ACT4 && ACT4.text(c)) return ACT4.text(c);
   if (window.ACT3 && ACT3.text(c)) return ACT3.text(c);
@@ -697,7 +699,7 @@ function cardText(c) {
             '/': `Divide both sides by ${n}`, neg: `Multiply both sides by ${MINUS}1`,
             frac: `Multiply both sides by ${fracText(F(c.n ?? 1, c.d ?? 1))}` })[c.op];
 }
-const cardKind = c => (window.ACT5 && ACT5.kind(c)) || (window.ACT4 && ACT4.kind(c)) || (window.ACT3 && ACT3.kind(c)) || (window.ACT2 && ACT2.kind(c)) || ({ '+': 'Add', '-': 'Subtract', '*': 'Multiply', '/': 'Divide', neg: `Multiply by ${MINUS}1`, frac: 'Reciprocal' })[c.op];
+const cardKind = c => (window.ACT6 && ACT6.kind(c)) || (window.ACT5 && ACT5.kind(c)) || (window.ACT4 && ACT4.kind(c)) || (window.ACT3 && ACT3.kind(c)) || (window.ACT2 && ACT2.kind(c)) || ({ '+': 'Add', '-': 'Subtract', '*': 'Multiply', '/': 'Divide', neg: `Multiply by ${MINUS}1`, frac: 'Reciprocal' })[c.op];
 const sameCard = (a, b) => cardLabel(a) === cardLabel(b);
 
 // Every card is a legal "do the same thing to both sides" move built from numbers in the equation.
@@ -789,6 +791,8 @@ function renderEquation(s) {
   if (window.ACT3) ACT3.clearLine();   // Act 3's number line and cases panel only show for its own states
   if (window.ACT4) ACT4.clear();       // Act 4's banner and graph panel only show for its own states
   if (window.ACT5) ACT5.clear();
+  if (window.ACT6) ACT6.clear();
+  if (s.k6) return ACT6.render(s);     // Act 6 (act6.js): exponents and polynomials
   if (s.k5) return ACT5.render(s);     // Act 5 (act5.js): systems of equations and inequalities
   if (s.k4) return ACT4.render(s);     // Act 4 (act4.js): order of operations, functions, slope, lines, formulas
   const act3 = s.rel || s.chain || s.abs || s.board;
@@ -814,6 +818,7 @@ function promptKind(s) {
   return 'equation';
 }
 function problemPrompt(s, skills = []) {
+  if (s.k6) return ACT6.prompt(s);                                      // Act 6 too
   if (s.k5) return ACT5.prompt(s);                                      // Act 5 too
   if (s.k4) return window.ACT4 && ACT4.prompt ? ACT4.prompt(s) : '';   // Act 4 words its own questions
   const v = `<i>${s.v || 'x'}</i>`, kind = promptKind(s);
@@ -1109,7 +1114,7 @@ const ACT1_LAYOUT = ['fight', 'fight', 'fight', 'elite', 'fight', 'fight', 'figh
 const NODE_ICON = { tutorial: '★', fight: '⚔', elite: '☠', boss: '♛' };
 let hp = MAX_HP, run = null, fight = null, cur = null, hand = [], busy = true;
 // The engine for the current equation: Act 3 (inequalities) and Act 2 share an interface; Act 1 is built in here.
-const eng = () => (cur && cur.act5 ? ACT5 : cur && cur.act4 ? ACT4 : cur && cur.act3 ? ACT3 : ACT2);
+const eng = () => (cur && cur.act6 ? ACT6 : cur && cur.act5 ? ACT5 : cur && cur.act4 ? ACT4 : cur && cur.act3 ? ACT3 : ACT2);
 
 // Starting a run first asks for a difficulty.
 function newRun(act) {
@@ -1142,6 +1147,85 @@ function startRun(act = 1, level = difficulty.level) {
   hideOverlay(); updateHud(); renderSkills(); startNode();
 }
 
+// =====================================================================
+//  Run save: a page refresh carries on where the player was
+// =====================================================================
+// Everything that lasts between visits is in localStorage:
+//   algebraCards.progress.v1  mastery, stats, unlocks, tutorials done, difficulty levels opened
+//   algebraCards.difficulty   the difficulty last picked       animSpeed   the animation speed
+//   algebraCards.run.v1       the run in progress (this section)
+// The run save holds the act, the map (with any tutorial nodes added mid-run), the node reached, HP,
+// difficulty, the variety history (so equations still don't repeat), the case queues, and the fight:
+// its phase, the equation on screen (as its generator returned it) and the correct moves made so far,
+// plus wrong moves and move count (so a refresh can't turn a messy solve into a clean one).
+// A fight's phase list is rebuilt from the node with buildFight(), so it works for any act that plugs
+// into buildFight/showEquation; nothing here needs to change when an act is added.
+// The save is updated at every node, phase, move and wrong move, and deleted when the run ends.
+const RUN_KEY = 'algebraCards.run.v1';
+let fightEq = null;   // the equation on screen, for the save: { g, enemy, played: [{ card, ref }] }
+function saveRun() {
+  if (!run || !run.nodes || !run.nodes.length) return;
+  const v = run.variety;
+  const data = { v: 1, act: run.act, nodes: run.nodes, i: run.i, hp, level: difficulty.level,
+    variety: v ? { seen: [...v.seen], shapes: [...v.shapes], last: v.last } : null, queues: caseQueues,
+    fight: fight ? { phase: fight.phase, eq: fightEq && cur ? { ...fightEq, wrong: cur.wrong, moves: cur.moves } : null } : null };
+  try { localStorage.setItem(RUN_KEY, JSON.stringify(data)); } catch (e) {}
+}
+function clearRunSave() { try { localStorage.removeItem(RUN_KEY); } catch (e) {} }
+const hasRunSave = () => { try { return !!localStorage.getItem(RUN_KEY); } catch (e) { return false; } };
+
+function replayMoves(saved) {
+  for (const { card, ref } of saved.played || []) {
+    if (cur.step >= cur.path.length - 1) break;            // never replay the winning move
+    cur.state = cur.act2 ? eng().apply(cur.state, card, ref) : applyCard(cur.state, card);
+    cur.step++;
+    if (cur.act2) eng().refreshPath(cur);
+    fightEq.played.push({ card, ref });
+  }
+  cur.wrong = Math.max(0, saved.wrong | 0); cur.moves = Math.max(cur.step + cur.wrong, saved.moves | 0);
+}
+
+// Called once on page load. Returns false (and the title screen shows) if there's no usable save.
+// A save from an older version, or one that fails to load, is dropped rather than breaking the page.
+function resumeRun() {
+  let d = null;
+  try { d = JSON.parse(localStorage.getItem(RUN_KEY)); } catch (e) {}
+  if (!d || d.v !== 1 || !ACTS[d.act] || !Array.isArray(d.nodes) || !d.nodes.length) { clearRunSave(); return false; }
+  const okNode = n => n && NODE_ICON[n.type] && (n.type !== 'tutorial' || SKILL[n.skill]) && (!n.skill || SKILL[n.skill]);
+  if (!d.nodes.every(okNode)) { clearRunSave(); return false; }
+  try {
+    difficulty = DIFFICULTIES[d.level] || DIFFICULTIES[0];
+    hp = Math.max(1, Math.min(MAX_HP, Math.round(+d.hp) || MAX_HP));
+    run = { act: d.act, nodes: d.nodes, i: Math.max(0, Math.min(d.nodes.length - 1, d.i | 0)) };
+    const v = d.variety;
+    if (v && Array.isArray(v.seen) && Array.isArray(v.shapes)) run.variety = { seen: new Set(v.seen), shapes: new Map(v.shapes), last: v.last || null };
+    if (d.queues && typeof d.queues === 'object') for (const [id, q] of Object.entries(d.queues))
+      if (SKILL[id] && Array.isArray(q)) caseQueues[id] = q.filter(c => (SKILL[id].cases || []).includes(c));
+    hideOverlay(); updateHud(); renderSkills();
+    // Not into the node's first equation yet (e.g. on a tutorial's intro): start the node again.
+    if (!d.fight || (!d.fight.eq && !d.fight.phase)) { startNode(); return true; }
+    const node = run.nodes[run.i];
+    fight = { ...buildFight(node), node, phase: 0 };
+    fight.phase = Math.max(0, Math.min(fight.phases.length - 1, d.fight.phase | 0));
+    renderMap();
+    $('enemyBox').classList.remove('dead');
+    const eq = d.fight.eq;
+    if (eq && eq.g) {
+      try { showEquation(eq.g, eq.enemy || fight.enemy || eq.g.enemy, eq); }
+      catch (e) {                                           // the saved moves didn't replay: same equation, from its start
+        console.warn('Run save: restarting the equation', e);
+        showEquation(JSON.parse(JSON.stringify(eq.g)), eq.enemy || fight.enemy || eq.g.enemy, { played: [], wrong: eq.wrong, moves: eq.wrong });
+      }
+    } else startPhase();
+    setMsg('Welcome back! Your run carries on from where you left it.');
+    return true;
+  } catch (e) {
+    console.warn('Run save: could not resume', e);
+    clearRunSave(); run = null; fight = null; cur = null; hp = MAX_HP;
+    return false;
+  }
+}
+
 // Normal fights: ~60% the newest stage, ~40% review of earlier ones (needs-review skills weighted ×3).
 // The skills a run can use: everything unlocked up to and including its act, oldest first.
 const runSkills = () => unlockedSkills().filter(id => actOf(id) <= run.act);
@@ -1164,6 +1248,7 @@ function buildFight(node) {
   if (run.act === 3) return ACT3.buildFight(node, list);
   if (run.act === 4) return ACT4.buildFight(node, list);
   if (run.act === 5) return ACT5.buildFight(node, list);
+  if (run.act === 6) return ACT6.buildFight(node, list);
   if (node.type === 'elite') {
     const recent = list.slice(-2);
     const swapped = () => { const g = genOneStep(); g.s.xLeft = false; return g; };
@@ -1193,7 +1278,7 @@ function buildFight(node) {
 const ENGINES = {
   s: { text: s => tokensFor(s).map(t => t.text).join(' '), mirror: s => ({ ...s, xLeft: !s.xLeft }) },
 };
-const shapeOf = text => text.replace(/\d+/g, 'n');
+const shapeOf = text => text.replace(/[\d⁰¹²³⁴⁵⁶⁷⁸⁹]+(\.\d+)?/g, 'n');   // superscript exponents and decimals are numbers too
 function freshEquation(gen, { prepare = g => g, mirror = true, tries = 40 } = {}) {
   const v = run.variety || (run.variety = { seen: new Set(), shapes: new Map(), last: null });
   let best = null;
@@ -1218,6 +1303,7 @@ function startNode() {
   const node = run.nodes[run.i];
   fight = { ...buildFight(node), node, phase: 0 };
   if (node.startPhase) fight.phase = Math.min(node.startPhase, fight.phases.length - 1);   // debug menu: start a boss at a later phase
+  fightEq = null; saveRun();
   renderMap();
   $('enemyBox').classList.remove('dead');
   if (node.type === 'tutorial') showIntro(node.skill); else startPhase();
@@ -1235,23 +1321,38 @@ function startPhase() {
     if (g.ineq) return ACT3.applyDifficulty(g, gen);
     if (g.fn) return ACT4.applyDifficulty(g, gen);
     if (g.sys) return ACT5.applyDifficulty(g, gen);
+    if (g.ex6) return ACT6.applyDifficulty(g, gen);
     return g;
   };
   const g = freshEquation(gen, { prepare, mirror: !tut });
-  const enemy = fight.enemy || g.enemy;
+  showEquation(g, fight.enemy || g.enemy);
+}
+
+// Puts an equation on screen. saved: a fight being restored after a page refresh ({ played, wrong, moves }):
+// the correct moves already made are replayed without animation, so the player is back on the same step.
+function showEquation(g, enemy, saved = null) {
+  const plain = JSON.parse(JSON.stringify(g));   // kept for the run save, before any engine touches it
   // Act 3 generators return { ineq } (act3.js: Act 2's model plus a relation), Act 2 ones { eq } (act2.js's equation model), Act 1 ones { s }.
-  cur = g.sys ? ACT5.makeEquation(g.sys, enemy) : g.fn ? ACT4.makeEquation(g.fn, enemy) : g.ineq ? ACT3.makeEquation(g.ineq, enemy) : g.eq ? ACT2.makeEquation(g.eq, enemy) : makeEquation(g.s, enemy);
+  cur = g.ex6 ? ACT6.makeEquation(g.ex6, enemy) : g.sys ? ACT5.makeEquation(g.sys, enemy) : g.fn ? ACT4.makeEquation(g.fn, enemy) : g.ineq ? ACT3.makeEquation(g.ineq, enemy) : g.eq ? ACT2.makeEquation(g.eq, enemy) : makeEquation(g.s, enemy);
   // Playtest fix: Act 4 questions are evaluated, read off a graph or written as a line, not solved for x.
-  $('helpLine').textContent = `Pick the ${cur.act5 || (cur.act4 && g.fn.k4 !== 'formula') ? 'right next move' : 'move that gets ' + ((g.fn || g.eq || {}).v || 'x') + ' alone'}. Wrong move = 10 damage.`;
-  cur.state = g.sys || g.fn || g.ineq || g.eq || g.s; cur.step = 0; cur.wrong = 0; cur.moves = 0; cur.lastT = performance.now();
-  cur.case = g.case; cur.caseSkill = g.caseSkill; if (g.case) useCase(g.caseSkill, g.case);
-  for (const id of cur.skills) progress.skills[id].attempted++;
-  saveProgress();
+  $('helpLine').textContent = `Pick the ${cur.act6 || cur.act5 || (cur.act4 && g.fn.k4 !== 'formula') ? 'right next move' : 'move that gets ' + ((g.fn || g.eq || {}).v || 'x') + ' alone'}. Wrong move = 10 damage.`;
+  cur.state = g.ex6 || g.sys || g.fn || g.ineq || g.eq || g.s; cur.step = 0; cur.wrong = 0; cur.moves = 0; cur.lastT = performance.now();
+  cur.case = g.case; cur.caseSkill = g.caseSkill;
+  // The prompt's wording is picked at random, so a restored fight keeps the one the player saw.
+  cur.prompt = saved && typeof saved.prompt === 'string' ? saved.prompt : problemPrompt(cur.state, cur.skills);
+  fightEq = { g: plain, enemy, prompt: cur.prompt, played: [] };
+  if (saved) replayMoves(saved);
+  else {
+    if (g.case) useCase(g.caseSkill, g.case);
+    for (const id of cur.skills) progress.skills[id].attempted++;
+    saveProgress();
+  }
+  saveRun();
   $('enemyBox').innerHTML = enemySvg(enemy);
   $('enemyBox').classList.remove('dead', 'hit');
   renderFoe();
   caption(''); setMsg(''); $('unlock').textContent = '';
-  cur.prompt = problemPrompt(cur.state, cur.skills); showPrompt(cur.prompt);
+  showPrompt(cur.prompt);
   renderEquation(cur.state); dealHand(); busy = false;
   for (const id of ['foe', 'enemyBox', 'prompt', 'equation']) { const e = $(id); e.classList.remove('arrive'); void e.offsetWidth; e.classList.add('arrive'); }
 }
@@ -1287,6 +1388,7 @@ const CARD_ICONS = {
 // A trap card wears the icon of the move it imitates.
 const TRAP_ICON = { 'add across': 'comb', 'first term only': 'dist', 'first sign only': 'dist', 'no sign flip': null, 'unlike terms': 'comb', 'lost sign': 'div', 'drop bars': 'split' };
 function iconKey(c) {
+  if (window.ACT6 && ACT6.icon(c)) return ACT6.icon(c);
   if (window.ACT5 && ACT5.icon(c)) return ACT5.icon(c);
   if (window.ACT4 && ACT4.icon(c)) return ACT4.icon(c);
   if (c.op === 'trap') {
@@ -1297,7 +1399,7 @@ function iconKey(c) {
   if (c.flip) return 'flip';
   if (c.lcd) return 'lcd';
   if (c.op === 'frac') return 'recip';
-  return { '+': 'add', '-': 'sub', '*': 'mul', '/': 'div', neg: 'neg', comb: 'comb', dist: 'dist', none: 'none', all: 'all', flip: 'flip', split: c.way === 'between' ? 'between' : c.way === 'outside' ? 'outside' : 'split' }[c.op] || 'add';
+  return { '+': 'add', '-': 'sub', '*': 'mul', '/': 'div', neg: 'neg', comb: 'comb', dist: 'dist', none: 'none', all: 'all', flip: 'flip', graph: 'graph3', split: c.way === 'between' ? 'between' : c.way === 'outside' ? 'outside' : 'split' }[c.op] || 'add';
 }
 const cardIcon = c => { const k = iconKey(c); return `<span class="cicon k-${k}" aria-label="${CARD_ICONS[k].name}">${CARD_ICONS[k].svg}</span>`; };
 function showKey() {
@@ -1313,7 +1415,7 @@ function dealHand() { hand = arrangeHand((cur.act2 ? eng().makeHand : makeHand)(
 // in their dealt order. New acts can add their own named ops to this list.
 const FIXED_SLOTS = ['comb', 'dist', 'lcd', 'flip', 'split', 'none', 'all'];
 const slotKey = c => c.lcd ? 'lcd' : c.op;
-const slotOf = c => { const k5 = window.ACT5 ? ACT5.slot(c) : null; if (k5 != null) return k5; const k = window.ACT4 ? ACT4.slot(c) : null; return k != null ? k : FIXED_SLOTS.indexOf(slotKey(c)); };   // Act 4 cards have their own slots (PEMDAS order)
+const slotOf = c => { const k6 = window.ACT6 ? ACT6.slot(c) : null; if (k6 != null) return k6; const k5 = window.ACT5 ? ACT5.slot(c) : null; if (k5 != null) return k5; const k = window.ACT4 ? ACT4.slot(c) : null; return k != null ? k : FIXED_SLOTS.indexOf(slotKey(c)); };   // Act 4 cards have their own slots (PEMDAS order)
 function arrangeHand(cards) {
   const out = new Array(cards.length).fill(null), rest = [];
   const named = cards.filter(c => slotOf(c) >= 0).sort((a, b) => slotOf(a) - slotOf(b));
@@ -1380,6 +1482,7 @@ let dragging = false;   // only one card can be dragged at a time
 // terms for Combine. Returns the one target (or null when there is none, so the move is wrong wherever it
 // goes), or undefined when there are two or more and the player has to choose.
 function autoTarget(card) {
+  if (window.ACT6 && cur && cur.act6) { const a = ACT6.autoTarget(card); if (a !== 'pass') return a; }   // Act 6 too
   if (window.ACT5 && cur && cur.act5) { const a = ACT5.autoTarget(card); if (a !== 'pass') return a; }   // Act 5 cards pick their own targets
   const q = sel => [...document.querySelectorAll('#equation ' + sel)];
   let things;
@@ -1413,6 +1516,7 @@ function startDrag(e, el, card) {
   $('arena').classList.add(targeted ? 'targeting' : 'anywhere');
   if (window.ACT4) ACT4.onDrag(card, true);
   if (window.ACT5) ACT5.onDrag(card, true);
+  if (window.ACT6) ACT6.onDrag(card, true);
   let hover = null;
   const move = ev => {
     if (ev.pointerId !== pid) return;   // ignore other fingers
@@ -1422,7 +1526,7 @@ function startDrag(e, el, card) {
       // Forgiving hit test: within 40px of a box counts, closest box wins.
       let best = Infinity;
       // Act 3's Flip is dropped on the sign. Review fix: only Flip can target it; other ◎ cards used to snap onto it.
-      const sel = (window.ACT5 && cur && cur.act5 && ACT5.targetSel(card)) || (window.ACT4 && ACT4.targetSel(card)) || (card.op === 'flip' ? '#equation .tok:not(.eq), #equation .tok.rel' : '#equation .tok:not(.eq):not(.rel)');
+      const sel = (window.ACT6 && cur && cur.act6 && ACT6.targetSel(card)) || (window.ACT5 && cur && cur.act5 && ACT5.targetSel(card)) || (window.ACT4 && ACT4.targetSel(card)) || (card.op === 'flip' ? '#equation .tok:not(.eq), #equation .tok.rel' : '#equation .tok:not(.eq):not(.rel)');
       for (const t of document.querySelectorAll(sel)) {
         const b = t.getBoundingClientRect();
         const d = Math.hypot(Math.max(b.left - ev.clientX, 0, ev.clientX - b.right), Math.max(b.top - ev.clientY, 0, ev.clientY - b.bottom));
@@ -1446,6 +1550,7 @@ function startDrag(e, el, card) {
     $('arena').classList.remove('targeting', 'anywhere');
     if (window.ACT4) ACT4.onDrag(card, false);
     if (window.ACT5) ACT5.onDrag(card, false);
+    if (window.ACT6) ACT6.onDrag(card, false);
     if (hover) hover.classList.remove('hover');
     if (hover && drop) playCard(card, targeted ? hover : auto === undefined ? null : auto);
   };
@@ -1500,6 +1605,7 @@ async function doStep(card, target) {
   }
   cur.state = ns; cur.step++;
   if (cur.act2) eng().refreshPath(cur);
+  if (fightEq) { fightEq.played.push({ card: JSON.parse(JSON.stringify(card)), ref: typeof ref === 'string' ? ref : undefined }); saveRun(); }
   cur.lastT = performance.now();   // start the next move's clock after the animation, not before it
   renderEquation(ns);
   if (cur.step < cur.path.length) { dealHand(); busy = false; return; }
@@ -1535,8 +1641,9 @@ function equationSolved() {
   if (here.length) { renderMap(); $('unlock').textContent = `New stage unlocked: ${SKILL[here[0]].title.replace(/^Stage \d+: /, '')}! Its tutorial fight is next.`; }
   else if (later.length) $('unlock').textContent = `Act ${actOf(later[0])} unlocked! Start it from the title screen after this run.`;
 
-  fight.phase++;
+  fight.phase++; fightEq = null;
   if (fight.phase < fight.phases.length) {
+    saveRun();   // a refresh now goes straight to the next phase; this solve's mastery is already counted
     const b = $('enemyBox'); b.classList.remove('hit'); void b.offsetWidth; b.classList.add('hit');
     return waitForNext(startPhase);
   }
@@ -1544,8 +1651,8 @@ function equationSolved() {
   const node = fight.node;
   if (node.type === 'tutorial' && !progress.tutorialsDone.includes(node.skill)) { progress.tutorialsDone.push(node.skill); saveProgress(); }
   if (node.type === 'elite') { hp = Math.min(MAX_HP, hp + ELITE_HEAL); updateHud(); setMsg($('msg').textContent + ` · Elite down: +${ELITE_HEAL} HP`, 'good'); }
-  if (node.type === 'boss') return waitForNext(actCleared);
-  run.i++;
+  if (node.type === 'boss') { clearRunSave(); return waitForNext(actCleared); }
+  run.i++; fight = null; saveRun();
   waitForNext(startNode);
 }
 
@@ -1658,6 +1765,22 @@ function blankOut(items) {
   return blanks;
 }
 
+// Blanks are wider than most numbers, so the line can outgrow the arena (long polynomials, division
+// layouts on a phone): shrink the equation until its widest part fits again.
+function fitBlanks() {
+  const el = $('equation'), availW = ($('arena').clientWidth || innerWidth) * 0.94;
+  let size = parseFloat(getComputedStyle(el).getPropertyValue('--eqSize')) || 56;
+  el.classList.add('fitting');
+  for (let i = 0; i < 12; i++) {
+    const need = Math.max(el.scrollWidth, ...[...el.querySelectorAll('.tok')].map(t => t.scrollWidth));
+    if (need <= availW) break;
+    size = Math.max(12, Math.floor(size * Math.min(0.97, availW / need)));
+    el.style.setProperty('--eqSize', size + 'px');
+    if (size <= 12) break;
+  }
+  el.classList.remove('fitting');
+}
+
 let computing = null;   // the entry in progress: { blanks, items, i, text, misses, done }
 const PAD_KEYS = ['7', '8', '9', '⌫', '4', '5', '6', '−', '1', '2', '3', '/', '.', '0', 'OK'];
 function renderPad() {
@@ -1746,6 +1869,7 @@ function computeStep(card, s, ns) {
   if (!items.length) return Promise.resolve(true);
   const p = $('ciPrev'); p.innerHTML = ''; [...prev.childNodes].forEach(n => p.appendChild(n)); p.classList.add('show');
   const blanks = blankOut(items);
+  fitBlanks();
   caption(`${cardText(card)}. Type the new number${items.length > 1 ? 's' : ''}.`);
   renderPad(); $('app').classList.add('computing');
   return new Promise(done => { computing = { blanks, items, i: 0, text: '', misses: 0, done }; showBlank(); });
@@ -1757,7 +1881,8 @@ function takeDamage(why, more = null) {
   setMsg(`-${DAMAGE} HP. ${why}`, 'bad', more);
   const a = $('arena'); a.classList.remove('flash', 'shake'); void a.offsetWidth; a.classList.add('flash', 'shake');
   window.SFX?.wrong();
-  if (hp <= 0) { busy = true; setTimeout(runLost, 600); }
+  if (hp <= 0) { busy = true; clearRunSave(); setTimeout(runLost, 600); }
+  else saveRun();
 }
 
 // After a solve: a short celebration, then the game waits until the player taps (or presses Space/Enter).
@@ -1888,7 +2013,9 @@ function actCleared() {
     ? `The Leaning Tower stands straight again. ${isUnlocked('evalx') ? 'Act 4, the Map Room, is open.' : 'Act 4, the Map Room, opens when the last Act 3 skill reaches 80 mastery.'}`
     : run.act === 4
     ? `The Cartographer\'s maps are true again. ${isUnlocked('subst') ? 'Act 5, the Twin Observatory, is open.' : 'Act 5, the Twin Observatory, opens when Lines reaches 80 mastery.'}`
-    : 'The Twin Moons line up at last. Act 6 is still to be built, so run Act 5 again to keep your skills sharp.';
+    : run.act === 5
+    ? `The Twin Moons line up at last. ${isUnlocked('exprules') ? 'Act 6, the Power Forge, is open.' : 'Act 6, the Power Forge, opens when the last Act 5 skill reaches 80 mastery.'}`
+    : 'The Forgemaster\'s fires burn steady again. Act 7 is still to be built, so run Act 6 again to keep your skills sharp.';
   showOverlay(`<h1>Act ${run.act} cleared!</h1><p>${text}</p>${skillSummaryHtml()}`,
     [['New run', () => newRun(run.act)], ['Title screen', showTitle, true], ['Skills & stats', () => showStats(actCleared), true]]);
 }
@@ -1914,9 +2041,13 @@ function showStats(back) {
   // Time spent reading stats is not thinking time, so push the move clock forward by it.
   const close = () => { if (cur && cur.lastT) cur.lastT += performance.now() - opened; if (back) back(); else hideOverlay(); };   // the overlay blocks input while open, so busy is left alone
   showOverlay(`<h1>Skills &amp; stats</h1><p>Saved in this browser. 80 mastery unlocks the next stage. A mastered skill that drops below 80 is marked "needs review" and shows up more often.</p>${rows}`,
-    [['Close', close], ['Reset all progress', () => {
+    [['Close', close], ...(run && hasRunSave() ? [['Abandon this run', () => {
+      if (!confirm('Give up this run and go back to the title screen? Your mastery and stats are kept.')) return;
+      clearRunSave(); run = null; fight = null; cur = null; hp = MAX_HP; updateHud(); showTitle();
+    }, true]] : []), ['Reset all progress', () => {
       if (!confirm('Erase all mastery and stats in this browser?')) return;
       try { localStorage.removeItem(STORE_KEY); } catch (e) {}
+      clearRunSave(); run = null; fight = null; cur = null; hp = MAX_HP; updateHud();
       progress = loadProgress(); renderSkills(); showTitle();
     }, true]]);
 }
@@ -1931,7 +2062,8 @@ window.__game = { get cur() { return cur; }, get hand() { return hand; }, get bu
 <script src="act3.js"></script>
 <script src="act4.js"></script>
 <script src="act5.js"></script>
-<script>renderSkills(); updateHud(); showTitle();</script>
+<script src="act6.js"></script>
+<script>renderSkills(); updateHud(); if (!resumeRun()) showTitle();</script>
 <script src="debug.js"></script>
 <script src="sfx.js"></script>
 </body>
