@@ -1176,7 +1176,7 @@
     if (!gs) { el.innerHTML = ''; el.dataset.key = ''; el.classList.remove('show'); $('arena').classList.remove('g4'); return; }
     $('arena').classList.add('g4'); el.classList.add('show');
     const key = JSON.stringify(gs); if (el.dataset.key === key && el.firstChild) return;
-    const qkey = JSON.stringify(gs.pts) + JSON.stringify(gs.win);
+    const qkey = JSON.stringify(gs.pts) + JSON.stringify(gs.win) + (gs.qid || '');
     if (el.dataset.q !== qkey || !el._seen) { el._seen = new Set(); el.dataset.q = qkey; }
     el.dataset.key = key;
     const W = 260, pad = 12, { x0, x1, y0, y1 } = gs.win, span = Math.max(x1 - x0, y1 - y0), s = (W - 2 * pad) / span;
@@ -1200,11 +1200,41 @@
       if (m) for (const y of [vy0, vy1]) { const x = (y - b) / m; if (x > vx0 && x < vx1) pts.push([x, y]); }
       return pts.length >= 2 ? [pts[0], pts[1]] : null;
     };
+    // Act 5: shaded half-planes { t: 'half', A, B, C, ge, cls } are the part of the view where
+    // A·x + B·y ≥ C (ge) or ≤ C, clipped from the view square; { t: 'overlap', a, b } is where two of them meet.
+    const halfPoly = h => {
+      let poly = [[vx0, vy0], [vx1, vy0], [vx1, vy1], [vx0, vy1]];
+      const f = ([x, y]) => (fv(h.A) * x + fv(h.B) * y - fv(h.C)) * (h.ge ? 1 : -1);
+      const out = [];
+      poly.forEach((p, i) => {
+        const q = poly[(i + 1) % poly.length], fp = f(p), fq = f(q);
+        if (fp >= 0) out.push(p);
+        if ((fp >= 0) !== (fq >= 0)) { const t = fp / (fp - fq); out.push([p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t]); }
+      });
+      return out.map(([x, y]) => `${X(x)},${Y(y)}`).join(' ');
+    };
+    const shades = gs.marks.filter(mk => mk.t === 'half'), overlaps = gs.marks.filter(mk => mk.t === 'overlap');
+    shades.forEach((h, i) => { svg += `<polygon class="gHalf ${h.cls || ''}${fresh('H' + JSON.stringify(h))}" points="${halfPoly(h)}"/>`; });
+    overlaps.forEach((o, i) => {
+      svg += `<clipPath id="gClip${i}"><polygon points="${halfPoly(o.a)}"/></clipPath>`;
+      svg += `<polygon class="gOverlap${fresh('O' + JSON.stringify(o))}" clip-path="url(#gClip${i})" points="${halfPoly(o.b)}"/>`;
+    });
+    const labsAt = [];
     gs.lines.forEach((l, i) => {
       const sg = seg(l); if (!sg) return;
-      const cls = l.res ? 'gRes' : l.ref ? 'gRef' : 'gLine';
+      const cls = (l.res ? 'gRes' : l.ref ? 'gRef' : 'gLine') + (l.cls ? ' ' + l.cls : '') + (l.dash ? ' gDash' : '');
       svg += `<line class="${cls}${fresh('L' + JSON.stringify(l))}" pathLength="1" x1="${X(sg[0][0])}" y1="${Y(sg[0][1])}" x2="${X(sg[1][0])}" y2="${Y(sg[1][1])}"/>`;
-      if (l.ref) svg += `<line class="gtarget gLineHit" data-ref="G${i}" data-role="gline" x1="${X(sg[0][0])}" y1="${Y(sg[0][1])}" x2="${X(sg[1][0])}" y2="${Y(sg[1][1])}"/>`;
+      if (l.ref) svg += `<line class="gtarget gLineHit" data-ref="${l.tref || 'G' + i}" data-role="gline" x1="${X(sg[0][0])}" y1="${Y(sg[0][1])}" x2="${X(sg[1][0])}" y2="${Y(sg[1][1])}"/>`;
+      if (l.lab) {   // a small tag near the end of the line that is furthest right, so lines can be told apart
+        // Playtest fix: two lines ending close together got their tags on top of each other, so a tag
+        // that would land on an earlier one moves to its line's other end.
+        const first = sg[0][0] > sg[1][0] || (sg[0][0] === sg[1][0] && sg[0][1] > sg[1][1]) ? 0 : 1;
+        const at = e => [Math.max(16, Math.min(X(e[0]), W - 14)), Math.max(14, Math.min(W - 6, Y(e[1]) + (Y(e[1]) < 20 ? 12 : -4)))];
+        const tries = [at(sg[first]), at(sg[1 - first])];
+        const [lx, ly] = tries.find(([x, y]) => labsAt.every(([px, py]) => Math.hypot(px - x, py - y) > 20)) || tries[0];
+        labsAt.push([lx, ly]);
+        svg += `<text class="gLineLab ${l.cls || ''}" x="${lx}" y="${ly}" text-anchor="${lx < W / 2 ? 'start' : 'end'}">${l.lab}</text>`;
+      }
     });
     // marks: the rise/run triangle and intercepts
     for (const mk of gs.marks) {
@@ -1218,10 +1248,15 @@
         svg += `<text class="gRunLab${an}" x="${(ax_ + bx) / 2}" y="${ay_ + (below ? 14 : -6)}">run ${fracText(run)}</text>`;
         svg += `<text class="gRiseLab${an}" x="${bx + (bx >= ax_ ? 5 : -5)}" y="${(ay_ + by) / 2 + 4}" text-anchor="${bx >= ax_ ? 'start' : 'end'}">rise ${fracText(rise)}</text>`;
       } else if (mk.t === 'ic') svg += `<circle class="gIc${an}" cx="${X(fv(mk.x))}" cy="${Y(fv(mk.y))}" r="7"/>`;
+      else if (mk.t === 'dot') {   // Act 5: the crossing point of a system, or a point being tested
+        const dx = X(fv(mk.x)), dy = Y(fv(mk.y));
+        svg += `<circle class="gDot ${mk.cls || ''}${an}" cx="${dx}" cy="${dy}" r="6"/>`;
+        if (mk.lab) { const right = dx < W - 70; svg += `<text class="gPtLab${an}" x="${dx + (right ? 9 : -9)}" y="${dy - 8}" text-anchor="${right ? 'start' : 'end'}">${mk.lab}</text>`; }
+      }
     }
     gs.pts.forEach((p, i) => {
       const px = X(fv(p.x)), py = Y(fv(p.y));
-      svg += `<circle class="gPt" cx="${px}" cy="${py}" r="5"/>`;
+      svg += `<circle class="gPt${p.cls ? ' ' + p.cls : ''}" cx="${px}" cy="${py}" r="5"/>`;
       if (gs.labels) { const right = px < W - 60; svg += `<text class="gPtLab" x="${px + (right ? 8 : -8)}" y="${py - 7}" text-anchor="${right ? 'start' : 'end'}">${ptText(p)}</text>`; }
       if (gs.targets !== false) svg += `<circle class="gtarget gpt" data-ref="P${i}" data-role="point" cx="${px}" cy="${py}" r="16"/>`;
     });
@@ -1917,6 +1952,17 @@
     #graph .gIc { fill:none; stroke:var(--good); stroke-width:3; }
     #graph .gIc.anim { animation: gPulse 1s ease-out 2; transform-box:fill-box; transform-origin:center; }
     @keyframes gPulse { 50% { stroke-width:6; transform: scale(1.6); } }
+    #graph .gDash { stroke-dasharray:.035 .025 !important; }   /* lines carry pathLength="1", so dash lengths are fractions of the line */
+    #graph .anim.gDash[pathLength] { stroke-dasharray:.04 .03 !important; stroke-dashoffset:0; animation: gFade .5s ease-out both; }
+    #graph .gHalf { fill:#7bdff2; opacity:.16; stroke:none; }
+    #graph .gHalf.anim { animation: gShade .7s ease-out both; }
+    #graph .gOverlap { fill:var(--accent); opacity:.38; stroke:none; }
+    #graph .gOverlap.anim { animation: gGlow 1.2s ease-out both; }
+    @keyframes gShade { from { opacity:0; } }
+    @keyframes gGlow { 0% { opacity:0; } 50% { opacity:.65; } 100% { opacity:.38; } }
+    #graph .gDot { fill:var(--good); stroke:#000; stroke-width:1.5; }
+    #graph .gDot.anim { animation: gPulse 1s ease-out 2; transform-box:fill-box; transform-origin:center; }
+    #graph .gLineLab { font: bold 11px "Courier New", monospace; fill:#7bdff2; paint-order:stroke; stroke:#1d1b2a; stroke-width:3px; }
     #graph .gtarget { fill:transparent; stroke:transparent; cursor:pointer; }
     #graph .gLineHit { stroke:transparent; stroke-width:24; }
     #arena.pts4 #graph .gtarget.gpt { stroke:var(--muted); stroke-width:2; stroke-dasharray:4 3; fill:#ffffff10; }
@@ -1947,5 +1993,9 @@
     isCorrect, whyWrong, animFor, applyDifficulty, label, text, kind, icon, slot, targetSel, onDrag, buildFight: buildFight4,
     genFormulaStacked, drawGraph, gens: GENS, eqText: textOf4, prompt,
     // test hooks
-    _canon: canon4, _correct: correct4, _active: active, _evaluate: evaluate };
+    _canon: canon4, _correct: correct4, _active: active, _evaluate: evaluate,
+    // shared with act5.js (systems), which builds on the formula engine, the work delegation and the graph panel
+    kit: { T, GR, fApply, fCanon, fSolved, fCorrect, fSteps, fText, fHtml, fTermStr, fSide, fHand, fWhy, fCardText, hasV, keyT, tMul, signedT,
+      renderFormula, animFormula, drawGraph, windowFor, TOK, EQTOK, topEl, banner, refOf, P, XI, kickClass, clone, fNeg, fSub, fDiv, fEq, fz, fv,
+      isTutorial, lvl, known, ptText, lineTextOf, lineHtml, explain4 } };
 })();
