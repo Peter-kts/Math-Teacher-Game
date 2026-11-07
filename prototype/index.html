@@ -1142,6 +1142,85 @@ function startRun(act = 1, level = difficulty.level) {
   hideOverlay(); updateHud(); renderSkills(); startNode();
 }
 
+// =====================================================================
+//  Run save: a page refresh carries on where the player was
+// =====================================================================
+// Everything that lasts between visits is in localStorage:
+//   algebraCards.progress.v1  mastery, stats, unlocks, tutorials done, difficulty levels opened
+//   algebraCards.difficulty   the difficulty last picked       animSpeed   the animation speed
+//   algebraCards.run.v1       the run in progress (this section)
+// The run save holds the act, the map (with any tutorial nodes added mid-run), the node reached, HP,
+// difficulty, the variety history (so equations still don't repeat), the case queues, and the fight:
+// its phase, the equation on screen (as its generator returned it) and the correct moves made so far,
+// plus wrong moves and move count (so a refresh can't turn a messy solve into a clean one).
+// A fight's phase list is rebuilt from the node with buildFight(), so it works for any act that plugs
+// into buildFight/showEquation; nothing here needs to change when an act is added.
+// The save is updated at every node, phase, move and wrong move, and deleted when the run ends.
+const RUN_KEY = 'algebraCards.run.v1';
+let fightEq = null;   // the equation on screen, for the save: { g, enemy, played: [{ card, ref }] }
+function saveRun() {
+  if (!run || !run.nodes || !run.nodes.length) return;
+  const v = run.variety;
+  const data = { v: 1, act: run.act, nodes: run.nodes, i: run.i, hp, level: difficulty.level,
+    variety: v ? { seen: [...v.seen], shapes: [...v.shapes], last: v.last } : null, queues: caseQueues,
+    fight: fight ? { phase: fight.phase, eq: fightEq && cur ? { ...fightEq, wrong: cur.wrong, moves: cur.moves } : null } : null };
+  try { localStorage.setItem(RUN_KEY, JSON.stringify(data)); } catch (e) {}
+}
+function clearRunSave() { try { localStorage.removeItem(RUN_KEY); } catch (e) {} }
+const hasRunSave = () => { try { return !!localStorage.getItem(RUN_KEY); } catch (e) { return false; } };
+
+function replayMoves(saved) {
+  for (const { card, ref } of saved.played || []) {
+    if (cur.step >= cur.path.length - 1) break;            // never replay the winning move
+    cur.state = cur.act2 ? eng().apply(cur.state, card, ref) : applyCard(cur.state, card);
+    cur.step++;
+    if (cur.act2) eng().refreshPath(cur);
+    fightEq.played.push({ card, ref });
+  }
+  cur.wrong = Math.max(0, saved.wrong | 0); cur.moves = Math.max(cur.step + cur.wrong, saved.moves | 0);
+}
+
+// Called once on page load. Returns false (and the title screen shows) if there's no usable save.
+// A save from an older version, or one that fails to load, is dropped rather than breaking the page.
+function resumeRun() {
+  let d = null;
+  try { d = JSON.parse(localStorage.getItem(RUN_KEY)); } catch (e) {}
+  if (!d || d.v !== 1 || !ACTS[d.act] || !Array.isArray(d.nodes) || !d.nodes.length) { clearRunSave(); return false; }
+  const okNode = n => n && NODE_ICON[n.type] && (n.type !== 'tutorial' || SKILL[n.skill]) && (!n.skill || SKILL[n.skill]);
+  if (!d.nodes.every(okNode)) { clearRunSave(); return false; }
+  try {
+    difficulty = DIFFICULTIES[d.level] || DIFFICULTIES[0];
+    hp = Math.max(1, Math.min(MAX_HP, Math.round(+d.hp) || MAX_HP));
+    run = { act: d.act, nodes: d.nodes, i: Math.max(0, Math.min(d.nodes.length - 1, d.i | 0)) };
+    const v = d.variety;
+    if (v && Array.isArray(v.seen) && Array.isArray(v.shapes)) run.variety = { seen: new Set(v.seen), shapes: new Map(v.shapes), last: v.last || null };
+    if (d.queues && typeof d.queues === 'object') for (const [id, q] of Object.entries(d.queues))
+      if (SKILL[id] && Array.isArray(q)) caseQueues[id] = q.filter(c => (SKILL[id].cases || []).includes(c));
+    hideOverlay(); updateHud(); renderSkills();
+    // Not into the node's first equation yet (e.g. on a tutorial's intro): start the node again.
+    if (!d.fight || (!d.fight.eq && !d.fight.phase)) { startNode(); return true; }
+    const node = run.nodes[run.i];
+    fight = { ...buildFight(node), node, phase: 0 };
+    fight.phase = Math.max(0, Math.min(fight.phases.length - 1, d.fight.phase | 0));
+    renderMap();
+    $('enemyBox').classList.remove('dead');
+    const eq = d.fight.eq;
+    if (eq && eq.g) {
+      try { showEquation(eq.g, eq.enemy || fight.enemy || eq.g.enemy, eq); }
+      catch (e) {                                           // the saved moves didn't replay: same equation, from its start
+        console.warn('Run save: restarting the equation', e);
+        showEquation(JSON.parse(JSON.stringify(eq.g)), eq.enemy || fight.enemy || eq.g.enemy, { played: [], wrong: eq.wrong, moves: eq.wrong });
+      }
+    } else startPhase();
+    setMsg('Welcome back! Your run carries on from where you left it.');
+    return true;
+  } catch (e) {
+    console.warn('Run save: could not resume', e);
+    clearRunSave(); run = null; fight = null; cur = null; hp = MAX_HP;
+    return false;
+  }
+}
+
 // Normal fights: ~60% the newest stage, ~40% review of earlier ones (needs-review skills weighted ×3).
 // The skills a run can use: everything unlocked up to and including its act, oldest first.
 const runSkills = () => unlockedSkills().filter(id => actOf(id) <= run.act);
@@ -1218,6 +1297,7 @@ function startNode() {
   const node = run.nodes[run.i];
   fight = { ...buildFight(node), node, phase: 0 };
   if (node.startPhase) fight.phase = Math.min(node.startPhase, fight.phases.length - 1);   // debug menu: start a boss at a later phase
+  fightEq = null; saveRun();
   renderMap();
   $('enemyBox').classList.remove('dead');
   if (node.type === 'tutorial') showIntro(node.skill); else startPhase();
@@ -1238,20 +1318,34 @@ function startPhase() {
     return g;
   };
   const g = freshEquation(gen, { prepare, mirror: !tut });
-  const enemy = fight.enemy || g.enemy;
+  showEquation(g, fight.enemy || g.enemy);
+}
+
+// Puts an equation on screen. saved: a fight being restored after a page refresh ({ played, wrong, moves }):
+// the correct moves already made are replayed without animation, so the player is back on the same step.
+function showEquation(g, enemy, saved = null) {
+  const plain = JSON.parse(JSON.stringify(g));   // kept for the run save, before any engine touches it
   // Act 3 generators return { ineq } (act3.js: Act 2's model plus a relation), Act 2 ones { eq } (act2.js's equation model), Act 1 ones { s }.
   cur = g.sys ? ACT5.makeEquation(g.sys, enemy) : g.fn ? ACT4.makeEquation(g.fn, enemy) : g.ineq ? ACT3.makeEquation(g.ineq, enemy) : g.eq ? ACT2.makeEquation(g.eq, enemy) : makeEquation(g.s, enemy);
   // Playtest fix: Act 4 questions are evaluated, read off a graph or written as a line, not solved for x.
   $('helpLine').textContent = `Pick the ${cur.act5 || (cur.act4 && g.fn.k4 !== 'formula') ? 'right next move' : 'move that gets ' + ((g.fn || g.eq || {}).v || 'x') + ' alone'}. Wrong move = 10 damage.`;
   cur.state = g.sys || g.fn || g.ineq || g.eq || g.s; cur.step = 0; cur.wrong = 0; cur.moves = 0; cur.lastT = performance.now();
-  cur.case = g.case; cur.caseSkill = g.caseSkill; if (g.case) useCase(g.caseSkill, g.case);
-  for (const id of cur.skills) progress.skills[id].attempted++;
-  saveProgress();
+  cur.case = g.case; cur.caseSkill = g.caseSkill;
+  // The prompt's wording is picked at random, so a restored fight keeps the one the player saw.
+  cur.prompt = saved && typeof saved.prompt === 'string' ? saved.prompt : problemPrompt(cur.state, cur.skills);
+  fightEq = { g: plain, enemy, prompt: cur.prompt, played: [] };
+  if (saved) replayMoves(saved);
+  else {
+    if (g.case) useCase(g.caseSkill, g.case);
+    for (const id of cur.skills) progress.skills[id].attempted++;
+    saveProgress();
+  }
+  saveRun();
   $('enemyBox').innerHTML = enemySvg(enemy);
   $('enemyBox').classList.remove('dead', 'hit');
   renderFoe();
   caption(''); setMsg(''); $('unlock').textContent = '';
-  cur.prompt = problemPrompt(cur.state, cur.skills); showPrompt(cur.prompt);
+  showPrompt(cur.prompt);
   renderEquation(cur.state); dealHand(); busy = false;
   for (const id of ['foe', 'enemyBox', 'prompt', 'equation']) { const e = $(id); e.classList.remove('arrive'); void e.offsetWidth; e.classList.add('arrive'); }
 }
@@ -1500,6 +1594,7 @@ async function doStep(card, target) {
   }
   cur.state = ns; cur.step++;
   if (cur.act2) eng().refreshPath(cur);
+  if (fightEq) { fightEq.played.push({ card: JSON.parse(JSON.stringify(card)), ref: typeof ref === 'string' ? ref : undefined }); saveRun(); }
   cur.lastT = performance.now();   // start the next move's clock after the animation, not before it
   renderEquation(ns);
   if (cur.step < cur.path.length) { dealHand(); busy = false; return; }
@@ -1535,8 +1630,9 @@ function equationSolved() {
   if (here.length) { renderMap(); $('unlock').textContent = `New stage unlocked: ${SKILL[here[0]].title.replace(/^Stage \d+: /, '')}! Its tutorial fight is next.`; }
   else if (later.length) $('unlock').textContent = `Act ${actOf(later[0])} unlocked! Start it from the title screen after this run.`;
 
-  fight.phase++;
+  fight.phase++; fightEq = null;
   if (fight.phase < fight.phases.length) {
+    saveRun();   // a refresh now goes straight to the next phase; this solve's mastery is already counted
     const b = $('enemyBox'); b.classList.remove('hit'); void b.offsetWidth; b.classList.add('hit');
     return waitForNext(startPhase);
   }
@@ -1544,8 +1640,8 @@ function equationSolved() {
   const node = fight.node;
   if (node.type === 'tutorial' && !progress.tutorialsDone.includes(node.skill)) { progress.tutorialsDone.push(node.skill); saveProgress(); }
   if (node.type === 'elite') { hp = Math.min(MAX_HP, hp + ELITE_HEAL); updateHud(); setMsg($('msg').textContent + ` · Elite down: +${ELITE_HEAL} HP`, 'good'); }
-  if (node.type === 'boss') return waitForNext(actCleared);
-  run.i++;
+  if (node.type === 'boss') { clearRunSave(); return waitForNext(actCleared); }
+  run.i++; fight = null; saveRun();
   waitForNext(startNode);
 }
 
@@ -1757,7 +1853,8 @@ function takeDamage(why, more = null) {
   setMsg(`-${DAMAGE} HP. ${why}`, 'bad', more);
   const a = $('arena'); a.classList.remove('flash', 'shake'); void a.offsetWidth; a.classList.add('flash', 'shake');
   window.SFX?.wrong();
-  if (hp <= 0) { busy = true; setTimeout(runLost, 600); }
+  if (hp <= 0) { busy = true; clearRunSave(); setTimeout(runLost, 600); }
+  else saveRun();
 }
 
 // After a solve: a short celebration, then the game waits until the player taps (or presses Space/Enter).
@@ -1914,9 +2011,13 @@ function showStats(back) {
   // Time spent reading stats is not thinking time, so push the move clock forward by it.
   const close = () => { if (cur && cur.lastT) cur.lastT += performance.now() - opened; if (back) back(); else hideOverlay(); };   // the overlay blocks input while open, so busy is left alone
   showOverlay(`<h1>Skills &amp; stats</h1><p>Saved in this browser. 80 mastery unlocks the next stage. A mastered skill that drops below 80 is marked "needs review" and shows up more often.</p>${rows}`,
-    [['Close', close], ['Reset all progress', () => {
+    [['Close', close], ...(run && hasRunSave() ? [['Abandon this run', () => {
+      if (!confirm('Give up this run and go back to the title screen? Your mastery and stats are kept.')) return;
+      clearRunSave(); run = null; fight = null; cur = null; hp = MAX_HP; updateHud(); showTitle();
+    }, true]] : []), ['Reset all progress', () => {
       if (!confirm('Erase all mastery and stats in this browser?')) return;
       try { localStorage.removeItem(STORE_KEY); } catch (e) {}
+      clearRunSave(); run = null; fight = null; cur = null; hp = MAX_HP; updateHud();
       progress = loadProgress(); renderSkills(); showTitle();
     }, true]]);
 }
@@ -1931,7 +2032,7 @@ window.__game = { get cur() { return cur; }, get hand() { return hand; }, get bu
 <script src="act3.js"></script>
 <script src="act4.js"></script>
 <script src="act5.js"></script>
-<script>renderSkills(); updateHud(); showTitle();</script>
+<script>renderSkills(); updateHud(); if (!resumeRun()) showTitle();</script>
 <script src="debug.js"></script>
 <script src="sfx.js"></script>
 </body>
