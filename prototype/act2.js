@@ -169,7 +169,7 @@
   let V = 'x';
   const xv = () => `<i class="xv">${V}</i>`;
   const setV = e => { V = (e && e.v) || 'x'; };
-  function body(it, html) {      // the term without its sign
+  function body(it, html, sign) {      // the term without its sign
     if (it.t === 'n') return html ? fracHtml(fAbs(it.k)) : fracText(fAbs(it.k));
     if (it.t === 'x') {
       const { n, d } = fAbs(it.k);
@@ -177,14 +177,17 @@
       if (d === 1) return top;
       return html ? `<span class="frac"><span>${top}</span><span class="den">${d}</span></span>` : `${top}/${d}`;
     }
-    const m = fAbs(it.m), mm = fIs(m, 1) ? '' : (html ? fracHtml(m) : fracText(m));
+    // The sign of a group's multiplier goes inside .gm, so Distribute highlights "−4" as one unit (it used to
+    // light up only the 4, which read as if the 4 was multiplied in, not −4).
+    const m = fAbs(it.m), mm = (sign || '') + (fIs(m, 1) ? '' : (html ? fracHtml(m) : fracText(m)));
     const inner = it.items.map((t, j) => (html ? `<span class="gi">${termStr(t, j === 0, true)}</span>` : termStr(t, j === 0, false))).join(' ');
     // One wrapper span: .tok is a flex box, which would drop the spaces between loose spans.
     return html ? `<span class="gw"><span class="gm">${mm}</span><span class="gp">(</span>${inner}<span class="gp">)</span></span>` : `${mm}(${inner})`;
   }
   function termStr(it, first, html) {
-    const neg = (it.t === 'g' ? it.m : it.k).n < 0;
-    return (neg ? (first ? MINUS : MINUS + ' ') : (first ? '' : '+ ')) + body(it, html);
+    const neg = (it.t === 'g' ? it.m : it.k).n < 0, sign = neg ? (first ? MINUS : MINUS + ' ') : (first ? '' : '+ ');
+    if (it.t === 'g' && html && neg) return body(it, html, sign);
+    return sign + body(it, html);
   }
   const sideStr = (side, html) => (side.length ? side.map((it, i) => termStr(it, i === 0, html)).join(' ') : '0');
   const eqText = e => (setV(e), e.result === 'none' ? 'No solution' : e.result === 'all' ? 'Every number works' : `${sideStr(e.L)} = ${sideStr(e.R)}`);
