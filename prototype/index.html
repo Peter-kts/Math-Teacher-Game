@@ -46,8 +46,12 @@
   #enemyBox.dead { transform: scale(0) rotate(90deg); opacity:0; }
   #enemyBox.hit { animation: hit calc(.5s * var(--k)); }
   @keyframes hit { 0%,100% { transform:none; filter:none; } 30% { transform: translateX(-8px) scale(.92); filter: brightness(3); } 60% { transform: translateX(6px); } }
-  #equation { display:flex; align-items:center; gap:4px; font-size:var(--eqSize); font-weight:bold; flex-wrap:wrap; justify-content:center; perspective:600px; }
-  .tok { padding:14px 12px; border:4px dashed transparent; border-radius:10px; min-width:64px; white-space:pre; min-height:96px; display:flex; align-items:center; justify-content:center; text-align:center; max-width:320px; transition: background .15s, border-color .15s, max-width calc(.45s * var(--k)), min-width calc(.45s * var(--k)), padding calc(.45s * var(--k)), opacity calc(.45s * var(--k)), transform calc(.45s * var(--k)), color calc(.3s * var(--k)); }
+  /* Test-style instruction above the equation ("Solve for x.", "Solve and graph."), worded like a math test. */
+  #prompt { font-size:18px; color:var(--ink); text-align:center; padding:0 10px; letter-spacing:.2px; }
+  #prompt:empty { display:none; }
+  #prompt i { color:var(--accent); font-weight:bold; }
+  #equation { display:flex; align-items:center; gap:4px; font-size:var(--eqSize); font-weight:bold; flex-wrap:wrap; justify-content:center; perspective:600px; position:relative; padding-bottom:.5em; }
+  .tok { padding:14px 12px; border:4px dashed transparent; border-radius:10px; min-width:64px; white-space:pre; min-height:96px; display:flex; align-items:center; justify-content:center; text-align:center; max-width:320px; transition: background .15s, border-color .15s, max-width .25s, min-width .25s, padding .25s, opacity .25s, transform .25s, color .2s; }
   #arena.targeting .tok:not(.eq) { border-color: var(--muted); background:#ffffff0d; }
   #arena.anywhere { outline:4px dashed var(--muted); outline-offset:-10px; }
   #arena.anywhere.hover { outline-color: var(--accent); background:#2f2b4a; }
@@ -58,24 +62,76 @@
   .frac > span:last-child { border-top:.09em solid currentColor; padding-top:.05em; }
   /* operation animation states */
   .tok.op-new { color:#7bdff2; }
-  .tok.enter { animation: enter calc(.55s * var(--k)) cubic-bezier(.2,1.6,.4,1); }
+  .tok.enter { animation: enter .3s cubic-bezier(.2,1.6,.4,1); }
   @keyframes enter { from { transform: translateY(-60px) scale(.2); opacity:0; } }
   .tok.cancel { color:var(--bad); text-decoration: line-through; transform: scale(1.12); }
   .tok.gone { opacity:0; max-width:0; min-width:0; padding-left:0; padding-right:0; transform: scale(.3); overflow:hidden; border-width:0; }
   .tok.merge { color:var(--good); transform: scale(1.1); }
-  .tok.pop { animation: pop calc(.5s * var(--k)); color:var(--good); }
+  .tok.pop { animation: pop .3s; color:var(--good); }
   @keyframes pop { 0% { transform: scale(.4); } 60% { transform: scale(1.3); } 100% { transform: scale(1); } }
-  .tok.flip { animation: flip calc(.44s * var(--k)) ease-in-out; }
+  .tok.flip { animation: flip .24s ease-in-out; }
   @keyframes flip { 0% { transform: rotateX(0); } 50% { transform: rotateX(90deg); } 100% { transform: rotateX(0); } }
-  .tok.spin { animation: spin calc(.9s * var(--k)) ease-in-out; }
+  .tok.spin { animation: spin .45s ease-in-out; }
   @keyframes spin { 0% { transform: rotateY(0); } 100% { transform: rotateY(360deg); } }
+  /* difficulty picker */
+  .diff { display:flex; flex-direction:column; gap:6px; }
+  .diff input[type=range] { width:100%; accent-color:var(--accent); height:32px; touch-action:pan-x; }
+  .diffLabels { display:flex; justify-content:space-between; font-size:14px; font-weight:bold; }
+  .diffLabels .lockd { color:var(--muted); font-weight:normal; }
+  .diffTag { font-size:11px; padding:1px 6px; border:1px solid var(--muted); border-radius:3px; }
+  /* operations written under a term */
+  .unote { position:absolute; transform:translateX(-50%); margin-top:.1em; font-size:.42em; color:#7bdff2; white-space:nowrap; pointer-events:none; z-index:2;
+           display:flex; align-items:center; line-height:1.1; text-shadow:0 2px 0 #000;
+           transition: opacity .2s, color .2s; animation: noteIn .15s ease-out; }
+  .unote.divnote { margin-top:0; flex-direction:column; }
+  .unote .ubar { display:block; height:.14em; min-height:3px; background:currentColor; border-radius:2px; margin-bottom:.08em; animation: grow .15s ease-out; }
+  @keyframes noteIn { from { transform: translate(-50%, 6px); opacity:0; } }
+  .unote.cancel { color:var(--bad); text-decoration:line-through; }
+  .unote.merge { color:var(--good); }
+  .unote.out { opacity:0; }
+  .unote.spin { animation: spinNote .45s ease-in-out; }
+  @keyframes spinNote { from { transform: translateX(-50%) rotateY(0); } to { transform: translateX(-50%) rotateY(360deg); } }
+  /* division written as a fraction */
+  .tok.var .den { color:var(--ink); }
+  .frac > span { transition: opacity .25s, color .2s; }
+  .frac .cancel { color:var(--bad); text-decoration:line-through; }
+  .frac .gone { opacity:0; }
+  @keyframes grow { from { transform: scaleX(0); } }
+
+  /* solve celebration and moving to the next question */
+  #celebrate { position:absolute; inset:0; pointer-events:none; z-index:3; overflow:hidden; }
+  .stamp { position:absolute; left:0; right:0; text-align:center; font-size:clamp(28px, 7vw, 52px); font-weight:bold; color:var(--good);
+           text-shadow: 0 3px 0 #000, 0 0 18px #06d6a088; letter-spacing:3px; animation: stamp calc(.6s * var(--k)) cubic-bezier(.2,1.6,.4,1) both; }
+  @keyframes stamp { 0% { transform: scale(3) rotate(-14deg); opacity:0; } 100% { transform: scale(1) rotate(-5deg); opacity:1; } }
+  .spark { position:absolute; width:14px; height:14px; margin:-7px 0 0 -7px; box-shadow:0 0 8px currentColor; animation: spark calc(.95s * var(--k)) cubic-bezier(.1,.7,.3,1) forwards; }
+  @keyframes spark { 0% { transform: translate(0,0) scale(1.2); opacity:1; } 100% { transform: translate(var(--dx), var(--dy)) scale(.2) rotate(180deg); opacity:0; } }
+  #equation.solved .tok { animation: cheer calc(.7s * var(--k)) ease-in-out 2; }
+  @keyframes cheer { 50% { transform: translateY(-10px) scale(1.1); color:var(--accent); text-shadow: 0 0 16px #ffd166aa; } }
+  .leave { animation: leave calc(.35s * var(--k)) ease-in forwards !important; }
+  @keyframes leave { to { transform: translateX(-70px); opacity:0; } }
+  .arrive { animation: arrive calc(.45s * var(--k)) cubic-bezier(.2,1.3,.4,1) both; }
+  @keyframes arrive { from { transform: translateX(70px); opacity:0; } }
+  .card.deal { animation: deal calc(.4s * var(--k)) cubic-bezier(.2,1.4,.4,1) both; }
+  @keyframes deal { from { transform: translateY(70px) rotate(8deg); opacity:0; } }
   #step { font-size:20px; color:var(--muted); min-height:26px; text-align:center; padding:0 10px; }
   #msg { font-size:17px; min-height:22px; text-align:center; padding:0 10px; }
   #msg.bad { color:var(--bad); } #msg.good { color:var(--good); }
   #unlock { font-size:17px; color:var(--accent); min-height:0; text-align:center; font-weight:bold; }
   #hand { display:flex; justify-content:center; gap:12px; min-height:150px; flex-wrap:wrap; padding-bottom:6px; }
   .card { width:132px; height:150px; padding:8px; text-align:center; background:var(--card); color:var(--cardInk); border:3px solid #000; border-radius:8px; display:flex; flex-direction:column; align-items:center; justify-content:center; font-size:28px; font-weight:bold; cursor:grab; box-shadow: 0 4px 0 #000; touch-action:none; }
-  .card .badge { font-size:18px; font-weight:bold; margin-bottom:6px; padding:0 10px; line-height:1.4; border-radius:4px; border:2px solid #000; }
+  .card { position:relative; }
+  .card .badge { position:absolute; top:4px; right:4px; font-size:13px; font-weight:bold; padding:0 4px; line-height:1.3; border-radius:4px; border:2px solid #000; }
+  .cicon { display:inline-flex; align-items:center; justify-content:center; width:1.5em; height:1.5em; font-size:24px; border-radius:6px; border:2px solid #000; margin-bottom:4px; flex:none; }
+  .cicon.k-add, .cicon.k-sub { background:#c9f2df; color:#0b5a3c; }
+  .cicon.k-mul, .cicon.k-div, .cicon.k-recip, .cicon.k-neg { background:#d9d2ff; color:#3a2a8c; }
+  .cicon.k-comb, .cicon.k-dist, .cicon.k-lcd { background:#ffe0a8; color:#6b3d00; }
+  .cicon.k-flip { background:#ffc9d6; color:#7a1530; }
+  .cicon.k-none, .cicon.k-all { background:#e4e4e4; color:#333; }
+  .keyBtn { font:inherit; font-weight:bold; font-size:inherit; padding:1px 8px; background:transparent; color:inherit; border:2px solid var(--muted); border-radius:4px; cursor:pointer; }
+  .keyGrid { display:grid; grid-template-columns:repeat(auto-fill, minmax(210px, 1fr)); gap:6px 14px; }
+  .keyRow { display:flex; align-items:center; gap:8px; font-size:14px; }
+  .keyRow .cicon { font-size:18px; margin:0; }
+  #whyBody .badge { font-size:14px; padding:0 6px; border-radius:4px; border:2px solid #000; }
   .key { display:flex; justify-content:center; align-items:center; gap:18px; flex-wrap:wrap; font-size:13px; color:var(--muted); }
   .key .badge { font-size:15px; font-weight:bold; padding:0 8px; border-radius:4px; border:2px solid #000; margin-right:4px; }
   .badge.both { background:#cfe8ff; color:#1d3b5c; }
@@ -101,6 +157,14 @@
   /* overlays: title, tutorial intro, run end, stats */
   #over { position:fixed; inset:0; background:#000d; display:none; align-items:flex-start; justify-content:center; z-index:20; padding:16px; overflow-y:auto; touch-action:pan-y; }
   #over.show { display:flex; }
+  #why { position:fixed; inset:0; background:#000b; display:none; align-items:flex-start; justify-content:center; z-index:25; padding:16px; overflow-y:auto; }
+  #why.show { display:flex; }
+  #why .panel { margin:auto; max-width:520px; }
+  #why h2 { margin:0 0 6px; color:var(--accent, #ffd166); font-size:20px; }
+  #whyBody p { margin:8px 0; line-height:1.45; }
+  .whyEq { display:inline-flex; align-items:center; gap:.3em; font-weight:bold; white-space:nowrap; background:#0003; padding:1px 8px; border-radius:4px; }
+  .whyEq .frac { font-size:.85em; }
+  .whyBtn { margin-left:6px; font:inherit; font-size:.85em; padding:1px 10px; border:2px solid currentColor; background:transparent; color:inherit; cursor:pointer; border-radius:4px; }
   .panel { background:var(--panel); border:3px solid #000; max-width:640px; width:100%; margin:auto; padding:20px 22px; display:flex; flex-direction:column; gap:12px; }
   .panel h1 { margin:0; font-size:26px; color:var(--accent); }
   .panel h2 { margin:0; font-size:18px; color:var(--muted); font-weight:normal; }
@@ -141,12 +205,24 @@
     .tok { min-height:calc(var(--eqSize) * 1.7); min-width:calc(var(--eqSize) * 1.1); padding:6px 5px; border-width:3px; }
     .tok.eq { padding:6px 3px; }
     #step, #msg, #unlock { font-size:13px; }
+    #prompt { font-size:14px; }
+    #arena:has(#next.show) #prompt { display:none; }
+    /* In the flow on phones, so it sits under the solve message instead of on top of it. */
+    #next { position:static; font-size:12px; }
+    #arena:has(#next.show) #foe, #arena:has(#next.show) #enemyBox { display:none; }
+    #equation.solved { padding-bottom:0; } #equation.solved .tok { min-height:0; }
     .key { font-size:11px; gap:10px; }
     .key .badge { font-size:12px; }
     #hand { gap:5px; flex-wrap:nowrap; min-height:0; padding-bottom:0; }
-    .card { width:calc((100vw - 16px - 15px) / 4); max-width:110px; height:clamp(112px, 19vh, 150px); font-size:clamp(16px, 5vw, 22px); padding:4px 3px; }
-    .card .badge { font-size:12px; margin-bottom:3px; padding:0 6px; }
+    .card { width:calc((100vw - 16px - 5px * (var(--n, 4) - 1)) / var(--n, 4)); max-width:110px; height:clamp(112px, 19vh, 150px); font-size:clamp(16px, 5vw, 22px); padding:4px 3px; }
+    .card .badge { font-size:10px; top:3px; right:3px; padding:0 3px; border-width:1.5px; }
+    .cicon { font-size:16px; margin-bottom:2px; }
     .card small { font-size:clamp(9px, 2.7vw, 11px); margin-top:4px; }
+    /* 5 or 6 cards: two rows of 3 so each card stays wide enough to read and tap */
+    #hand.many { flex-wrap:wrap; row-gap:5px; }
+    #hand.many .card { width:calc((100vw - 16px - 10px) / 3); max-width:140px; height:clamp(94px, 14.5vh, 118px); justify-content:flex-start; padding-top:5px; }
+    #hand.many .cicon { font-size:13px; margin-bottom:1px; }
+    #hand.many .card small { margin-top:2px; }
     .card:hover { transform:none; }
     .panel { padding:14px; gap:10px; }
     .panel h1 { font-size:21px; } .panel p { font-size:14px; } .panel .example { font-size:15px; }
@@ -176,20 +252,53 @@
     .tok { min-height:calc(var(--eqSize) * 1.6); min-width:calc(var(--eqSize) * 1.1); padding:4px 5px; border-width:3px; }
     .tok.eq { padding:4px 3px; }
     #step, #msg, #unlock { font-size:12px; min-height:0; }
-    #next { bottom:4px; font-size:12px; }
+    #prompt { font-size:13px; }
+    #arena:has(#next.show) #prompt { display:none; }
+    #next { position:static; font-size:12px; }
+    #arena:has(#next.show) #foe, #arena:has(#next.show) #enemyBox { display:none; }
+    #equation.solved { padding-bottom:0; } #equation.solved .tok { min-height:0; }
     .key { grid-column:2; grid-row:2 / 4; flex-direction:column; align-items:flex-start; gap:0; font-size:10px; justify-content:center; }
     .key b { display:none; }
     .key .badge { font-size:11px; }
     #hand { grid-column:2; grid-row:4; display:grid; grid-template-columns: repeat(2, clamp(96px, 15vw, 130px)); grid-auto-rows: minmax(0, 1fr);
             gap:6px; min-height:0; padding:0; align-content:stretch; }
     .card { width:auto; height:auto; min-height:0; font-size:clamp(16px, 5.5vh, 24px); padding:3px; }
-    .card .badge { font-size:11px; margin-bottom:2px; padding:0 6px; }
-    .card small { font-size:10px; margin-top:2px; }
+    .card .badge { font-size:10px; top:2px; right:2px; padding:0 3px; border-width:1.5px; }
+    .cicon { font-size:14px; margin-bottom:1px; }
+    .card small { font-size:10px; margin-top:2px; line-height:1.15; }
+    /* Review fix: the portrait rules for 5–6 card hands (#hand.many, max-width 640px) also matched short
+       landscape phones and made cards wider than their grid columns, so the hand ran off the right edge. */
+    #hand .card, #hand.many .card { width:auto; max-width:none; height:auto; justify-content:center; padding:3px; }
+    /* Cards are short here: long descriptions are cut to two lines, and dropped for 5–6 card hands (the big label stays). */
+    .card small { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+    #hand.many .card small { display:none; }
     .card:hover { transform:none; }
     .panel { padding:12px 14px; gap:8px; }
     .panel h1 { font-size:20px; } .panel p { font-size:13px; } .panel .example { font-size:14px; padding:6px 10px; }
     .statrow { padding-top:6px; } .statrow dl { font-size:12px; }
     button { font-size:15px; padding:8px 14px; }
+  }
+  /* "Do the math" mode: the line before the move, small, above the next line with its new numbers blanked out. */
+  #mathBtn.on { background:var(--accent); color:#000; border-color:#000; }
+  #ciPrev { display:none; font-size:calc(var(--eqSize) * .45); color:var(--muted); align-items:center; justify-content:center; gap:2px; flex-wrap:wrap; }
+  #ciPrev.show { display:flex; }
+  #ciPrev .tok { min-height:0; min-width:0; padding:0 3px; border:0; }
+  #ciPrev svg, #ciPrev .unote { display:none; }
+  .ciBlank { display:inline-flex; align-items:center; justify-content:center; min-width:1.6em; min-height:1.1em; padding:0 .15em; margin:0 .05em;
+             border:3px dashed var(--muted); border-radius:8px; color:var(--ink); font-size:.85em; line-height:1.1; vertical-align:middle; cursor:pointer; }
+  .ciBlank.cur { border-color:var(--accent); border-style:solid; background:#ffd16622; }
+  .ciBlank.ok { border:3px solid var(--good, #06d6a0); color:var(--good, #06d6a0); background:transparent; }
+  .ciBlank.shown { border:3px solid #ef8f5f; color:#ef8f5f; }
+  .ciBlank.bad { animation: shake calc(.35s * var(--k)); border-color:#ef476f; }
+  .ciBlank .frac { font-size:.8em; }
+  #pad { display:none; }
+  #app.computing #hand { display:none; }
+  #app.computing #pad { display:grid; grid-template-columns:repeat(4, minmax(52px, 76px)); gap:6px; justify-content:center; padding-bottom:6px; }
+  #pad button { font-size:22px; padding:8px 0; min-height:46px; touch-action:manipulation; }
+  #pad button.ok { grid-column:span 2; background:var(--accent); color:#000; }
+  @media (orientation: landscape) and (max-height: 520px) {
+    #app.computing #pad { grid-column:2; grid-row:4; grid-template-columns:repeat(4, 50px); gap:4px; align-content:center; }
+    #pad button { font-size:17px; min-height:0; padding:4px 0; }
   }
 </style>
 </head>
@@ -198,6 +307,7 @@
   <header>
     <div class="hpwrap">HP <div class="hpbar"><div class="hpfill" id="hpfill"></div><div class="hptext" id="hptext"></div></div></div>
     <div class="speed"><span class="lbl">Animation speed</span> <button data-speed="0.5">0.5x</button><button data-speed="1">1x</button><button data-speed="2">2x</button></div>
+    <button class="topbtn ghost" id="mathBtn" title="Do the math yourself: after each move, type the new numbers. A wrong number costs 10 HP."><span class="long">Do the math</span><span class="short">🧮</span></button>
     <button class="topbtn ghost" id="statsBtn"><span class="long">Skills &amp; stats</span><span class="short">Stats</span></button>
   </header>
   <div id="map"></div>
@@ -206,17 +316,22 @@
     <div id="foe"></div>
     <!-- stand-in enemy art (swap for PNGs later) -->
     <div id="enemyBox"></div>
+    <div id="prompt"></div>
+    <div id="ciPrev"></div>
     <div id="equation"></div>
     <div id="step"></div>
     <div id="msg"></div>
     <div id="unlock"></div>
-    <div id="next">Click anywhere to continue</div>
+    <div id="celebrate"></div>
+    <div id="next">Tap anywhere to continue</div>
   </div>
-  <div class="help">Pick the move that gets x alone. Wrong move = 10 damage.</div>
-  <div class="key"><b>Key</b> <span><span class="badge both">⇔</span> both sides<span class="lbl">: drop anywhere on the enemy</span></span> <span><span class="badge part">◎</span> one part<span class="lbl">: drop on that part of the equation</span></span></div>
+  <div class="help" id="helpLine">Pick the move that gets x alone. Wrong move = 10 damage.</div>
+  <div class="key"><button id="keyBtn" class="keyBtn">Key</button> <span><span class="badge both">⇔</span> both sides<span class="lbl">: drop anywhere on the enemy</span></span> <span><span class="badge part">◎</span> one part<span class="lbl">: drop on that part of the equation</span></span></div>
   <div id="hand"></div>
+  <div id="pad"></div>
 </div>
 <div id="over"><div class="panel" id="overPanel"></div></div>
+<div id="why"><div class="panel"><h2 id="whyTitle">Why that didn't work</h2><div id="whyBody"></div><div class="buttons"><button id="whyClose">Got it</button></div></div></div>
 <script>
 // =====================================================================
 //  Small helpers
@@ -286,39 +401,43 @@ function makeEquation(s, enemy) {
 }
 
 // ---------- Generators, one per stage ----------
-// Stage 1: one-step.  x + a = b, a + x = b, x − a = b, ax = b, x ÷ a = b
+// Stage 1: one-step.  x + a = b, a + x = b, x − a = b, −a + x = b, ax = b, x ÷ a = b
+// (Any of them can also come with x on the right: the variety picker mirrors equations.)
 function genOneStep(type) {
   for (;;) {
-    const t = type || pick(['add', 'addFront', 'sub', 'mul', 'div']);
+    const t = type || pick(['add', 'addFront', 'sub', 'subFront', 'mul', 'div']);
     const x = rand(1, 12);
     if (t === 'add' || t === 'addFront') { const a = rand(1, 12); if (a === x + a) continue; return { s: st(1, a, x + a, { constFirst: t === 'addFront' }), enemy: 'inkling' }; }
-    if (t === 'sub') { let a = rand(1, 12); if (x - a < 0) a = rand(1, x); const c = x - a; if (c < 2 || c === a) continue; return { s: st(1, -a, c), enemy: 'inkling' }; }
+    if (t === 'sub' || t === 'subFront') { let a = rand(1, 12); if (x - a < 0) a = rand(1, x); const c = x - a; if (c < 2 || c === a) continue; return { s: st(1, -a, c, { constFirst: t === 'subFront' }), enemy: 'inkling' }; }
     if (t === 'mul') { const a = rand(2, 10); if (x < 2 || x === 1) continue; return { s: st(a, 0, a * x), enemy: 'doubler' }; }
     const a = rand(2, 10), k = rand(2, 10); if (k === a) continue;
     return { s: st(F(1, a), 0, k), enemy: 'doubler' };
   }
 }
-// Stage 2: two-step.  ax + b = c, ax − b = c, x ÷ a + b = c, x ÷ a − b = c, b + ax = c
+// Stage 2: two-step.  ax + b = c, ax − b = c, x ÷ a + b = c, x ÷ a − b = c, and each of those with the
+// number written first: b + ax = c, −b + ax = c, b + x ÷ a = c, −b + x ÷ a = c
 function genTwoStep(type, big) {
   const hi = big ? 15 : 10;
   for (;;) {
-    const t = type || pick(['axb', 'axmb', 'xdivb', 'xdivmb', 'bax']);
+    const t = type || pick(['axb', 'axmb', 'xdivb', 'xdivmb', 'bax', 'mbax', 'bxdiv', 'mbxdiv']);
+    const front = ['bax', 'mbax', 'bxdiv', 'mbxdiv'].includes(t);
     if (t === 'axb' || t === 'bax') {
       const a = rand(2, 6), x = rand(1, hi), b = rand(1, 12); if (b % a === 0) continue;
-      return { s: st(a, b, a * x + b, { constFirst: t === 'bax' }), enemy: 'doubler' };
+      return { s: st(a, b, a * x + b, { constFirst: front }), enemy: 'doubler' };
     }
-    if (t === 'axmb') { const a = rand(2, 6), x = rand(2, hi), b = rand(1, 12); if (b % a === 0 || a * x - b < 1) continue; return { s: st(a, -b, a * x - b), enemy: 'doubler' }; }
+    if (t === 'axmb' || t === 'mbax') { const a = rand(2, 6), x = rand(2, hi), b = rand(1, 12); if (b % a === 0 || a * x - b < 1) continue; return { s: st(a, -b, a * x - b, { constFirst: front }), enemy: 'doubler' }; }
     const a = rand(2, 5);
-    if (t === 'xdivb') { const k = rand(1, 8), b = rand(1, 9); return { s: st(F(1, a), b, k + b), enemy: 'inkling' }; }
-    const k = rand(3, hi), b = rand(1, k - 1); return { s: st(F(1, a), -b, k - b), enemy: 'inkling' };
+    if (t === 'xdivb' || t === 'bxdiv') { const k = rand(1, 8), b = rand(1, 9); return { s: st(F(1, a), b, k + b, { constFirst: front }), enemy: 'inkling' }; }
+    const k = rand(3, hi), b = rand(1, k - 1); return { s: st(F(1, a), -b, k - b, { constFirst: front }), enemy: 'inkling' };
   }
 }
-// Stage 3: negatives and fractions.  −x = a, a − x = c, −nx = c, (p/q)x = c
+// Stage 3: negatives and fractions.  −x = a, a − x = c, −x + a = c, −nx = c, −x/n = c, (p/q)x = c
 const FRACS = [[2, 3], [3, 4], [2, 5], [3, 2], [4, 3], [3, 5], [5, 2], [5, 3]];
 function genNegFrac(type) {
-  const t = type || pick(['negx', 'aminusx', 'negnx', 'frac']);
+  const t = type || pick(['negx', 'aminusx', 'negxa', 'negnx', 'negdiv', 'frac']);
   if (t === 'negx') { const x = nonZero(-12, 12); return { s: st(-1, 0, -x), enemy: 'minusmite' }; }
-  if (t === 'aminusx') { const a = rand(3, 15); let x; do { x = nonZero(-5, 15); } while (x === a); return { s: st(-1, a, a - x, { constFirst: true }), enemy: 'minusmite' }; }
+  if (t === 'aminusx' || t === 'negxa') { const a = rand(3, 15); let x; do { x = nonZero(-5, 15); } while (x === a); return { s: st(-1, a, a - x, { constFirst: t === 'aminusx' }), enemy: 'minusmite' }; }
+  if (t === 'negdiv') { const n = rand(2, 6), k = nonZero(-9, 9); return { s: st(F(-1, n), 0, k), enemy: 'minusmite' }; }   // −x/4 = 3: multiply by −4
   if (t === 'negnx') { const n = rand(2, 9), x = nonZero(-10, 10); return { s: st(-n, 0, -n * x), enemy: 'minusmite' }; }
   const [p, q] = pick(FRACS), k = rand(1, 6); return { s: st(F(p, q), 0, p * k), enemy: 'minusmite' };
 }
@@ -326,11 +445,12 @@ function genNegFrac(type) {
 function genStacked(skills) {
   if (skills.includes('negfrac')) {
     for (;;) {
-      const t = pick(['bminusnx', 'negnxb', 'fracb']);
+      const t = pick(['bminusnx', 'negnxb', 'fracb', 'negdivb']);
+      if (t === 'negdivb') { const n = rand(2, 5), k = nonZero(-8, 8), b = rand(1, 12) * pick([1, -1]); return { s: st(F(-1, n), b, k + b, { constFirst: Math.random() < 0.4 }), enemy: 'stacker' }; }
       if (t === 'bminusnx') { const n = rand(2, 6), b = rand(5, 20), x = rand(1, 8); if (b % n === 0) continue; return { s: st(-n, b, b - n * x, { constFirst: true }), enemy: 'stacker' }; }
       if (t === 'negnxb') { const n = rand(2, 6), x = nonZero(-6, 8), b = rand(1, 12) * pick([1, -1]); if (b % n === 0) continue; return { s: st(-n, b, -n * x + b), enemy: 'stacker' }; }
       const [p, q] = pick(FRACS), k = rand(1, 5), b = rand(1, 9) * pick([1, -1]);
-      return { s: st(F(p, q), b, p * k + b), enemy: 'stacker' };
+      return { s: st(F(p, q), b, p * k + b, { constFirst: Math.random() < 0.4 }), enemy: 'stacker' };
     }
   }
   if (skills.includes('twostep')) return { ...genTwoStep(null, true), enemy: 'stacker' };
@@ -338,20 +458,109 @@ function genStacked(skills) {
 }
 
 // =====================================================================
+//  Difficulty
+// =====================================================================
+// Picked at the start of each run (like ascension levels). Easy is the original game. The same
+// stages get harder numbers, more cards in the hand, and bigger mastery gains. Act 2 generators can
+// read `difficulty` too: steps (extra steps), highlight ('on' | 'afterWrong' | 'off') are for them,
+// since Act 1's one- and two-step shapes have no room for extra steps.
+const DIFFICULTIES = [
+  { level: 0, name: 'Easy',   max: 12, neg: false, fracAnswers: false, hand: 4, gain: 1,    steps: 0, highlight: 'on',
+    desc: 'Whole numbers 1 to 12 with positive answers.' },
+  { level: 1, name: 'Normal', max: 20, neg: true,  fracAnswers: false, hand: 4, gain: 1.25, steps: 1, highlight: 'on',
+    desc: 'Numbers up to 20, negative numbers and answers. Mastery ×1.25.' },
+  { level: 2, name: 'Hard',   max: 50, neg: true,  fracAnswers: false, hand: 5, gain: 1.5,  steps: 2, highlight: 'afterWrong',
+    desc: 'Numbers up to 50 and 5 cards to choose from. Mastery ×1.5.' },
+  { level: 3, name: 'Expert', max: 50, neg: true,  fracAnswers: true,  hand: 6, gain: 2,    steps: 3, highlight: 'off',
+    desc: 'Answers can be fractions (x = −7/3) and 6 cards to choose from. Mastery ×2.' },
+];
+let difficulty = DIFFICULTIES[0];
+try { difficulty = DIFFICULTIES[+localStorage.getItem('algebraCards.difficulty')] || DIFFICULTIES[0]; } catch (e) {}
+
+// Re-rolls an Act 1 equation's numbers for the current difficulty, keeping its shape (which terms
+// exist, where x is), so the stage's concept stays the same. Every level teaches all the material:
+// Easy also sees small negative answers and simple fraction answers (x = 3/2); harder levels use bigger
+// numbers, and Expert adds messy fraction answers (x = −17/6). Tutorials skip this and stay simple.
+const COEF_MAX = [10, 12, 15, 20];   // biggest multiplier or divisor per level
+const ANSWER_MIX = [                 // chance of each kind of answer per level; the rest are positive whole numbers
+  { neg: .15, frac: .12 }, { neg: .4, frac: .15 }, { neg: .4, frac: .15 }, { messy: .35, frac: .15, neg: .3 }];
+function answerKind(D, canFrac) {
+  let r = Math.random();
+  for (const [k, w] of Object.entries(ANSWER_MIX[D.level])) { if (k === 'frac' && !canFrac) continue; if ((r -= w) < 0) return k; }
+  return 'pos';
+}
+function applyDifficulty(s) {
+  const D = difficulty, N = D.level ? D.max : 12, C = COEF_MAX[D.level];
+  const kind = answerKind(D, Math.abs(s.coef.n) > 1);    // 2x, −3x, (2/3)x: a fraction answer can come out
+  if (!D.level && kind === 'pos') return s;               // Easy keeps the stage's own numbers
+  const cMax = D.level ? N : 150;
+  for (let tries = 0; tries < 400; tries++) {
+    let a = s.coef, b = s.b;
+    if (D.level) {                                         // bigger multipliers and divisors, same sign
+      if (a.d === 1 && Math.abs(a.n) > 1) a = F(Math.sign(a.n) * rand(2, C));
+      else if (Math.abs(a.n) === 1 && a.d > 1) a = F(a.n, rand(2, C));
+      if (b.n !== 0) b = F(D.neg ? nonZero(-N, N) : rand(1, N));
+    }
+    if (isInt(a) && Math.abs(a.n) > 1 && b.n !== 0 && b.n % a.n === 0) continue;   // keep "undo + or − first" a real lesson
+    let x;
+    if (kind === 'messy') {
+      const c = F(nonZero(-N, N)); x = fMul(fAdd(c, F(-b.n, b.d)), F(a.d, a.n));
+      if (x.n === 0 || (isInt(x) && Math.random() < 0.6)) continue;
+    } else if (kind === 'frac') {                          // a simple fraction: halves, thirds or quarters
+      const q = pick([2, 3, 4]);
+      if (isInt(a)) a = F(Math.sign(a.n) * q * rand(1, Math.max(1, Math.floor(C / q))));   // so a·x comes out whole
+      if (Math.abs(a.n) < 2) continue;
+      const p = rand(1, 3 * q) * (D.level && Math.random() < 0.4 ? -1 : 1);
+      if (gcd(p, q) !== 1) continue;
+      x = F(p, q);
+      if (isInt(a) && b.n !== 0 && b.n % a.n === 0) continue;
+    } else {
+      const k = Math.max(1, Math.floor((D.level ? N : 9) / a.d));
+      x = F((kind === 'neg' ? -1 : 1) * rand(1, k) * a.d);   // x/q needs x to be a multiple of q
+    }
+    const c = fAdd(fMul(a, x), b);
+    if (!isInt(c) || c.n === 0 || Math.abs(c.n) > cMax || fIs(c, b.n, b.d)) continue;
+    if (kind !== 'messy' && kind !== 'frac' && !isInt(x)) continue;
+    return { ...s, coef: a, b, c };
+  }
+  return s;
+}
+
+// Each stage has a list of cases (the shapes of problem it teaches). Normal fights go through every case
+// in a shuffled cycle at every difficulty, and a stage can't reach mastered until each case has been
+// solved once. nextCase(id) gives the next one (the same one until it's used, since freshEquation may
+// generate several candidates); generators return it as g.case.
+const caseQueues = {};
+function nextCase(id) {
+  const all = SKILL[id].cases;
+  if (!all) return undefined;
+  const done = progress.skills[id].casesSolved || [];
+  let q = caseQueues[id];
+  if (!q || !q.length) {                                    // a new cycle, unsolved cases first
+    q = caseQueues[id] = [...shuffle(all.filter(c => !done.includes(c))), ...shuffle(all.filter(c => done.includes(c)))];
+  }
+  return q[0];                                              // taken off the queue once the equation is used (useCase)
+}
+function useCase(id, c) { const q = caseQueues[id]; const i = q ? q.indexOf(c) : -1; if (i >= 0) q.splice(i, 1); }
+const casesLeft = id => (SKILL[id].cases || []).filter(c => !(progress.skills[id].casesSolved || []).includes(c));
+// A skill's normal-fight generator: takes the next case and tags the equation with it.
+const cycled = (id, gen) => () => { const c = nextCase(id); const g = gen(c); return { ...g, case: c, caseSkill: id }; };
+
+// =====================================================================
 //  Skills, stages and saved progress
 // =====================================================================
 const SKILLS = [
-  { id: 'onestep', stage: 1, name: 'One-step', gen: () => genOneStep(),
+  { id: 'onestep', stage: 1, name: 'One-step', cases: ['add', 'addFront', 'sub', 'mul', 'div'], gen: cycled('onestep', genOneStep),
     title: 'Stage 1: One-step equations',
     intro: 'Each enemy is an equation. Get x alone by doing the same thing to both sides. Pick the card that undoes what is attached to x: subtracting undoes adding, dividing undoes multiplying.',
     example: 'x + 3 = 7<br>Subtract 3 from both sides<br>x = 4',
     tutorial: [() => genOneStep('add'), () => genOneStep('mul')] },
-  { id: 'twostep', stage: 2, name: 'Two-step', gen: () => genTwoStep(),
+  { id: 'twostep', stage: 2, name: 'Two-step', cases: ['axb', 'axmb', 'xdivb', 'xdivmb', 'bax', 'mbax', 'bxdiv', 'mbxdiv'], gen: cycled('twostep', genTwoStep),
     title: 'Stage 2: Two-step equations',
     intro: 'Now x has two things attached. Undo the + or − first, then the × or ÷. No new cards: the order is the new idea.',
     example: '3x + 4 = 19<br>Subtract 4 from both sides → 3x = 15<br>Divide both sides by 3 → x = 5',
     tutorial: [() => genTwoStep('axb'), () => genTwoStep('xdivmb')] },
-  { id: 'negfrac', stage: 3, name: 'Negatives & fractions', gen: () => genNegFrac(),
+  { id: 'negfrac', stage: 3, name: 'Negatives & fractions', cases: ['negx', 'aminusx', 'negxa', 'negnx', 'negdiv', 'frac'], gen: cycled('negfrac', genNegFrac),
     title: 'Stage 3: Negatives and fractions',
     intro: 'Two new cards. "Multiply both sides by −1" flips every sign, so −x becomes x. "Multiply by the reciprocal" flips a fraction over, and a fraction times its reciprocal is 1.',
     example: '−x = 5<br>Multiply both sides by −1 → x = −5<br><br>(2/3)x = 8<br>Multiply both sides by 3/2 → x = 12',
@@ -365,7 +574,7 @@ const MASTERY = { clean: 25, wrong: -10, weeklyDecay: -5, reviewFloor: 60 };
 
 const STORE_KEY = 'algebraCards.progress.v1';
 const blankSkill = () => ({ mastery: 0, everMastered: false, attempted: 0, solved: 0, wrongByCard: {},
-  parDiffTotal: 0, parCount: 0, secondsTotal: 0, movesTimed: 0, hints: 0, lastPracticed: null, decayWeeks: 0 });
+  parDiffTotal: 0, parCount: 0, secondsTotal: 0, movesTimed: 0, hints: 0, lastPracticed: null, decayWeeks: 0, casesSolved: [] });
 function loadProgress() {
   let p = null;
   try { p = JSON.parse(localStorage.getItem(STORE_KEY)); } catch (e) {}
@@ -381,6 +590,7 @@ function loadProgress() {
     for (const f of ['attempted', 'solved', 'parCount', 'secondsTotal', 'movesTimed', 'hints', 'decayWeeks']) k[f] = num(k[f], 0);
     k.parDiffTotal = num(k.parDiffTotal, 0, -Infinity);
     k.everMastered = k.everMastered === true;
+    k.casesSolved = Array.isArray(k.casesSolved) ? k.casesSolved.filter(c => (s.cases || []).includes(c)) : [];
     k.wrongByCard = isObj(k.wrongByCard) ? Object.fromEntries(Object.entries(k.wrongByCard).filter(([, v]) => Number.isFinite(v))) : {};
     k.lastPracticed = typeof k.lastPracticed === 'string' && Number.isFinite(Date.parse(k.lastPracticed)) ? k.lastPracticed : null;
     p.skills[s.id] = k;
@@ -388,6 +598,7 @@ function loadProgress() {
   const ids = SKILLS.map(s => s.id);
   p.unlocked = Array.isArray(p.unlocked) ? p.unlocked.filter(id => ids.includes(id)) : [];
   if (!p.unlocked.includes('onestep')) p.unlocked.unshift('onestep');
+  p.levelUnlocked = Math.max(0, Math.min(3, Math.floor(+p.levelUnlocked) || 0));
   p.tutorialsDone = Array.isArray(p.tutorialsDone) ? p.tutorialsDone.filter(id => ids.includes(id)) : [];
   applyDecay(p);
   return p;
@@ -418,7 +629,10 @@ function skillStatus(id) {
 }
 function changeMastery(id, delta) {
   const s = progress.skills[id];
-  s.mastery = Math.max(0, Math.min(100, s.mastery + delta));
+  let next = Math.max(0, Math.min(100, s.mastery + delta));
+  // Not mastered until every case of the stage has been solved once (a stage mastered before stays so).
+  if (delta > 0 && s.mastery < MASTERED && next >= MASTERED && casesLeft(id).length) next = MASTERED - 1;
+  s.mastery = next;
   if (s.mastery >= MASTERED) s.everMastered = true;
 }
 // 80 mastery on a stage unlocks the next stage's tutorial fight. Stages never lock again.
@@ -458,6 +672,11 @@ function enemySvg(key) {
 // =====================================================================
 const opSym = op => ({ '+': '+', '-': MINUS, '*': TIMES, '/': DIV })[op];
 function cardLabel(c) {
+  if (window.ACT6 && ACT6.label(c)) return ACT6.label(c);
+  if (window.ACT5 && ACT5.label(c)) return ACT5.label(c);
+  if (window.ACT4 && ACT4.label(c)) return ACT4.label(c);
+  if (window.ACT3 && ACT3.label(c)) return ACT3.label(c);
+  if (window.ACT2 && ACT2.label(c)) return ACT2.label(c);
   if (c.op === 'neg') return TIMES + '(' + MINUS + '1)';
   if (c.op === 'frac') return TIMES + paren(F(c.n, c.d));
   if (c.op === '+' || c.op === '-') return opSym(c.op) + c.n;
@@ -470,12 +689,17 @@ function chipHtml(c) {   // how a card reads once it's written into the equation
   return opSym(c.op) + ' ' + paren(F(c.n));
 }
 function cardText(c) {
+  if (window.ACT6 && ACT6.text(c)) return ACT6.text(c);
+  if (window.ACT5 && ACT5.text(c)) return ACT5.text(c);
+  if (window.ACT4 && ACT4.text(c)) return ACT4.text(c);
+  if (window.ACT3 && ACT3.text(c)) return ACT3.text(c);
+  if (window.ACT2 && ACT2.text(c)) return ACT2.text(c);
   const n = c.n !== undefined ? numText(c.n) : '';
   return ({ '+': `Add ${n} to both sides`, '-': `Subtract ${n} from both sides`, '*': `Multiply both sides by ${n}`,
             '/': `Divide both sides by ${n}`, neg: `Multiply both sides by ${MINUS}1`,
             frac: `Multiply both sides by ${fracText(F(c.n ?? 1, c.d ?? 1))}` })[c.op];
 }
-const cardKind = c => ({ '+': 'Add', '-': 'Subtract', '*': 'Multiply', '/': 'Divide', neg: `Multiply by ${MINUS}1`, frac: 'Reciprocal' })[c.op];
+const cardKind = c => (window.ACT6 && ACT6.kind(c)) || (window.ACT5 && ACT5.kind(c)) || (window.ACT4 && ACT4.kind(c)) || (window.ACT3 && ACT3.kind(c)) || (window.ACT2 && ACT2.kind(c)) || ({ '+': 'Add', '-': 'Subtract', '*': 'Multiply', '/': 'Divide', neg: `Multiply by ${MINUS}1`, frac: 'Reciprocal' })[c.op];
 const sameCard = (a, b) => cardLabel(a) === cardLabel(b);
 
 // Every card is a legal "do the same thing to both sides" move built from numbers in the equation.
@@ -513,7 +737,7 @@ function makeHand(s, correct, size) {
   const size_ = f => Math.abs(f.n) * f.d;
   const useful = c => {
     const a = applyCard(s, c);
-    if (!isInt(a.b) || !isInt(a.c)) return false;
+    if (!isInt(a.b)) return false;
     if (stepsLeft(a) < stepsLeft(s)) return true;
     if (s.b.n !== 0) return false;   // with a + or − term left, × or ÷ first stays a teachable order mistake
     return size_(a.coef) < size_(s.coef) || (size_(a.coef) === size_(s.coef) && s.coef.n < 0 && a.coef.n > 0);
@@ -540,7 +764,11 @@ function tokensFor(s) {
   const xTok = neg => ({ role: 'x', text: lead ? (neg ? MINUS + 'x' : 'x') : (neg ? MINUS + ' x' : '+ x') });
   if (d === 1 && Math.abs(n) === 1) xs.push(xTok(n < 0));
   else if (d === 1) xs.push({ role: 'coef', text: lead ? numText(n) : signed(s.coef) }, { role: 'x', text: 'x' });
-  else if (Math.abs(n) === 1) xs.push(xTok(n < 0), { role: 'coef', text: DIV + ' ' + d });
+  else if (Math.abs(n) === 1) {             // x ÷ d is written as a fraction: x over d
+    // After a number ("5 + x/3") the sign stays outside the fraction bar; in front it sits on top (−x/3).
+    const sign = lead ? '' : (n < 0 ? MINUS : '+') + ' ', top = lead && n < 0 ? MINUS + 'x' : 'x';
+    xs.push({ role: 'x', text: `${sign}${top}/${d}`, html: `${sign}<span class="frac"><span>${top}</span><span class="den" data-role="coef">${d}</span></span>` });
+  }
   else xs.push({ role: 'coef', text: lead ? fracText(s.coef) : signed(s.coef), html: lead ? fracHtml(s.coef) : signed(s.coef, true) }, { role: 'x', text: 'x' });
   const side = [...xs];
   if (s.b.n !== 0) {
@@ -559,9 +787,49 @@ function tokEl(t) {
   return el;
 }
 function renderEquation(s) {
-  const el = $('equation'); el.innerHTML = '';
+  $('equation').classList.remove('a2long', 'a2'); $('equation').style.removeProperty('--eqSize');
+  if (window.ACT3) ACT3.clearLine();   // Act 3's number line and cases panel only show for its own states
+  if (window.ACT4) ACT4.clear();       // Act 4's banner and graph panel only show for its own states
+  if (window.ACT5) ACT5.clear();
+  if (window.ACT6) ACT6.clear();
+  if (s.k6) return ACT6.render(s);     // Act 6 (act6.js): exponents and polynomials
+  if (s.k5) return ACT5.render(s);     // Act 5 (act5.js): systems of equations and inequalities
+  if (s.k4) return ACT4.render(s);     // Act 4 (act4.js): order of operations, functions, slope, lines, formulas
+  const act3 = s.rel || s.chain || s.abs || s.board;
+  if (s.L || act3) return (act3 ? ACT3 : ACT2).render(s);   // Act 2 equation model (act2.js); with a relation, Act 3's inequalities (act3.js)
+  const el = $('equation'); if (typeof clearNotes === 'function') clearNotes(); el.innerHTML = '';
   tokensFor(s).forEach(t => el.appendChild(tokEl(t)));
 }
+// ---------- Test-style prompt ----------
+// Every problem gets one instruction line above it, worded the way a math test would ask it. The
+// wording is picked once when the problem appears (from a few real-test phrasings for its type) and
+// stays put while the player works, even when the state changes shape (e.g. |x| splitting into cases).
+const PROMPTS = {
+  equation:  v => [`Solve for ${v}.`, `Find ${v}.`, 'Solve.', 'Solve the equation.'],
+  ineq:      v => ['Solve the inequality.', `Solve for ${v}.`, 'Solve and graph.', 'Solve. Graph the solution on a number line.'],
+  compound:  v => ['Solve the compound inequality.', 'Solve and graph.', `Solve for ${v}.`],
+  absEq:     v => ['Solve.', 'Solve the absolute value equation.', `Find all values of ${v}.`, `Solve for ${v}.`],
+  absIneq:   v => ['Solve the inequality.', 'Solve and graph.', 'Solve. Graph the solution on a number line.'],
+};
+function promptKind(s) {
+  if (s.board || s.chain) return 'compound';     // a board at the start is an "or" compound; Act 3 abs only becomes a board after Split
+  if (s.abs) return s.rel === '=' ? 'absEq' : 'absIneq';
+  if (s.rel && s.rel !== '=') return 'ineq';
+  return 'equation';
+}
+function problemPrompt(s, skills = []) {
+  if (s.k6) return ACT6.prompt(s);                                      // Act 6 too
+  if (s.k5) return ACT5.prompt(s);                                      // Act 5 too
+  if (s.k4) return window.ACT4 && ACT4.prompt ? ACT4.prompt(s) : '';   // Act 4 words its own questions
+  const v = `<i>${s.v || 'x'}</i>`, kind = promptKind(s);
+  // "Find x." promises an x exists, so it's left off when the answer is no solution / every number.
+  const all = PROMPTS[kind](v).filter(t => !(skills.includes('special') && t.startsWith('Find')));
+  const fresh = all.filter(t => t !== lastPrompt[kind]);       // don't ask the same way twice in a row
+  return (lastPrompt[kind] = pick(fresh.length ? fresh : all));
+}
+const lastPrompt = {};
+function showPrompt(html) { $('prompt').innerHTML = html || ''; }
+
 function sideTexts(s) {
   const left = [], right = []; let onRight = false;
   for (const t of tokensFor(s)) { if (t.role === 'eq') { onRight = true; continue; } (onRight ? right : left).push(t.text); }
@@ -570,10 +838,82 @@ function sideTexts(s) {
 // What the equation looks like after applying a card to both sides, for the wrong-move message.
 function appliedText(s, card) {
   const wrap = arr => { const t = arr.join(' ').replace(/(\d) x/g, '$1x'); return arr.length > 1 ? `(${t})` : t; };
-  const sym = cardLabel(card).replace(/^(.)/, '$1 ');
   const [l, r] = sideTexts(s);
+  if (card.op === '/') { const dn = '/' + paren(F(card.n)); return `${wrap(l)}${dn}  =  ${wrap(r)}${dn}`; }
+  const sym = cardLabel(card).replace(/^(.)/, '$1 ');
   return `${wrap(l)} ${sym}  =  ${wrap(r)} ${sym}`;
 }
+
+// =====================================================================
+//  "Why?" explanations for wrong moves
+// =====================================================================
+// A wrong move shows a short message plus a "Why?" button that opens a longer explanation.
+// Explainers are tried newest first; each gets (ctx) = { state, card, correct } and returns
+// HTML, or null to pass. A card can also carry its own: card.why (a string or a function of ctx).
+// Act 2 and later register theirs with registerWhy(fn).
+const WHY_EXPLAINERS = [];
+function registerWhy(fn) { WHY_EXPLAINERS.unshift(fn); }
+function explainWhy(ctx) {
+  const own = ctx.card && ctx.card.why;
+  if (own) return typeof own === 'function' ? own(ctx) : own;
+  for (const fn of WHY_EXPLAINERS) { const h = fn(ctx); if (h) return h; }
+  return null;
+}
+function eqHtml(s) {
+  const toks = tokensFor(s), parts = [];
+  toks.forEach((t, i) => { const h = t.html || t.text; if (t.role === 'x' && toks[i - 1] && toks[i - 1].role === 'coef') parts[parts.length - 1] += h; else parts.push(h); });
+  return '<span class="whyEq">' + parts.map(h => `<span>${h}</span>`).join('') + '</span>';
+}
+
+// Act 1: coef·x + b = c
+function explainAct1({ state: s, card, correct }) {
+  if (!s || !s.coef || !card) return null;
+  const P = t => `<p>${t}</p>`, after = applyCard(s, card);
+  const result = P(`${cardText(card)} turns it into ${eqHtml(after)}`);
+  const { n, d } = s.coef, b = s.b;
+  const descCoef = f => f.d === 1 ? (f.n === -1 ? `has a minus sign in front (it's ${TIMES} ${MINUS}1)` : `is multiplied by ${numText(f.n)}`)
+    : Math.abs(f.n) === 1 ? `is divided by ${f.d}${f.n < 0 ? ' and has a minus sign' : ''}` : `is multiplied by ${fracText(f)}`;
+  const coefDesc = descCoef(s.coef);
+  const additive = card.op === '+' || card.op === '-';
+  const amount = c => F(c.op === '+' ? c.n : -c.n);
+  if (b.n !== 0) {                                   // a number is still added to the x term
+    const bt = `${b.n > 0 ? '+' : MINUS} ${fracText(fAbs(b))}`;
+    const fix = `${correct.op === '+' ? 'add' : 'subtract'} ${correct.n}, because ${fracText(b)} ${correct.op === '+' ? '+' : MINUS} ${correct.n} = 0`;
+    if (!additive && !fIs(s.coef, 1) && sameCard(card, correctMove({ ...s, b: F(0) })))
+      return P(`In ${eqHtml(s)} two things happen to x: first it ${coefDesc}, then ${bt} is added on.`) +
+        P(`To get x alone you undo them in reverse order, like taking off your shoes before your socks. The last thing done was ${bt}, so that comes off first.`) +
+        result + P(`It ${card.op === '/' ? 'divided' : 'multiplied'} the ${fracText(fAbs(b))} as well, so the numbers got messier and x still isn't alone.`) +
+        P(`<b>Instead:</b> ${fix}. Then ${cardText(card).replace(/^./, ch => ch.toLowerCase())}.`);
+    if (additive && amount(card).n === b.n * 1 && amount(card).d === b.d)
+      return P(`x has ${bt} next to it. ${cardText(card)} does the same thing again instead of undoing it.`) + result +
+        P(`<b>The idea:</b> to cancel a number, use its opposite. So ${fix}.`);
+    if (additive)
+      return P(`x has ${bt} next to it. To cancel it, the number you add or take away has to match it exactly.`) + result +
+        P(`The number next to x is now ${fracText(after.b)}, not 0, so x still isn't alone.`) + P(`<b>Instead:</b> ${fix}.`);
+    return P(`x has ${bt} added to it. Multiplying or dividing doesn't remove an added number, it only makes it bigger or smaller.`) + result +
+      P(`<b>Instead:</b> undo adding with subtracting (and subtracting with adding). Here, ${fix}.`);
+  }
+  // Only a coefficient is left: x ${coefDesc}
+  const idea = ({ '/': `divide by ${numText(correct.n)}, because ${numText(correct.n)} ${DIV} ${paren(F(correct.n))} = 1`,
+    '*': `multiply by ${numText(correct.n)}, because dividing by ${Math.abs(correct.n)} and then multiplying by ${Math.abs(correct.n)} cancel out`,
+    neg: `multiply by ${MINUS}1, because ${MINUS}1 ${TIMES} ${MINUS}1 = 1`,
+    frac: `multiply by the flipped fraction ${fracText(F(correct.n, correct.d))}, because ${fracText(s.coef)} ${TIMES} ${paren(F(correct.n, correct.d))} = 1` })[correct.op];
+  if (additive)
+    return P(`Here x ${coefDesc}. Adding or subtracting can't undo that: it only changes the number on the other side.`) + result +
+      P(`<b>The idea:</b> undo multiplying with dividing, and dividing with multiplying. Here, ${idea}.`);
+  return P(`Here x ${coefDesc}. To get x alone, that has to be undone so it's just 1x.`) + result +
+    P(fIs(after.coef, 1) ? `x is alone, but this skipped a step.` : `Now x ${descCoef(after.coef)}, so it still isn't alone.`) + P(`<b>Instead:</b> ${idea}.`);
+}
+registerWhy(explainAct1);
+
+function showWhy(html, title = "Why that didn't work") {
+  const box = $('why'); $('whyTitle').textContent = title; $('whyBody').innerHTML = html; box.classList.add('show');
+}
+function hideWhy() { $('why').classList.remove('show'); }
+$('whyClose').addEventListener('click', hideWhy);
+$('keyBtn').addEventListener('click', e => { e.stopPropagation(); showKey(); });
+$('why').addEventListener('click', e => { if (e.target.id === 'why') hideWhy(); });
+window.addEventListener('keydown', e => { if (e.key === 'Escape') hideWhy(); });
 
 // =====================================================================
 //  Operation animations
@@ -586,7 +926,7 @@ const OPERATION_ANIMATIONS = {
   '+': cancelAndCombine,
   '-': cancelAndCombine,
   '*': cancelAndCombine,
-  '/': cancelAndCombine,
+  '/': divideAsFraction,
   neg: flipSigns,
   frac: flipReciprocal,
 };
@@ -602,22 +942,67 @@ function setSpeed(v) {
 }
 document.querySelectorAll('.speed button').forEach(b => b.addEventListener('click', () => setSpeed(+b.dataset.speed)));
 setSpeed(speed);
-const sleep = ms => new Promise(r => setTimeout(r, ms / speed));
+// sleep() waits between animation steps. A tap during an animation ends the current wait early,
+// so each tap skips ahead one step.
+const pendingSleeps = new Set();
+const sleep = ms => new Promise(r => {
+  const done = () => { clearTimeout(t); pendingSleeps.delete(done); r(); };
+  const t = setTimeout(done, ms / speed);
+  pendingSleeps.add(done);
+});
+const skipStep = () => [...pendingSleeps].forEach(done => done());
+// Operation timing: the motion itself (a note fading in, terms cancelling, the result appearing) is
+// quick and fixed; the holds, where you read what's written, follow the speed setting.
+const HOLD = 1200;                       // ms at 1x: hold on the written operation, and again on the result
+const hold = (ms = HOLD) => sleep(ms);   // scaled by speed
+const quick = ms => sleep(ms * speed);   // not scaled (sleep divides by speed)
+let animating = false;
 const caption = t => { $('step').textContent = t; };
-function chip(html, cls = 'term op-new') {   // a new token that drops in
-  const s = document.createElement('div'); s.className = 'tok ' + cls + ' enter'; s.dataset.role = 'chip'; s.innerHTML = html; return s;
-}
 const mark = (els, cls) => els.forEach(e => e && e.classList.add(cls));
-async function removeTok(els) { els = els.filter(Boolean); mark(els, 'gone'); await sleep(460); els.forEach(e => e.remove()); }
+async function removeTok(els) { els = els.filter(Boolean); mark(els, 'gone'); await quick(260); els.forEach(e => e.remove()); }
 const roleEl = role => $('equation').querySelector(`[data-role="${role}"]`);
-// Drops the card onto both sides: a chip at the end of each side. Returns [chip on x side, chip on other side].
-async function dropOnBothSides(card, s) {
-  const el = $('equation'), eqEl = roleEl('eq');
-  const left = chip(chipHtml(card)), right = chip(chipHtml(card));
-  el.insertBefore(left, eqEl); el.appendChild(right);
-  await sleep(1000);
-  return s.xLeft ? [left, right] : [right, left];
+
+// Operations are written under the term they act on, the way you'd write them by hand, so the
+// equation itself never has to widen. Each note is absolutely positioned and follows its anchor
+// terms while the equation collapses.
+const notes = new Set();
+let notesRaf = 0;
+function placeNote(n) {
+  const eqR = $('equation').getBoundingClientRect();
+  let l = Infinity, r = -Infinity, t = Infinity, b = -Infinity;
+  for (const a of n._anchors) {
+    if (!a.isConnected) continue;
+    // Measure the glyphs, not the padded box, so the note sits just under what's written.
+    const rg = document.createRange(); rg.selectNodeContents(a);
+    let ar = rg.getBoundingClientRect(); if (!ar.width) ar = a.getBoundingClientRect();
+    l = Math.min(l, ar.left); r = Math.max(r, ar.right); t = Math.min(t, ar.top); b = Math.max(b, ar.bottom);
+  }
+  if (l === Infinity) return;
+  n.style.left = ((l + r) / 2 - eqR.left) + 'px';
+  n.style.top = (b - eqR.top) + 'px';
+  if (n._bar) n._bar.style.width = Math.max(30, (r - l) * 0.85) + 'px';
 }
+function trackNotes() {
+  notes.forEach(placeNote);
+  notesRaf = notes.size ? requestAnimationFrame(trackNotes) : 0;
+}
+// note(html, anchors, {bar}) writes an operation under the given terms. With bar:true it is drawn as
+// a fraction bar with the divisor underneath (dividing the whole side).
+function note(html, anchors, opts = {}) {
+  const n = document.createElement('div');
+  n.className = 'unote' + (opts.bar ? ' divnote' : '');
+  n._anchors = anchors.filter(Boolean);
+  if (opts.bar) { n._bar = document.createElement('span'); n._bar.className = 'ubar'; n.appendChild(n._bar); const d = document.createElement('span'); d.innerHTML = html; n.appendChild(d); }
+  else n.innerHTML = html;
+  $('equation').appendChild(n);
+  notes.add(n); placeNote(n);
+  if (!notesRaf) notesRaf = requestAnimationFrame(trackNotes);
+  return n;
+}
+async function dropNote(n) { n.classList.add('out'); await quick(200); notes.delete(n); n.remove(); }
+function clearNotes() { notes.forEach(n => n.remove()); notes.clear(); }
+const xSideEls = () => ['coef', 'x', 'const'].map(roleEl).filter(Boolean);
+
 // Rewrites the remaining x-side tokens in their new form ("− x" becomes "−x" once the 5 in front is gone).
 function refreshXSide(ns) {
   const fresh = tokensFor(ns);
@@ -626,95 +1011,226 @@ function refreshXSide(ns) {
     if (el && t) el.innerHTML = t.html || t.text;
   }
 }
-// The other side simplifies to its new value.
-async function combineOtherSide(card, s, ns, oChip) {
+// The other side simplifies to its new value, then the result holds so it can be read.
+async function combineOtherSide(s, ns, oNote, how) {
   const other = roleEl('other');
-  caption(`${fracText(s.c)} ${cardLabel(card).replace(/^(.)/, '$1 ')} = ${fracText(ns.c)}`);
-  mark([other, oChip], 'merge');
-  await sleep(800);
-  await removeTok([oChip]);
+  mark([other, oNote], 'merge');
+  await quick(200);
+  dropNote(oNote);
   other.classList.remove('merge'); other.innerHTML = fracHtml(ns.c); other.classList.add('pop');
-  await sleep(600);
+  caption(how);
+  await quick(300);
+  await hold();
 }
+// Shows the written operation for a moment: it fades in fast, then holds (scaled by speed).
+async function showOperation(text) { caption(text); await quick(150); await hold(); }
 
-// Stages 1-2: do the same thing to both sides, the pair next to x cancels, the other side simplifies.
-//   x + 3 = 7  ->  x + 3 − 3 = 7 − 3  ->  x = 7 − 3  ->  x = 4
+// Stages 1-2 (+ and −), and × to undo a division: the operation is written under the term it undoes
+// and under the other side, the pair cancels, and the other side simplifies.
+//   x + 3 = 7      ->  under "+ 3" and under "7" write "− 3"  ->  x = 4
+//   x/3 = 5        ->  under "x/3" and under "5" write "× 3"   ->  x = 15
 //   In a two-step equation the caption adds why the + or − goes first.
-async function cancelAndCombine(card, s, ns, note = '') {
+async function cancelAndCombine(card, s, ns, note_ = '') {
   const additive = card.op === '+' || card.op === '-';
   const target = roleEl(additive ? 'const' : 'coef');
-  caption(cardText(card) + note);
-  const [xChip, oChip] = await dropOnBothSides(card, s);
-  caption(`${target.textContent.replace(/\s/g, '')} and ${cardLabel(card)} cancel out (they make ${additive ? 0 : 1})`);
-  mark([target, xChip], 'cancel');
-  await sleep(1000);
-  await removeTok([target, xChip]);
+  const anchor = target.classList.contains('den') ? roleEl('x') : target;   // x/3: write it under the whole fraction
+  const xNote = note(chipHtml(card), [anchor]), oNote = note(chipHtml(card), [roleEl('other')]);
+  await showOperation(cardText(card) + note_);
+  const cancelText = target.classList.contains('den')
+    ? (card.n < 0 ? `÷ ${target.textContent} and ${cardLabel(card)} cancel, and the two minus signs make +` : `÷ ${target.textContent} and ${cardLabel(card)} cancel`)
+    : `${target.textContent.replace(/\s/g, '')} and ${cardLabel(card)} cancel`;
+  mark([target, xNote], 'cancel');
+  await quick(250);
+  dropNote(xNote);
+  await removeTok([target]);
   refreshXSide(ns);
-  await combineOtherSide(card, s, ns, oChip);
+  await combineOtherSide(s, ns, oNote, `${cancelText}, and ${fracText(s.c)} ${cardLabel(card).replace(/^(.)/, '$1 ')} = ${fracText(ns.c)}`);
 }
 
-// Stage 3, multiply by −1: the card drops on both sides, then every sign flips in a ripple from left to right.
-//   −x = 5  ->  −x × (−1) = 5 × (−1)  ->  x = −5
+// Divide both sides: a fraction bar with the divisor appears under each whole side, the matching
+// numbers on the x side cancel to 1, and the other side divides out.
+//   3x = 15  ->  (3x over 3) = (15 over 3)  ->  x = 5
+async function divideAsFraction(card, s, ns) {
+  const dn = paren(F(card.n));
+  const xNote = note(dn, xSideEls(), { bar: true }), oNote = note(dn, [roleEl('other')], { bar: true });
+  await showOperation(cardText(card));
+  const coef = roleEl('coef'), ct = coef.textContent;
+  mark([coef, xNote], 'cancel');
+  await quick(250);
+  dropNote(xNote);
+  await removeTok([coef]);
+  await combineOtherSide(s, ns, oNote, `${ct} over ${dn} is 1, and ${fracText(s.c)} over ${dn} = ${fracText(ns.c)}`);
+}
+
+// Stage 3, multiply by −1: "× (−1)" is written under both sides, then every sign flips in a quick ripple.
+//   −x = 5  ->  x = −5
 async function flipSigns(card, s, ns) {
-  caption(cardText(card));
-  await dropOnBothSides(card, s);
-  caption(`Multiplying by ${MINUS}1 flips the sign of every term`);
+  const notesHere = [note(chipHtml(card), xSideEls()), note(chipHtml(card), [roleEl('other')])];
+  await showOperation(cardText(card));
   const fresh = tokensFor(ns);
-  for (const t of [...$('equation').children]) {
+  for (const t of [...$('equation').querySelectorAll('.tok')]) {
     const role = t.dataset.role;
     if (role === 'eq') continue;
     t.classList.add('flip');
-    await sleep(220);                       // halfway through the flip, the term shows its new sign
-    if (role === 'chip') { t.classList.add('gone'); }
-    else { const nt = fresh.find(f => f.role === role); if (nt) t.innerHTML = nt.html || nt.text; t.classList.add('merge'); }
-    await sleep(260);
+    await quick(120);                       // halfway through the flip, the term shows its new sign
+    const nt = fresh.find(f => f.role === role); if (nt) t.innerHTML = nt.html || nt.text;
+    t.classList.add('merge');
+    await quick(120);
   }
-  await sleep(500);
-  [...$('equation').querySelectorAll('[data-role="chip"]')].forEach(c => c.remove());
-  caption(`${fracText(s.c)} × (${MINUS}1) = ${fracText(ns.c)}, so x = ${fracText(ns.c)}`);
-  await sleep(700);
+  notesHere.forEach(dropNote);
+  caption(`Multiplying by ${MINUS}1 flips every sign: ${fracText(s.c)} × (${MINUS}1) = ${fracText(ns.c)}`);
+  await quick(200);
+  await hold();
 }
 
-// Stage 3, multiply by the reciprocal: the fraction and its flipped twin spin together and cancel to 1.
-//   (2/3)x = 8  ->  (2/3)x × 3/2 = 8 × 3/2  ->  1x = 12  ->  x = 12
+// Stage 3, multiply by the reciprocal: the reciprocal is written under the fraction and under the other
+// side; the fraction and its flipped twin spin together and cancel to 1.
+//   (2/3)x = 8  ->  under 2/3 and under 8 write "× 3/2"  ->  x = 12
 async function flipReciprocal(card, s, ns) {
   const coef = roleEl('coef'), f = F(card.n, card.d);
-  caption(cardText(card));
-  const [xChip, oChip] = await dropOnBothSides(card, s);
-  caption(`${fracText(f)} is ${fracText(s.coef)} flipped over`);
-  mark([coef, xChip], 'spin');
-  await sleep(1000);
-  caption(`${fracText(s.coef)} × ${fracText(f)} = 1, so they cancel`);
-  coef.classList.remove('spin'); xChip.classList.remove('spin');
-  mark([coef, xChip], 'cancel');
-  await sleep(900);
-  await removeTok([xChip]);
+  const xNote = note(chipHtml(card), [coef]), oNote = note(chipHtml(card), [roleEl('other')]);
+  await showOperation(`${cardText(card)} (${fracText(s.coef)} flipped over)`);
+  mark([coef, xNote], 'spin');
+  await quick(450);
+  coef.classList.remove('spin'); xNote.classList.remove('spin');
+  mark([coef, xNote], 'cancel');
+  await quick(200);
+  dropNote(xNote);
   coef.classList.remove('cancel'); coef.textContent = '1'; coef.classList.add('merge');
-  await sleep(700);
+  await quick(200);
   await removeTok([coef]);
-  await combineOtherSide(card, s, ns, oChip);
+  await combineOtherSide(s, ns, oNote, `${fracText(s.coef)} × ${fracText(f)} = 1, and ${fracText(s.c)} × ${fracText(f)} = ${fracText(ns.c)}`);
 }
 
 // =====================================================================
 //  Run, fights and phases
 // =====================================================================
 const MAX_HP = 100, DAMAGE = 10, ELITE_HEAL = 20;
+// Acts. act2.js adds ACTS[2]. Every act uses the same map layout for now.
+const ACTS = { 1: { name: 'The Ink Cellar', sub: 'Balancing', boss: 'The Scale Keeper', firstSkill: 'onestep',
+  blurb: 'Equations have escaped their textbooks. Beat each one by getting x alone. Clear the map and defeat The Scale Keeper.' } };
+const actOf = id => SKILL[id].act || 1;
 const ACT1_LAYOUT = ['fight', 'fight', 'fight', 'elite', 'fight', 'fight', 'fight', 'elite', 'fight', 'fight', 'boss'];
 const NODE_ICON = { tutorial: '★', fight: '⚔', elite: '☠', boss: '♛' };
 let hp = MAX_HP, run = null, fight = null, cur = null, hand = [], busy = true;
+// The engine for the current equation: Act 3 (inequalities) and Act 2 share an interface; Act 1 is built in here.
+const eng = () => (cur && cur.act6 ? ACT6 : cur && cur.act5 ? ACT5 : cur && cur.act4 ? ACT4 : cur && cur.act3 ? ACT3 : ACT2);
 
-function newRun() {
+// Starting a run first asks for a difficulty.
+function newRun(act) {
+  act = typeof act === 'number' ? act : 1;
+  busy = true;
+  const max = progress.levelUnlocked;
+  const labels = DIFFICULTIES.map(d => `<span class="${d.level > max ? 'lockd' : ''}">${d.level > max ? '🔒 ' : ''}${d.name}</span>`).join('');
+  showOverlay(`<h2>New run</h2><h1>Choose difficulty</h1>
+    <div class="diff"><input type="range" id="diffRange" min="0" max="3" step="1" value="${Math.min(difficulty.level, max)}">
+    <div class="diffLabels">${labels}</div></div>
+    <p id="diffDesc"></p>
+    <p class="help">Each level opens after a clean solve on a mastered stage at the level below.</p>`,
+    [['Start', () => { const lvl = Math.min(+$('diffRange').value, max); startRun(act, lvl); }], ['Back', showTitle, true]]);
+  const range = $('diffRange');
+  const show = () => {
+    if (+range.value > max) range.value = max;
+    const d = DIFFICULTIES[+range.value];
+    $('diffDesc').innerHTML = `<b>${d.name}:</b> ${d.desc}`;
+  };
+  range.addEventListener('input', show); show();
+}
+function startRun(act = 1, level = difficulty.level) {
+  difficulty = DIFFICULTIES[level] || DIFFICULTIES[0];
+  try { localStorage.setItem('algebraCards.difficulty', String(difficulty.level)); } catch (e) {}
   hp = MAX_HP;
-  run = { nodes: ACT1_LAYOUT.map(type => ({ type })), i: 0 };
-  // Any unlocked stage whose tutorial hasn't been played yet goes first.
-  const pending = unlockedSkills().filter(id => !progress.tutorialsDone.includes(id));
+  run = { act, nodes: ACT1_LAYOUT.map(type => ({ type })), i: 0 };
+  // Any unlocked stage of this act whose tutorial hasn't been played yet goes first.
+  const pending = runSkills().filter(id => actOf(id) === act && !progress.tutorialsDone.includes(id));
   run.nodes.unshift(...pending.map(skill => ({ type: 'tutorial', skill })));
-  hideOverlay(); updateHud(); startNode();
+  hideOverlay(); updateHud(); renderSkills(); startNode();
+}
+
+// =====================================================================
+//  Run save: a page refresh carries on where the player was
+// =====================================================================
+// Everything that lasts between visits is in localStorage:
+//   algebraCards.progress.v1  mastery, stats, unlocks, tutorials done, difficulty levels opened
+//   algebraCards.difficulty   the difficulty last picked       animSpeed   the animation speed
+//   algebraCards.run.v1       the run in progress (this section)
+// The run save holds the act, the map (with any tutorial nodes added mid-run), the node reached, HP,
+// difficulty, the variety history (so equations still don't repeat), the case queues, and the fight:
+// its phase, the equation on screen (as its generator returned it) and the correct moves made so far,
+// plus wrong moves and move count (so a refresh can't turn a messy solve into a clean one).
+// A fight's phase list is rebuilt from the node with buildFight(), so it works for any act that plugs
+// into buildFight/showEquation; nothing here needs to change when an act is added.
+// The save is updated at every node, phase, move and wrong move, and deleted when the run ends.
+const RUN_KEY = 'algebraCards.run.v1';
+let fightEq = null;   // the equation on screen, for the save: { g, enemy, played: [{ card, ref }] }
+function saveRun() {
+  if (!run || !run.nodes || !run.nodes.length) return;
+  const v = run.variety;
+  const data = { v: 1, act: run.act, nodes: run.nodes, i: run.i, hp, level: difficulty.level,
+    variety: v ? { seen: [...v.seen], shapes: [...v.shapes], last: v.last } : null, queues: caseQueues,
+    fight: fight ? { phase: fight.phase, eq: fightEq && cur ? { ...fightEq, wrong: cur.wrong, moves: cur.moves } : null } : null };
+  try { localStorage.setItem(RUN_KEY, JSON.stringify(data)); } catch (e) {}
+}
+function clearRunSave() { try { localStorage.removeItem(RUN_KEY); } catch (e) {} }
+const hasRunSave = () => { try { return !!localStorage.getItem(RUN_KEY); } catch (e) { return false; } };
+
+function replayMoves(saved) {
+  for (const { card, ref } of saved.played || []) {
+    if (cur.step >= cur.path.length - 1) break;            // never replay the winning move
+    cur.state = cur.act2 ? eng().apply(cur.state, card, ref) : applyCard(cur.state, card);
+    cur.step++;
+    if (cur.act2) eng().refreshPath(cur);
+    fightEq.played.push({ card, ref });
+  }
+  cur.wrong = Math.max(0, saved.wrong | 0); cur.moves = Math.max(cur.step + cur.wrong, saved.moves | 0);
+}
+
+// Called once on page load. Returns false (and the title screen shows) if there's no usable save.
+// A save from an older version, or one that fails to load, is dropped rather than breaking the page.
+function resumeRun() {
+  let d = null;
+  try { d = JSON.parse(localStorage.getItem(RUN_KEY)); } catch (e) {}
+  if (!d || d.v !== 1 || !ACTS[d.act] || !Array.isArray(d.nodes) || !d.nodes.length) { clearRunSave(); return false; }
+  const okNode = n => n && NODE_ICON[n.type] && (n.type !== 'tutorial' || SKILL[n.skill]) && (!n.skill || SKILL[n.skill]);
+  if (!d.nodes.every(okNode)) { clearRunSave(); return false; }
+  try {
+    difficulty = DIFFICULTIES[d.level] || DIFFICULTIES[0];
+    hp = Math.max(1, Math.min(MAX_HP, Math.round(+d.hp) || MAX_HP));
+    run = { act: d.act, nodes: d.nodes, i: Math.max(0, Math.min(d.nodes.length - 1, d.i | 0)) };
+    const v = d.variety;
+    if (v && Array.isArray(v.seen) && Array.isArray(v.shapes)) run.variety = { seen: new Set(v.seen), shapes: new Map(v.shapes), last: v.last || null };
+    if (d.queues && typeof d.queues === 'object') for (const [id, q] of Object.entries(d.queues))
+      if (SKILL[id] && Array.isArray(q)) caseQueues[id] = q.filter(c => (SKILL[id].cases || []).includes(c));
+    hideOverlay(); updateHud(); renderSkills();
+    // Not into the node's first equation yet (e.g. on a tutorial's intro): start the node again.
+    if (!d.fight || (!d.fight.eq && !d.fight.phase)) { startNode(); return true; }
+    const node = run.nodes[run.i];
+    fight = { ...buildFight(node), node, phase: 0 };
+    fight.phase = Math.max(0, Math.min(fight.phases.length - 1, d.fight.phase | 0));
+    renderMap();
+    $('enemyBox').classList.remove('dead');
+    const eq = d.fight.eq;
+    if (eq && eq.g) {
+      try { showEquation(eq.g, eq.enemy || fight.enemy || eq.g.enemy, eq); }
+      catch (e) {                                           // the saved moves didn't replay: same equation, from its start
+        console.warn('Run save: restarting the equation', e);
+        showEquation(JSON.parse(JSON.stringify(eq.g)), eq.enemy || fight.enemy || eq.g.enemy, { played: [], wrong: eq.wrong, moves: eq.wrong });
+      }
+    } else startPhase();
+    setMsg('Welcome back! Your run carries on from where you left it.');
+    return true;
+  } catch (e) {
+    console.warn('Run save: could not resume', e);
+    clearRunSave(); run = null; fight = null; cur = null; hp = MAX_HP;
+    return false;
+  }
 }
 
 // Normal fights: ~60% the newest stage, ~40% review of earlier ones (needs-review skills weighted ×3).
+// The skills a run can use: everything unlocked up to and including its act, oldest first.
+const runSkills = () => unlockedSkills().filter(id => actOf(id) <= run.act);
 function pickFightSkill() {
-  const list = unlockedSkills();
+  const list = runSkills();
   if (list.length === 1 || Math.random() < 0.6) return list[list.length - 1];
   const earlier = list.slice(0, -1);
   const weights = earlier.map(id => skillStatus(id) === 'review' ? 3 : 1);
@@ -724,42 +1240,121 @@ function pickFightSkill() {
 }
 
 function buildFight(node) {
-  const list = unlockedSkills();
+  const list = runSkills();
   if (node.type === 'tutorial') return { phases: SKILL[node.skill].tutorial, handSize: 3, rank: 'Tutorial' };
-  if (node.type === 'fight') { const id = pickFightSkill(); return { phases: [SKILL[id].gen], handSize: 4 }; }
+  // node.skill: a fight of just that stage (the debug menu's stage jumps).
+  if (node.type === 'fight') { const id = node.skill || pickFightSkill(); return { phases: [SKILL[id].gen], handSize: difficulty.hand }; }
+  if (run.act === 2) return ACT2.buildFight(node, list);
+  if (run.act === 3) return ACT3.buildFight(node, list);
+  if (run.act === 4) return ACT4.buildFight(node, list);
+  if (run.act === 5) return ACT5.buildFight(node, list);
+  if (run.act === 6) return ACT6.buildFight(node, list);
   if (node.type === 'elite') {
     const recent = list.slice(-2);
     const swapped = () => { const g = genOneStep(); g.s.xLeft = false; return g; };
     const phases = recent.length > 1 ? [() => genStacked(recent)] : [() => genOneStep(), swapped];   // one stage only: two equations back to back
-    return { phases, handSize: 4, enemy: 'stacker' };
+    return { phases, handSize: difficulty.hand, enemy: 'stacker' };
   }
   // Boss: one phase per unlocked stage (sides swap from phase 2), then everything at once.
   const phases = list.map((id, i) => () => { const g = SKILL[id].gen(); if (i > 0) g.s.xLeft = false; return g; });
   phases.push(() => { const g = list.length > 1 ? genStacked(list.slice(-2)) : genOneStep(); g.s.xLeft = Math.random() < 0.5; return g; });
   if (list.length === 1) phases.splice(1, 0, () => { const g = genOneStep(); g.s.xLeft = false; return g; });
-  return { phases, handSize: 4, enemy: 'scalekeeper' };
+  return { phases, handSize: difficulty.hand, enemy: 'scalekeeper' };
+}
+
+// =====================================================================
+//  Variety: no repeats, and the shapes keep changing
+// =====================================================================
+// Every fight in every act gets its equation through freshEquation(), which keeps a run from feeling
+// repetitive:
+//   - the same equation never comes up twice in one run,
+//   - shapes rotate: an equation's shape is its text with the numbers blanked out, so "x + 3 = 10" and
+//     "x + 8 = 2" share a shape but "10 = x + 3" and "3 + x = 10" don't. Each pick prefers the shape used
+//     least so far this run, and never the shape just played,
+//   - outside tutorials either side can hold x: equations are mirrored about half the time.
+// It only needs to know how to write and mirror an equation, per engine (the key a generator returns
+// its equation under): Act 1 is `s`; act2.js registers `eq`. A later act with its own equation model
+// adds one line to ENGINES and gets all of this for free.
+const ENGINES = {
+  s: { text: s => tokensFor(s).map(t => t.text).join(' '), mirror: s => ({ ...s, xLeft: !s.xLeft }) },
+};
+const shapeOf = text => text.replace(/[\d⁰¹²³⁴⁵⁶⁷⁸⁹]+(\.\d+)?/g, 'n');   // superscript exponents and decimals are numbers too
+function freshEquation(gen, { prepare = g => g, mirror = true, tries = 40 } = {}) {
+  const v = run.variety || (run.variety = { seen: new Set(), shapes: new Map(), last: null });
+  let best = null;
+  for (let i = 0; i < tries; i++) {
+    let g = prepare(gen());
+    const kind = Object.keys(ENGINES).find(k => g[k]);
+    if (!kind) return g;                                   // an engine nobody registered: no variety, but it still works
+    const E = ENGINES[kind];
+    if (mirror && E.mirror && Math.random() < 0.5) g = { ...g, [kind]: E.mirror(g[kind]) };
+    const text = E.text(g[kind]), shape = shapeOf(text);
+    if (v.seen.has(text)) continue;
+    const score = (v.shapes.get(shape) || 0) + (shape === v.last ? 100 : 0);
+    if (!best || score < best.score) best = { g, text, shape, score };
+    if (score === 0) break;                                // a shape this run hasn't had yet
+  }
+  if (!best) return prepare(gen());                        // every try was a repeat (a tiny pool): allow one
+  v.seen.add(best.text); v.shapes.set(best.shape, (v.shapes.get(best.shape) || 0) + 1); v.last = best.shape;
+  return best.g;
 }
 
 function startNode() {
   const node = run.nodes[run.i];
   fight = { ...buildFight(node), node, phase: 0 };
+  if (node.startPhase) fight.phase = Math.min(node.startPhase, fight.phases.length - 1);   // debug menu: start a boss at a later phase
+  fightEq = null; saveRun();
   renderMap();
   $('enemyBox').classList.remove('dead');
   if (node.type === 'tutorial') showIntro(node.skill); else startPhase();
 }
 
 function startPhase() {
-  const g = fight.phases[fight.phase]();
-  const enemy = fight.enemy || g.enemy;
-  cur = makeEquation(g.s, enemy);
-  cur.state = g.s; cur.step = 0; cur.wrong = 0; cur.moves = 0; cur.lastT = performance.now();
-  for (const id of cur.skills) progress.skills[id].attempted++;
-  saveProgress();
+  if (computing) endCompute(false);   // a jump (debug menu) or new run in the middle of typing numbers
+  const gen = fight.phases[fight.phase];
+  // Tutorials stay on Easy and keep the shape they teach (no mirroring); they still never repeat.
+  const tut = fight.node.type === 'tutorial';
+  const prepare = g => {
+    if (tut) return g;
+    if (g.s) return { ...g, s: applyDifficulty(g.s) };
+    if (g.eq) return ACT2.applyDifficulty(g, gen);
+    if (g.ineq) return ACT3.applyDifficulty(g, gen);
+    if (g.fn) return ACT4.applyDifficulty(g, gen);
+    if (g.sys) return ACT5.applyDifficulty(g, gen);
+    if (g.ex6) return ACT6.applyDifficulty(g, gen);
+    return g;
+  };
+  const g = freshEquation(gen, { prepare, mirror: !tut });
+  showEquation(g, fight.enemy || g.enemy);
+}
+
+// Puts an equation on screen. saved: a fight being restored after a page refresh ({ played, wrong, moves }):
+// the correct moves already made are replayed without animation, so the player is back on the same step.
+function showEquation(g, enemy, saved = null) {
+  const plain = JSON.parse(JSON.stringify(g));   // kept for the run save, before any engine touches it
+  // Act 3 generators return { ineq } (act3.js: Act 2's model plus a relation), Act 2 ones { eq } (act2.js's equation model), Act 1 ones { s }.
+  cur = g.ex6 ? ACT6.makeEquation(g.ex6, enemy) : g.sys ? ACT5.makeEquation(g.sys, enemy) : g.fn ? ACT4.makeEquation(g.fn, enemy) : g.ineq ? ACT3.makeEquation(g.ineq, enemy) : g.eq ? ACT2.makeEquation(g.eq, enemy) : makeEquation(g.s, enemy);
+  // Playtest fix: Act 4 questions are evaluated, read off a graph or written as a line, not solved for x.
+  $('helpLine').textContent = `Pick the ${cur.act6 || cur.act5 || (cur.act4 && g.fn.k4 !== 'formula') ? 'right next move' : 'move that gets ' + ((g.fn || g.eq || {}).v || 'x') + ' alone'}. Wrong move = 10 damage.`;
+  cur.state = g.ex6 || g.sys || g.fn || g.ineq || g.eq || g.s; cur.step = 0; cur.wrong = 0; cur.moves = 0; cur.lastT = performance.now();
+  cur.case = g.case; cur.caseSkill = g.caseSkill;
+  // The prompt's wording is picked at random, so a restored fight keeps the one the player saw.
+  cur.prompt = saved && typeof saved.prompt === 'string' ? saved.prompt : problemPrompt(cur.state, cur.skills);
+  fightEq = { g: plain, enemy, prompt: cur.prompt, played: [] };
+  if (saved) replayMoves(saved);
+  else {
+    if (g.case) useCase(g.caseSkill, g.case);
+    for (const id of cur.skills) progress.skills[id].attempted++;
+    saveProgress();
+  }
+  saveRun();
   $('enemyBox').innerHTML = enemySvg(enemy);
   $('enemyBox').classList.remove('dead', 'hit');
   renderFoe();
   caption(''); setMsg(''); $('unlock').textContent = '';
+  showPrompt(cur.prompt);
   renderEquation(cur.state); dealHand(); busy = false;
+  for (const id of ['foe', 'enemyBox', 'prompt', 'equation']) { const e = $(id); e.classList.remove('arrive'); void e.offsetWidth; e.classList.add('arrive'); }
 }
 
 function renderFoe() {
@@ -769,27 +1364,92 @@ function renderFoe() {
   $('foe').innerHTML = `<b>${e.name}</b><span class="rank">${rank}</span>${pips}`;
 }
 
-function dealHand() { hand = makeHand(cur.state, cur.path[cur.step].move, fight.handSize); renderHand(); }
+// ---------- Card icons ----------
+// Each kind of operation has a small icon at the top of its card; the both-sides / one-part badge
+// sits in the card's top-right corner. Tap "Key" under the arena for the full list.
+const svgI = body => `<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">${body}</svg>`;
+const CARD_ICONS = {
+  add:   { name: 'Add', svg: svgI('<path d="M12 5v14M5 12h14"/>') },
+  sub:   { name: 'Subtract', svg: svgI('<path d="M5 12h14"/>') },
+  mul:   { name: 'Multiply', svg: svgI('<path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/>') },
+  div:   { name: 'Divide (as a fraction)', svg: svgI('<rect x="8.5" y="2.5" width="7" height="6" rx="1"/><path d="M4 12h16"/><rect x="8.5" y="15.5" width="7" height="6" rx="1"/>') },
+  neg:   { name: `Multiply by ${MINUS}1 (flip every sign)`, svg: svgI('<path d="M12 3v8M8 7h8M8 18h8"/>') },
+  recip: { name: 'Multiply by the flipped fraction', svg: svgI('<path d="M7 4v13M4 14l3 3 3-3M17 20V7M14 10l3-3 3 3"/>') },
+  comb:  { name: 'Combine like terms', svg: svgI('<rect x="2.5" y="3" width="6" height="6" rx="1"/><rect x="2.5" y="15" width="6" height="6" rx="1"/><path d="M8.5 6c4 0 4 6 7 6M8.5 18c4 0 4-6 7-6"/><rect x="15.5" y="8.5" width="6" height="7" rx="1"/>') },
+  dist:  { name: 'Distribute', svg: svgI('<circle cx="4.5" cy="12" r="2"/><path d="M6.5 11C11 6 15 5 19 5M6.5 13C11 18 15 19 19 19M17 3l2 2-2 2M17 17l2 2-2 2"/>') },
+  lcd:   { name: 'Least common denominator', svg: svgI('<path d="M3 8h7M14 8h7M2 15h20"/><path d="M6.5 4v1M17.5 4v1M12 19v1"/>') },
+  flip:  { name: 'Flip the inequality sign', svg: svgI('<path d="M9 5l-5 5 5 5M15 9l5 5-5 5"/>') },
+  split: { name: 'Split the bars into two cases', svg: svgI('<path d="M4 4v16M20 4v16M12 4v5M12 9l-4 6M12 9l4 6"/>') },
+  between: { name: 'Between: close to 0 (for < and ≤)', svg: svgI('<path d="M3 12h18M7 8v8M17 8v8"/><path d="M8 12h8" stroke-width="4"/>') },
+  outside: { name: 'Outside: far from 0 (for > and ≥)', svg: svgI('<path d="M3 12h18M9 8v8M15 8v8"/><path d="M2 12h6M16 12h6" stroke-width="4"/>') },
+  none:  { name: 'No solution', svg: svgI('<circle cx="12" cy="12" r="8"/><path d="M6 18L18 6"/>') },
+  all:   { name: 'Every number works', svg: svgI('<path d="M12 12c-2-3-4-4.5-6-4.5a4.5 4.5 0 000 9c2 0 4-1.5 6-4.5s4-4.5 6-4.5a4.5 4.5 0 010 9c-2 0-4-1.5-6-4.5z"/>') },
+};
+// A trap card wears the icon of the move it imitates.
+const TRAP_ICON = { 'add across': 'comb', 'first term only': 'dist', 'first sign only': 'dist', 'no sign flip': null, 'unlike terms': 'comb', 'lost sign': 'div', 'drop bars': 'split' };
+function iconKey(c) {
+  if (window.ACT6 && ACT6.icon(c)) return ACT6.icon(c);
+  if (window.ACT5 && ACT5.icon(c)) return ACT5.icon(c);
+  if (window.ACT4 && ACT4.icon(c)) return ACT4.icon(c);
+  if (c.op === 'trap') {
+    const k = TRAP_ICON[c.trap]; if (k) return k;
+    const op = c.scaleOp || (c.trap === 'no sign flip' ? '+' : null);
+    return op ? iconKey({ op }) : 'add';
+  }
+  if (c.flip) return 'flip';
+  if (c.lcd) return 'lcd';
+  if (c.op === 'frac') return 'recip';
+  return { '+': 'add', '-': 'sub', '*': 'mul', '/': 'div', neg: 'neg', comb: 'comb', dist: 'dist', none: 'none', all: 'all', flip: 'flip', graph: 'graph3', split: c.way === 'between' ? 'between' : c.way === 'outside' ? 'outside' : 'split' }[c.op] || 'add';
+}
+const cardIcon = c => { const k = iconKey(c); return `<span class="cicon k-${k}" aria-label="${CARD_ICONS[k].name}">${CARD_ICONS[k].svg}</span>`; };
+function showKey() {
+  const row = k => `<div class="keyRow"><span class="cicon k-${k}">${CARD_ICONS[k].svg}</span> ${CARD_ICONS[k].name}</div>`;
+  showWhy(`<p><span class="badge both">⇔</span> <b>Both sides:</b> drop the card anywhere on the enemy.<br><span class="badge part">◎</span> <b>One part:</b> drop it on that part of the equation.</p>
+    <div class="keyGrid">${Object.keys(CARD_ICONS).map(row).join('')}</div>`, 'Card key');
+}
+
+function dealHand() { hand = arrangeHand((cur.act2 ? eng().makeHand : makeHand)(cur.state, cur.path[cur.step].move, fight.handSize)); renderHand(); }
+
+// Named operation cards (Combine, Distribute, LCD, ...) always land in the same slot, counting from the
+// left, so a player can find them without reading every card after a redeal. Number cards fill the rest
+// in their dealt order. New acts can add their own named ops to this list.
+const FIXED_SLOTS = ['comb', 'dist', 'lcd', 'flip', 'split', 'none', 'all'];
+const slotKey = c => c.lcd ? 'lcd' : c.op;
+const slotOf = c => { const k6 = window.ACT6 ? ACT6.slot(c) : null; if (k6 != null) return k6; const k5 = window.ACT5 ? ACT5.slot(c) : null; if (k5 != null) return k5; const k = window.ACT4 ? ACT4.slot(c) : null; return k != null ? k : FIXED_SLOTS.indexOf(slotKey(c)); };   // Act 4 cards have their own slots (PEMDAS order)
+function arrangeHand(cards) {
+  const out = new Array(cards.length).fill(null), rest = [];
+  const named = cards.filter(c => slotOf(c) >= 0).sort((a, b) => slotOf(a) - slotOf(b));
+  for (const c of cards) if (!named.includes(c)) rest.push(c);
+  for (const c of named) {                       // its own slot, or the nearest free one after it
+    let i = Math.min(slotOf(c), cards.length - 1);
+    while (out[i]) i = (i + 1) % cards.length;
+    out[i] = c;
+  }
+  for (let i = 0; i < out.length; i++) if (!out[i]) out[i] = rest.shift();
+  return out;
+}
 
 function renderHand() {
-  const el = $('hand'); el.innerHTML = '';
+  const el = $('hand'); el.innerHTML = ''; el.style.setProperty('--n', String(Math.max(4, hand.length))); el.classList.toggle('many', hand.length >= 5);   // 5+ cards: two rows on phones
   hand.forEach((c, i) => {
     const d = document.createElement('div');
-    d.className = 'card'; d.dataset.idx = i;
+    d.className = 'card deal'; d.dataset.idx = i; d.style.animationDelay = `calc(${i * 70}ms * var(--k))`;
+    d.addEventListener('animationend', () => d.classList.remove('deal'), { once: true });
     const badge = scopeOf(c) === 'part' ? '<span class="badge part" title="One part: drop on that part">◎</span>' : '<span class="badge both" title="Both sides: drop anywhere">⇔</span>';
-    d.innerHTML = `${badge}${cardLabel(c)}<small>${cardText(c)}</small>`;
+    d.innerHTML = `${badge}${cardIcon(c)}<span class="clabel">${cardLabel(c)}</span><small>${cardText(c)}</small>`;
     d.addEventListener('pointerdown', e => startDrag(e, d, c));
     el.appendChild(d);
   });
 }
 
 function renderMap() {
-  $('map').innerHTML = `<span class="lbl">Act 1 · The Ink Cellar</span>&nbsp;` + run.nodes.map((n, i) =>
-    `${i ? '<span class="link"></span>' : ''}<span class="node ${n.type} ${i < run.i ? 'done' : ''} ${i === run.i ? 'cur' : ''}" title="${n.type === 'tutorial' ? 'Tutorial: ' + SKILL[n.skill].name : n.type}">${NODE_ICON[n.type]}</span>`).join('');
+  $('map').innerHTML = `<span class="lbl">Act ${run.act} · ${ACTS[run.act].name}</span>&nbsp;` + run.nodes.map((n, i) =>
+    `${i ? '<span class="link"></span>' : ''}<span class="node ${n.type} ${i < run.i ? 'done' : ''} ${i === run.i ? 'cur' : ''}" title="${n.type === 'tutorial' ? 'Tutorial: ' + SKILL[n.skill].name : n.type}">${NODE_ICON[n.type]}</span>`).join('') + `&nbsp;<span class="diffTag">${difficulty.name}</span>`;
 }
 
 function renderSkills(deltas = []) {
-  $('skills').innerHTML = SKILLS.map(s => {
+  const act = run ? run.act : 1;
+  $('skills').innerHTML = SKILLS.filter(s => (s.act || 1) === act).map(s => {
     const p = progress.skills[s.id], status = skillStatus(s.id);
     const tag = status === 'mastered' ? '<span class="tag mastered">mastered</span>' : status === 'review' ? '<span class="tag review">needs review</span>' : status === 'locked' ? '🔒' : '';
     const d = deltas.find(x => x[0] === s.id);
@@ -803,7 +1463,11 @@ function updateHud() {
   $('hpfill').style.width = (hp / MAX_HP * 100) + '%';
   $('hptext').textContent = `${hp} / ${MAX_HP}`;
 }
-function setMsg(t, cls = '') { const m = $('msg'); m.textContent = t; m.className = cls; }
+function setMsg(t, cls = '', why = null) {
+  const m = $('msg'); m.textContent = t; m.className = cls;
+  if (why) { const b = document.createElement('button'); b.className = 'whyBtn'; b.textContent = 'Why?';
+    b.addEventListener('click', e => { e.stopPropagation(); showWhy(why); }); m.append(' ', b); }
+}
 
 // ---------- Drag & drop (pointer events: mouse + touch) ----------
 // Two kinds of cards:
@@ -813,6 +1477,26 @@ function setMsg(t, cls = '') { const m = $('msg'); m.textContent = t; m.classNam
 const scopeOf = c => c.scope || 'both';
 
 let dragging = false;   // only one card can be dragged at a time
+// The things a ◎ card can change, by kind: the bars for Split (and the drop-the-bars trap), parentheses for
+// Distribute (and its traps), the sign for Flip (one flip turns every sign, so it counts once), pairs of like
+// terms for Combine. Returns the one target (or null when there is none, so the move is wrong wherever it
+// goes), or undefined when there are two or more and the player has to choose.
+function autoTarget(card) {
+  if (window.ACT6 && cur && cur.act6) { const a = ACT6.autoTarget(card); if (a !== 'pass') return a; }   // Act 6 too
+  if (window.ACT5 && cur && cur.act5) { const a = ACT5.autoTarget(card); if (a !== 'pass') return a; }   // Act 5 cards pick their own targets
+  const q = sel => [...document.querySelectorAll('#equation ' + sel)];
+  let things;
+  if (card.op === 'flip') things = q('.tok.rel').slice(0, 1);
+  else if (card.op === 'none' || card.op === 'all') return null;          // a verdict is about the whole statement
+  else if (card.op === 'split' || (card.op === 'trap' && card.trap === 'drop bars')) things = q('[data-role="abs"]');
+  else if (card.op === 'dist' || (card.op === 'trap' && /^first/.test(card.trap || ''))) things = q('[data-role="group"]');
+  else if (card.op === 'comb') {
+    const groups = {};
+    for (const t of q('[data-role="xterm"], [data-role="const"]')) (groups[(t.dataset.side || '') + t.dataset.role] ||= []).push(t);
+    things = Object.values(groups).filter(g => g.length >= 2).map(g => g[0]);
+  } else return undefined;
+  return things.length >= 2 ? undefined : things[0] || null;
+}
 function startDrag(e, el, card) {
   // A second finger on another card used to start a second drag, and one lift then played both cards.
   if (busy || dragging) return;
@@ -825,8 +1509,14 @@ function startDrag(e, el, card) {
   ghost.classList.add('dragging'); ghost.style.width = r.width + 'px'; ghost.style.height = r.height + 'px';
   document.body.appendChild(ghost);
   el.classList.add('placeholder');
-  const targeted = scopeOf(card) === 'part';
+  // A ◎ card only asks for a target when there is more than one thing it could change. With one (or none),
+  // it drops anywhere like a ⇔ card and goes on that thing by itself.
+  const auto = scopeOf(card) === 'part' ? autoTarget(card) : undefined;
+  const targeted = scopeOf(card) === 'part' && auto === undefined;
   $('arena').classList.add(targeted ? 'targeting' : 'anywhere');
+  if (window.ACT4) ACT4.onDrag(card, true);
+  if (window.ACT5) ACT5.onDrag(card, true);
+  if (window.ACT6) ACT6.onDrag(card, true);
   let hover = null;
   const move = ev => {
     if (ev.pointerId !== pid) return;   // ignore other fingers
@@ -835,7 +1525,9 @@ function startDrag(e, el, card) {
     if (targeted) {
       // Forgiving hit test: within 40px of a box counts, closest box wins.
       let best = Infinity;
-      for (const t of document.querySelectorAll('#equation .tok:not(.eq)')) {
+      // Act 3's Flip is dropped on the sign. Review fix: only Flip can target it; other ◎ cards used to snap onto it.
+      const sel = (window.ACT6 && cur && cur.act6 && ACT6.targetSel(card)) || (window.ACT5 && cur && cur.act5 && ACT5.targetSel(card)) || (window.ACT4 && ACT4.targetSel(card)) || (card.op === 'flip' ? '#equation .tok:not(.eq), #equation .tok.rel' : '#equation .tok:not(.eq):not(.rel)');
+      for (const t of document.querySelectorAll(sel)) {
         const b = t.getBoundingClientRect();
         const d = Math.hypot(Math.max(b.left - ev.clientX, 0, ev.clientX - b.right), Math.max(b.top - ev.clientY, 0, ev.clientY - b.bottom));
         const cd = Math.hypot(ev.clientX - (b.left + b.right) / 2, ev.clientY - (b.top + b.bottom) / 2);
@@ -856,8 +1548,11 @@ function startDrag(e, el, card) {
     dragging = false;
     ghost.remove(); el.classList.remove('placeholder');
     $('arena').classList.remove('targeting', 'anywhere');
+    if (window.ACT4) ACT4.onDrag(card, false);
+    if (window.ACT5) ACT5.onDrag(card, false);
+    if (window.ACT6) ACT6.onDrag(card, false);
     if (hover) hover.classList.remove('hover');
-    if (hover && drop) playCard(card, targeted ? hover.dataset.role : null);
+    if (hover && drop) playCard(card, targeted ? hover : auto === undefined ? null : auto);
   };
   const up = ev => end(ev, true), cancel = ev => end(ev, false);
   move(e);
@@ -867,34 +1562,50 @@ function startDrag(e, el, card) {
 // =====================================================================
 //  Rules and mastery
 // =====================================================================
-function playCard(card) {
+// target: the equation part a ◎ card was dropped on (an element, or its data-ref).
+function playCard(card, target) {
   if (busy) return;
   const step = cur.path[cur.step], sk = progress.skills[step.skill];
   const now = performance.now();
   sk.secondsTotal += (now - cur.lastT) / 1000; sk.movesTimed++; cur.lastT = now;
   sk.lastPracticed = new Date().toISOString(); sk.decayWeeks = 0;
   cur.moves++;
-  if (sameCard(card, step.move)) { saveProgress(); return doStep(card); }
+  const right = cur.act2 ? eng().isCorrect(cur, card, target) : sameCard(card, step.move);
+  if (right) { saveProgress(); return doStep(card, target); }
   // Wrong move: -10 HP and -10 mastery on the skill this step uses.
   cur.wrong++;
   sk.wrongByCard[cardKind(card)] = (sk.wrongByCard[cardKind(card)] || 0) + 1;
   changeMastery(step.skill, MASTERY.wrong);
   saveProgress(); renderSkills([[step.skill, MASTERY.wrong]]);
+  if (cur.act2) return takeDamage(eng().whyWrong(cur, card, target),
+    explainWhy({ state: cur.state, card, correct: step.move, ref: target && target.dataset ? target.dataset.ref : target }));
   const s = cur.state, undo = correctMove({ ...s, b: F(0) });
   const why = s.b.n !== 0 && !fIs(s.coef, 1) && sameCard(card, undo)
     ? `That's allowed, but undo the + or ${MINUS} part first, then the ${TIMES} or ${DIV}.`
     : `That's allowed, but x still isn't alone: ${appliedText(s, card)}`;
-  takeDamage(why);
+  takeDamage(why, explainWhy({ state: s, card, correct: step.move }));
 }
 
-async function doStep(card) {
-  busy = true; setMsg('');
-  const s = cur.state, ns = applyCard(s, card);
+async function doStep(card, target) {
+  busy = true; setMsg(''); hideWhy();
+  const ref = target && target.dataset ? target.dataset.ref : target;
+  const s = cur.state, ns = cur.act2 ? eng().apply(s, card, ref) : applyCard(s, card);
   const additive = card.op === '+' || card.op === '-';
   const note = cur.path.length > 1 && cur.step === 0 && additive ? ` (undo + and ${MINUS} first, then ${TIMES} and ${DIV})` : '';
-  const anim = OPERATION_ANIMATIONS[card.op];
-  if (anim) await anim(card, s, ns, note);
+  const anim = cur.act2 ? eng().animFor(card) : OPERATION_ANIMATIONS[card.op];
+  if (cur.act2) eng().prefit(s, ns);   // size the equation once, before the animation
+  if (computeMode) {
+    // Do the math: the player writes the new numbers instead of watching them worked out.
+    if (!await computeStep(card, s, ns)) return;
+  }
+  if (!computeMode || !$('equation').querySelector('.ciBlank')) {
+    if (computeMode) renderEquation(s);   // nothing new to compute (the move only moved things): play it as usual
+    animating = true;
+    try { if (anim) await anim(card, s, ns, cur.act2 ? ref : note); } finally { animating = false; }
+  }
   cur.state = ns; cur.step++;
+  if (cur.act2) eng().refreshPath(cur);
+  if (fightEq) { fightEq.played.push({ card: JSON.parse(JSON.stringify(card)), ref: typeof ref === 'string' ? ref : undefined }); saveRun(); }
   cur.lastT = performance.now();   // start the next move's clock after the animation, not before it
   renderEquation(ns);
   if (cur.step < cur.path.length) { dealHand(); busy = false; return; }
@@ -907,19 +1618,32 @@ function equationSolved() {
   for (const id of cur.skills) {
     const sk = progress.skills[id];
     sk.solved++; sk.parDiffTotal += cur.moves - par; sk.parCount++;
-    const d = clean ? MASTERY.clean : 0;
+    if (id === cur.caseSkill && cur.case && !sk.casesSolved.includes(cur.case)) sk.casesSolved.push(cur.case);
+    const d = clean ? Math.round(MASTERY.clean * difficulty.gain) : 0;
     if (d) changeMastery(id, d);
     deltas.push([id, d]);
   }
   const fresh = checkUnlocks();
+  // A clean solve on a mastered stage opens the next difficulty.
+  let newLevel = null;
+  if (clean && difficulty.level === progress.levelUnlocked && progress.levelUnlocked < 3 &&
+      cur.skills.some(id => progress.skills[id].mastery >= MASTERED)) newLevel = DIFFICULTIES[++progress.levelUnlocked];
   saveProgress(); renderSkills(deltas);
   const gains = deltas.filter(d => d[1]).map(d => `${SKILL[d[0]].name} +${d[1]}`).join(', ');
-  setMsg(`Solved! x = ${fracText(cur.answer)}${gains ? ' · ' + gains : ''}`, 'good');
-  for (const id of fresh) run.nodes.splice(run.i + 1, 0, { type: 'tutorial', skill: id });
-  if (fresh.length) { renderMap(); $('unlock').textContent = `New stage unlocked: ${SKILL[fresh[0]].title.replace(/^Stage \d: /, '')}! Its tutorial fight is next.`; }
+  // A stage held just under mastered says why: some kinds of problem haven't been solved yet.
+  const held = cur.skills.filter(id => progress.skills[id].mastery === MASTERED - 1 && casesLeft(id).length);
+  const heldNote = held.length ? ` · ${SKILL[held[0]].name}: ${casesLeft(held[0]).length} more kind${casesLeft(held[0]).length > 1 ? 's' : ''} of problem to solve before it's mastered` : '';
+  setMsg(`Solved! ${cur.answerText || 'x = ' + fracText(cur.answer)}${gains ? ' · ' + gains : ''}${heldNote}`, 'good');
+  // A stage of this act gets its tutorial fight next; a stage of a later act opens that act on the title screen.
+  const here = fresh.filter(id => actOf(id) === run.act), later = fresh.filter(id => actOf(id) > run.act);
+  for (const id of here) run.nodes.splice(run.i + 1, 0, { type: 'tutorial', skill: id });
+  if (newLevel && !fresh.length) $('unlock').textContent = `${newLevel.name} difficulty unlocked! Pick it at the start of your next run.`;
+  if (here.length) { renderMap(); $('unlock').textContent = `New stage unlocked: ${SKILL[here[0]].title.replace(/^Stage \d+: /, '')}! Its tutorial fight is next.`; }
+  else if (later.length) $('unlock').textContent = `Act ${actOf(later[0])} unlocked! Start it from the title screen after this run.`;
 
-  fight.phase++;
+  fight.phase++; fightEq = null;
   if (fight.phase < fight.phases.length) {
+    saveRun();   // a refresh now goes straight to the next phase; this solve's mastery is already counted
     const b = $('enemyBox'); b.classList.remove('hit'); void b.offsetWidth; b.classList.add('hit');
     return waitForNext(startPhase);
   }
@@ -927,33 +1651,302 @@ function equationSolved() {
   const node = fight.node;
   if (node.type === 'tutorial' && !progress.tutorialsDone.includes(node.skill)) { progress.tutorialsDone.push(node.skill); saveProgress(); }
   if (node.type === 'elite') { hp = Math.min(MAX_HP, hp + ELITE_HEAL); updateHud(); setMsg($('msg').textContent + ` · Elite down: +${ELITE_HEAL} HP`, 'good'); }
-  if (node.type === 'boss') return waitForNext(actCleared);
-  run.i++;
+  if (node.type === 'boss') { clearRunSave(); return waitForNext(actCleared); }
+  run.i++; fight = null; saveRun();
   waitForNext(startNode);
 }
 
-function takeDamage(why) {
-  hp = Math.max(0, hp - DAMAGE); updateHud();
-  setMsg(`-${DAMAGE} HP. ${why}`, 'bad');
-  const a = $('arena'); a.classList.remove('flash', 'shake'); void a.offsetWidth; a.classList.add('flash', 'shake');
-  if (hp <= 0) { busy = true; setTimeout(runLost, 600); }
+// =====================================================================
+//  "Do the math" mode (optional, saved setting)
+// =====================================================================
+// After a right move, the next line of the equation appears with every newly computed number blanked
+// out, under a small copy of the line before it. The player types each number on a small pad. A wrong
+// number costs 10 HP like a wrong move (and the solve no longer counts as clean, but mastery isn't
+// docked: it's an arithmetic slip, not an algebra one). Two misses on the same number show it.
+// Any equal value is accepted, so a result that doesn't divide evenly can be typed as the unsimplified
+// fraction straight from the operation (14 ÷ 6 -> "14/6"); "7/3", "2.5" and "5/2" all work too.
+// It reads the numbers off the rendered #equation, so it works for every act without engine changes:
+// numbers on each side that weren't on that side before are the ones the player computed.
+let computeMode = false;
+try { computeMode = localStorage.getItem('algebraCards.doTheMath') === '1'; } catch (e) {}
+function setComputeMode(v) {
+  computeMode = v;
+  $('mathBtn').classList.toggle('on', v);
+  $('mathBtn').setAttribute('aria-pressed', String(v));
+  try { localStorage.setItem('algebraCards.doTheMath', v ? '1' : '0'); } catch (e) {}
+}
+$('mathBtn').addEventListener('click', e => {
+  e.stopPropagation(); setComputeMode(!computeMode);
+  if (!computing) setMsg(computeMode ? 'Do the math is on: after each move, type the new numbers. A wrong number costs 10 HP.' : 'Do the math is off.');
+});
+setComputeMode(computeMode);
+
+const NUM_RE = /(−|-)?(\d+(?:\.\d+)?)|([=<>≤≥≠])/g;
+const PLAIN_NUM = /^\s*(−|-)?(\d+(?:\.\d+)?)\s*$/;
+function decFrac(str, neg) {                     // "2.5" -> 5/2
+  const [i, f = ''] = str.split('.');
+  return F((neg ? -1 : 1) * +(i + f), 10 ** f.length);
+}
+const fKey = f => f.n + '/' + f.d;
+// Lists the numbers written in #equation, in order: {value, seg, ...where it is}. seg counts the
+// relation signs before it, so "left side" and "right side" are compared separately.
+function scanNumbers(root) {
+  const out = []; let seg = 0, lastText = null;
+  const skip = el => el.closest && el.closest('svg, .unote, .ciBlank');
+  const walk = node => {
+    if (node.nodeType === 1) {
+      if (skip(node)) return;
+      // A stacked number fraction is one value: the whole thing is one blank.
+      if (node.classList.contains('frac') && node.children.length === 2) {
+        const [a, b] = [...node.children].map(c => c.textContent.match(PLAIN_NUM));
+        if (a && b && !node.querySelector('[data-role]:not(.den)')) {
+          const prev = node.previousSibling, signed = prev && prev.nodeType === 3 && /[−-]$/.test(prev.nodeValue) && !/[−-]\s+[−-]$/.test(prev.nodeValue);
+          const num = decFrac(a[2], !!a[1] !== !!signed), den = decFrac(b[2]);
+          out.push({ value: fMul(num, F(den.d, den.n)), seg, frac: node, signNode: signed ? prev : null });
+          return;
+        }
+      }
+      [...node.childNodes].forEach(walk);
+    } else if (node.nodeType === 3) {
+      const t = node.nodeValue; let m; NUM_RE.lastIndex = 0;
+      const prevText = lastText; if (t.trim()) lastText = node;
+      while ((m = NUM_RE.exec(t))) {
+        if (m[3]) { seg++; continue; }
+        // A minus written in the element just before ("(−" then "4x") still makes it negative.
+        if (!m[1] && m.index === 0 && prevText && /(^|[^\s\d])[−]$/.test(prevText.nodeValue)) {
+          out.push({ value: decFrac(m[2], true), seg, node, start: 0, end: m[0].length, signNode: prevText });
+          continue;
+        }
+        // "−5" (no space) is a negative number; "− 5" is subtracting 5, and the sign stays written.
+        // A minus right before a stacked fraction belongs to the fraction (handled above).
+        if (m[1] && node.nextSibling && node.nextSibling.classList && node.nextSibling.classList.contains('frac') && m.index + m[0].length === t.length) continue;
+        out.push({ value: decFrac(m[2], !!m[1]), seg, node, start: m.index, end: m.index + m[0].length });
+      }
+    }
+  };
+  walk(root);
+  out.rels = seg;
+  return out;
+}
+// The numbers in `after` that the move produced: on each side, anything not already on that side.
+function newNumbers(before, after) {
+  // More relation signs than before means the view changed (a system shown again after one equation
+  // is solved): those numbers were copied, not computed.
+  const rels = list => list.rels;
+  if (rels(after) > rels(before)) return [];
+  const segs = list => new Set(list.map(n => n.seg)).size;
+  const bySide = segs(before) === segs(after) && Math.max(...before.map(n => n.seg), 0) === Math.max(...after.map(n => n.seg), 0);
+  const bags = {};
+  for (const n of before) { const k = (bySide ? n.seg : 0) + '|' + fKey(n.value); bags[k] = (bags[k] || 0) + 1; }
+  return after.filter(n => { const k = (bySide ? n.seg : 0) + '|' + fKey(n.value); if (bags[k]) { bags[k]--; return false; } return true; });
+}
+function parseEntry(t) {
+  t = t.replace(/-/g, '−').trim();
+  const m = t.match(/^(−)?(\d+(?:\.\d+)?)(?:\/(\d+(?:\.\d+)?))?$/);
+  if (!m) return null;
+  const n = decFrac(m[2], !!m[1]); if (!m[3]) return n;
+  const d = decFrac(m[3]); if (d.n === 0) return null;
+  return fMul(n, F(d.d, d.n));
+}
+// Replaces each new number with a blank (last first, so earlier text offsets stay valid).
+function blankOut(items) {
+  const blanks = items.map((it, i) => { const b = document.createElement('span'); b.className = 'ciBlank'; b.dataset.i = i; b.textContent = ' '; return b; });
+  for (let i = items.length - 1; i >= 0; i--) {
+    const it = items[i];
+    if (it.frac) {
+      if (it.signNode) it.signNode.nodeValue = it.signNode.nodeValue.replace(/[−-]$/, '');
+      it.frac.replaceWith(blanks[i]);
+    } else {
+      if (it.signNode) it.signNode.nodeValue = it.signNode.nodeValue.replace(/[−]$/, '');
+      const r = document.createRange(); r.setStart(it.node, it.start); r.setEnd(it.node, it.end);
+      r.deleteContents(); r.insertNode(blanks[i]);
+    }
+  }
+  return blanks;
 }
 
-// After a solve, hold the result for 3 seconds, or skip ahead with a click anywhere.
-const NEXT_DELAY_MS = 3000;
-let nextTimer = null, nextAction = null;
+// Blanks are wider than most numbers, so the line can outgrow the arena (long polynomials, division
+// layouts on a phone): shrink the equation until its widest part fits again.
+function fitBlanks() {
+  const el = $('equation'), availW = ($('arena').clientWidth || innerWidth) * 0.94;
+  let size = parseFloat(getComputedStyle(el).getPropertyValue('--eqSize')) || 56;
+  el.classList.add('fitting');
+  for (let i = 0; i < 12; i++) {
+    const need = Math.max(el.scrollWidth, ...[...el.querySelectorAll('.tok')].map(t => t.scrollWidth));
+    if (need <= availW) break;
+    size = Math.max(12, Math.floor(size * Math.min(0.97, availW / need)));
+    el.style.setProperty('--eqSize', size + 'px');
+    if (size <= 12) break;
+  }
+  el.classList.remove('fitting');
+}
+
+let computing = null;   // the entry in progress: { blanks, items, i, text, misses, done }
+const PAD_KEYS = ['7', '8', '9', '⌫', '4', '5', '6', '−', '1', '2', '3', '/', '.', '0', 'OK'];
+function renderPad() {
+  $('pad').innerHTML = PAD_KEYS.map(k => `<button class="${k === 'OK' ? 'ok' : 'ghost'}" data-k="${k}">${k === 'OK' ? 'Check' : k}</button>`).join('');
+}
+$('pad').addEventListener('click', e => { const b = e.target.closest('button'); if (b) padKey(b.dataset.k); });
+window.addEventListener('keydown', e => {
+  if (!computing) return;
+  const k = e.key === 'Backspace' ? '⌫' : e.key === 'Enter' ? 'OK' : e.key === '-' ? '−' : e.key;
+  if (PAD_KEYS.includes(k)) { e.preventDefault(); padKey(k); }
+});
+function showBlank() {
+  const c = computing; if (!c) return;
+  c.blanks.forEach((b, j) => b.classList.toggle('cur', j === c.i));
+  const b = c.blanks[c.i];
+  b.textContent = c.text || ' ';
+  if (/^−?\d+(\.\d+)?\/\d+(\.\d+)?$/.test(c.text)) {   // show a typed fraction stacked, like the game writes them
+    const [n, d] = c.text.split('/'); b.innerHTML = `<span class="frac"><span>${n}</span><span>${d}</span></span>`;
+  }
+}
+function padKey(k) {
+  const c = computing; if (!c || c.checking) return;
+  if (k === '⌫') c.text = c.text.slice(0, -1);
+  else if (k === '−') c.text = c.text.startsWith('−') ? c.text.slice(1) : '−' + c.text;
+  else if (k === '/') { if (c.text && !c.text.includes('/')) c.text += '/'; }
+  else if (k === '.') { const part = c.text.split('/').pop(); if (!part.includes('.')) c.text += (part === '' || part === '−' ? '0.' : '.'); }
+  else if (k === 'OK') return checkEntry();
+  else if (c.text.replace(/\D/g, '').length < 7) c.text += k;
+  showBlank();
+}
+async function checkEntry() {
+  const c = computing, b = c.blanks[c.i], it = c.items[c.i];
+  const v = parseEntry(c.text);
+  if (!v) { setMsg('Type a number, like 12, −3, 7/3 or 2.5.'); return; }
+  if (v.n === it.value.n && v.d === it.value.d) {
+    b.classList.remove('cur', 'bad'); b.classList.add('ok');
+    setMsg(fracText(it.value) !== c.text ? `Right: ${c.text} = ${fracText(it.value)}` : 'Right!', 'good');
+    b.innerHTML = fracHtml(it.value);
+    return nextBlank();
+  }
+  // Wrong: -10 HP, same as a wrong move. The blank shakes and stays open.
+  c.misses++; cur.wrong++;
+  const sk = progress.skills[cur.path[Math.min(cur.step, cur.path.length - 1)].skill];
+  if (sk) { sk.wrongByCard.Arithmetic = (sk.wrongByCard.Arithmetic || 0) + 1; saveProgress(); }
+  b.classList.remove('bad'); void b.offsetWidth; b.classList.add('bad');
+  const reveal = c.misses >= 2;
+  takeDamage(reveal ? `It's ${fracText(it.value)}.` : `${c.text} isn't right. Check the arithmetic and try again.`);
+  if (hp <= 0) { endCompute(false); return; }
+  if (reveal) { b.classList.remove('cur'); b.classList.add('shown'); b.innerHTML = fracHtml(it.value); return nextBlank(); }
+  c.text = ''; showBlank();
+}
+async function nextBlank() {
+  const c = computing;
+  c.i++; c.text = ''; c.misses = 0;
+  if (c.i < c.blanks.length) return showBlank();
+  c.checking = true;
+  await hold(700);
+  endCompute(true);
+}
+function endCompute(ok) {
+  const c = computing; if (!c) return;
+  computing = null;
+  $('app').classList.remove('computing');
+  $('ciPrev').classList.remove('show'); $('ciPrev').innerHTML = '';
+  c.done(ok);
+}
+$('equation').addEventListener('click', e => {   // tap a blank to fill that one first
+  const b = e.target.closest('.ciBlank'); const c = computing;
+  if (!b || !c || b.classList.contains('ok') || b.classList.contains('shown')) return;
+  const j = +b.dataset.i; if (j === c.i) return;
+  // Swap it into the current slot so the rest stay in order.
+  [c.blanks[c.i], c.blanks[j]] = [c.blanks[j], c.blanks[c.i]]; [c.items[c.i], c.items[j]] = [c.items[j], c.items[c.i]];
+  c.text = ''; showBlank();
+});
+// Runs the entry for one step. Returns true when there was nothing to compute or it was finished,
+// false when the run ended during it. Leaves ns rendered.
+// Moves that copy numbers instead of computing them (plugging in, writing out a rule, substituting)
+// play as usual: blanks there would only ask the player to copy.
+const COPY_MOVES = new Set(['plug', 'plugf', 'plugv', 'plugpt', 'writeout', 'ptslope', 'same', 'write', 'setx', 'sety', 'read', 'subst', 'lineup', 'readpt']);
+function computeStep(card, s, ns) {
+  if (COPY_MOVES.has(card.op)) return Promise.resolve(true);
+  const before = scanNumbers($('equation'));
+  const prev = $('equation').cloneNode(true);
+  renderEquation(ns);
+  const items = newNumbers(before, scanNumbers($('equation')));
+  if (!items.length) return Promise.resolve(true);
+  const p = $('ciPrev'); p.innerHTML = ''; [...prev.childNodes].forEach(n => p.appendChild(n)); p.classList.add('show');
+  const blanks = blankOut(items);
+  fitBlanks();
+  caption(`${cardText(card)}. Type the new number${items.length > 1 ? 's' : ''}.`);
+  renderPad(); $('app').classList.add('computing');
+  return new Promise(done => { computing = { blanks, items, i: 0, text: '', misses: 0, done }; showBlank(); });
+}
+
+// why: the short reason shown under the equation. more: HTML for the "Why?" button (optional).
+function takeDamage(why, more = null) {
+  hp = Math.max(0, hp - DAMAGE); updateHud();
+  setMsg(`-${DAMAGE} HP. ${why}`, 'bad', more);
+  const a = $('arena'); a.classList.remove('flash', 'shake'); void a.offsetWidth; a.classList.add('flash', 'shake');
+  window.SFX?.wrong();
+  if (hp <= 0) { busy = true; clearRunSave(); setTimeout(runLost, 600); }
+  else saveRun();
+}
+
+// After a solve: a short celebration, then the game waits until the player taps (or presses Space/Enter).
+let waiting = false, nextAction = null, waitingSince = 0;
+function celebrate() {
+  const box = $('celebrate'), arena = $('arena').getBoundingClientRect(), eqR = $('equation').getBoundingClientRect();
+  const cx = eqR.left + eqR.width / 2 - arena.left, cy = eqR.top + eqR.height / 2 - arena.top;
+  const colors = ['#ffd166', '#06d6a0', '#7bdff2', '#f1ecff', '#ef8fcf'];
+  // Review fix: the stamp used to be clamped to the arena's top and cover the answer on short screens
+  // (568x320, 844x390, and the wide verdict line on a 390x844 phone). placeStamp() sizes it to the room
+  // above the equation (or puts it just below when there is almost none), and runs again once the layout
+  // settles, since the tap prompt and the solved style move the equation after this point.
+  let html = `<div class="stamp">SOLVED!</div>`;
+  for (let i = 0; i < 18; i++) {
+    const a = (i / 18) * Math.PI * 2 + Math.random() * 0.3, r = 110 + Math.random() * 130;
+    html += `<span class="spark" style="left:${cx}px; top:${cy}px; background:${colors[i % colors.length]}; --dx:${Math.cos(a) * r}px; --dy:${Math.sin(a) * r}px"></span>`;
+  }
+  box.innerHTML = html;
+  const eq = $('equation'); eq.classList.remove('solved'); void eq.offsetWidth; eq.classList.add('solved');
+  requestAnimationFrame(placeStamp); setTimeout(placeStamp, 120); setTimeout(placeStamp, 450);
+  window.SFX?.solved();
+}
+function placeStamp() {
+  const st = document.querySelector('#celebrate .stamp'); if (!st) return;
+  const arena = $('arena').getBoundingClientRect(), eqR = $('equation').getBoundingClientRect();
+  const room = eqR.top - arena.top, big = Math.min(52, Math.max(28, innerWidth * 0.07)), fs = Math.min(big, (room - 6) / 1.3);
+  if (fs >= 18) { st.style.fontSize = fs + 'px'; st.style.top = Math.max(2, room - fs * 1.3) + 'px'; }
+  // Too little room above the answer (short landscape phones): tuck a small stamp into the arena's
+  // top-right corner instead of dropping it below, where it would cover the number line.
+  else { st.style.fontSize = '15px'; st.style.top = '9px'; st.style.textAlign = 'right'; st.style.paddingRight = '10px'; }
+}
 function waitForNext(action) {
-  busy = true; nextAction = action;
+  busy = true; nextAction = action; waiting = true;
+  waitingSince = performance.now();
+  celebrate();
   $('next').classList.add('show');
-  nextTimer = setTimeout(goNext, NEXT_DELAY_MS);
 }
-function goNext() {
-  if (!nextTimer) return;
-  clearTimeout(nextTimer); nextTimer = null;
+async function goNext() {
+  if (!waiting) return;
+  waiting = false;
   $('next').classList.remove('show');
-  const a = nextAction; nextAction = null; a();
+  const a = nextAction; nextAction = null;
+  // The finished question slides out before the next one slides in.
+  const parts = ['foe', 'enemyBox', 'equation', 'cases', 'numline', 'a4top', 'graph', 'step', 'msg', 'unlock', 'celebrate'].map($).filter(Boolean);
+  parts.forEach(p => p.classList.add('leave'));
+  await sleep(350);
+  parts.forEach(p => p.classList.remove('leave'));
+  $('celebrate').innerHTML = ''; $('equation').classList.remove('solved');
+  a();
 }
-window.addEventListener('click', e => { if (nextTimer && !e.target.closest('.speed, button, #over')) goNext(); });
+// Taps: on the result screen a tap moves to the next question; during an animation it skips a step.
+// Uses pointer events rather than click, because iOS Safari doesn't send click for taps on plain
+// page areas. A press that moves more than a few pixels (a card drag) doesn't count as a tap.
+let tapStart = null;
+window.addEventListener('pointerdown', e => { tapStart = { x: e.clientX, y: e.clientY, id: e.pointerId }; });
+window.addEventListener('pointerup', e => {
+  const t = tapStart; tapStart = null;
+  if (!t || t.id !== e.pointerId || Math.hypot(e.clientX - t.x, e.clientY - t.y) > 12) return;
+  if (e.target.closest('.speed, button, #over, #why, #dbgBtn')) return;
+  // A short grace period stops a burst of skip taps from also skipping the result screen.
+  if (waiting) { if (performance.now() - waitingSince > 500) goNext(); }
+  else if (animating) skipStep();
+});
+window.addEventListener('keydown', e => { if (waiting && (e.key === ' ' || e.key === 'Enter') && !$('over').classList.contains('show')) { e.preventDefault(); goNext(); } });
 
 // =====================================================================
 //  Screens: title, tutorial intro, run end, stats
@@ -980,29 +1973,51 @@ function skillSummaryHtml() {
 
 function showTitle() {
   busy = true;
-  showOverlay(`<h1>Act 1: The Ink Cellar</h1><h2>Balancing</h2>
-    <p>Equations have escaped their textbooks. Beat each one by getting x alone. Wrong moves cost 10 HP. Clear the map and defeat The Scale Keeper.</p>
+  // An act opens once its first stage is unlocked (80 mastery on the last stage of the act before).
+  const open = Object.keys(ACTS).map(Number).filter(a => isUnlocked(ACTS[a].firstSkill));
+  const top = open[open.length - 1], A = ACTS[top];
+  const buttons = open.slice().reverse().map(a => [`Start Act ${a}`, () => newRun(a), a !== top]);
+  buttons.push(['Skills & stats', () => showStats(showTitle), true]);
+  // Review fix: testing-only, so it's shown only where the debug menu is (local file, /dev/, ?debug=1).
+  // On the live site one tap used to unlock every stage for good.
+  const debugOn = location.protocol === 'file:' || /\/dev\//.test(location.pathname) || /[?&]debug=1/.test(location.search);
+  if (debugOn && SKILLS.some(s => !isUnlocked(s.id))) buttons.push(['Unlock all stages (testing)', () => {
+    progress.unlocked = SKILLS.map(s => s.id); saveProgress(); renderSkills(); showTitle();
+  }, true]);
+  showOverlay(`<h1>Act ${top}: ${A.name}</h1><h2>${A.sub}</h2>
+    <p>${A.blurb} Wrong moves cost 10 HP.</p>
     <p>Each stage unlocks when the one before it reaches 80 mastery: +25 for a fight with no wrong moves, −10 for each wrong move. Mastery is saved, even if you run out of HP.</p>
-    ${skillSummaryHtml()}`,
-    [['Start run', newRun], ['Skills & stats', () => showStats(showTitle), true]]);
+    ${skillSummaryHtml()}`, buttons);
 }
 
 function showIntro(id) {
   const s = SKILL[id];
   busy = true;
-  showOverlay(`<h2>Tutorial fight</h2><h1>${s.title}</h1><p>${s.intro}</p><div class="example">${s.example}</div>`,
+  showOverlay(`<h2>Tutorial fight</h2><h1>${s.title}</h1><p>${s.intro}</p>${s.introArt || ''}<div class="example">${s.example}</div>`,
     [['Start', () => { hideOverlay(); startPhase(); }]]);
 }
 
 function runLost() {
+  window.SFX?.lost();
   showOverlay(`<h1>Out of HP</h1><p>You reached node ${run.i + 1} of ${run.nodes.length}. Your mastery is saved, so the next run starts with every stage you've unlocked.</p>${skillSummaryHtml()}`,
-    [['New run', newRun], ['Skills & stats', () => showStats(runLost), true]]);
+    [['New run', () => newRun(run.act)], ['Title screen', showTitle, true], ['Skills & stats', () => showStats(runLost), true]]);
 }
 
 function actCleared() {
   $('next').classList.remove('show');
-  showOverlay(`<h1>Act 1 cleared!</h1><p>The Scale Keeper is balanced at last. Act 2, the Bracket Halls, is next to be built. Until then, run Act 1 again to keep your skills sharp.</p>${skillSummaryHtml()}`,
-    [['New run', newRun], ['Skills & stats', () => showStats(actCleared), true]]);
+  const text = run.act === 1
+    ? `The Scale Keeper is balanced at last. ${isUnlocked('liketerms') ? 'Act 2, the Bracket Halls, is open.' : 'Act 2, the Bracket Halls, opens when Negatives & fractions reaches 80 mastery.'}`
+    : run.act === 2
+    ? `The Archivist's shelves are back in order. ${isUnlocked('ineq') ? 'Act 3, the Leaning Stacks, is open.' : 'Act 3, the Leaning Stacks, opens when No solution / every x reaches 80 mastery.'}`
+    : run.act === 3
+    ? `The Leaning Tower stands straight again. ${isUnlocked('evalx') ? 'Act 4, the Map Room, is open.' : 'Act 4, the Map Room, opens when the last Act 3 skill reaches 80 mastery.'}`
+    : run.act === 4
+    ? `The Cartographer\'s maps are true again. ${isUnlocked('subst') ? 'Act 5, the Twin Observatory, is open.' : 'Act 5, the Twin Observatory, opens when Lines reaches 80 mastery.'}`
+    : run.act === 5
+    ? `The Twin Moons line up at last. ${isUnlocked('exprules') ? 'Act 6, the Power Forge, is open.' : 'Act 6, the Power Forge, opens when the last Act 5 skill reaches 80 mastery.'}`
+    : 'The Forgemaster\'s fires burn steady again. Act 7 is still to be built, so run Act 6 again to keep your skills sharp.';
+  showOverlay(`<h1>Act ${run.act} cleared!</h1><p>${text}</p>${skillSummaryHtml()}`,
+    [['New run', () => newRun(run.act)], ['Title screen', showTitle, true], ['Skills & stats', () => showStats(actCleared), true]]);
 }
 
 function fmtDate(iso) { return iso ? iso.slice(0, 10) : 'never'; }
@@ -1026,9 +2041,13 @@ function showStats(back) {
   // Time spent reading stats is not thinking time, so push the move clock forward by it.
   const close = () => { if (cur && cur.lastT) cur.lastT += performance.now() - opened; if (back) back(); else hideOverlay(); };   // the overlay blocks input while open, so busy is left alone
   showOverlay(`<h1>Skills &amp; stats</h1><p>Saved in this browser. 80 mastery unlocks the next stage. A mastered skill that drops below 80 is marked "needs review" and shows up more often.</p>${rows}`,
-    [['Close', close], ['Reset all progress', () => {
+    [['Close', close], ...(run && hasRunSave() ? [['Abandon this run', () => {
+      if (!confirm('Give up this run and go back to the title screen? Your mastery and stats are kept.')) return;
+      clearRunSave(); run = null; fight = null; cur = null; hp = MAX_HP; updateHud(); showTitle();
+    }, true]] : []), ['Reset all progress', () => {
       if (!confirm('Erase all mastery and stats in this browser?')) return;
       try { localStorage.removeItem(STORE_KEY); } catch (e) {}
+      clearRunSave(); run = null; fight = null; cur = null; hp = MAX_HP; updateHud();
       progress = loadProgress(); renderSkills(); showTitle();
     }, true]]);
 }
@@ -1038,7 +2057,14 @@ $('statsBtn').addEventListener('click', e => { e.stopPropagation(); if (!$('over
 window.__game = { get cur() { return cur; }, get hand() { return hand; }, get busy() { return busy; }, get run() { return run; }, get hp() { return hp; },
   get progress() { return progress; }, playCard, correct: () => cur && cur.path[cur.step].move, goNext, newRun };
 
-renderSkills(); updateHud(); showTitle();
 </script>
+<script src="act2.js"></script>
+<script src="act3.js"></script>
+<script src="act4.js"></script>
+<script src="act5.js"></script>
+<script src="act6.js"></script>
+<script>renderSkills(); updateHud(); if (!resumeRun()) showTitle();</script>
+<script src="debug.js"></script>
+<script src="sfx.js"></script>
 </body>
 </html>
