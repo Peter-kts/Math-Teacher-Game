@@ -1091,7 +1091,8 @@ function pickFightSkill() {
 function buildFight(node) {
   const list = runSkills();
   if (node.type === 'tutorial') return { phases: SKILL[node.skill].tutorial, handSize: 3, rank: 'Tutorial' };
-  if (node.type === 'fight') { const id = pickFightSkill(); return { phases: [SKILL[id].gen], handSize: difficulty.hand }; }
+  // node.skill: a fight of just that stage (the debug menu's stage jumps).
+  if (node.type === 'fight') { const id = node.skill || pickFightSkill(); return { phases: [SKILL[id].gen], handSize: difficulty.hand }; }
   if (run.act === 2) return ACT2.buildFight(node, list);
   if (run.act === 3) return ACT3.buildFight(node, list);
   if (run.act === 4) return ACT4.buildFight(node, list);
@@ -1148,6 +1149,7 @@ function freshEquation(gen, { prepare = g => g, mirror = true, tries = 40 } = {}
 function startNode() {
   const node = run.nodes[run.i];
   fight = { ...buildFight(node), node, phase: 0 };
+  if (node.startPhase) fight.phase = Math.min(node.startPhase, fight.phases.length - 1);   // debug menu: start a boss at a later phase
   renderMap();
   $('enemyBox').classList.remove('dead');
   if (node.type === 'tutorial') showIntro(node.skill); else startPhase();
