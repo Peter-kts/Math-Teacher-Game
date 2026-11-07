@@ -46,6 +46,10 @@
   #enemyBox.dead { transform: scale(0) rotate(90deg); opacity:0; }
   #enemyBox.hit { animation: hit calc(.5s * var(--k)); }
   @keyframes hit { 0%,100% { transform:none; filter:none; } 30% { transform: translateX(-8px) scale(.92); filter: brightness(3); } 60% { transform: translateX(6px); } }
+  /* Test-style instruction above the equation ("Solve for x.", "Solve and graph."), worded like a math test. */
+  #prompt { font-size:18px; color:var(--ink); text-align:center; padding:0 10px; letter-spacing:.2px; }
+  #prompt:empty { display:none; }
+  #prompt i { color:var(--accent); font-weight:bold; }
   #equation { display:flex; align-items:center; gap:4px; font-size:var(--eqSize); font-weight:bold; flex-wrap:wrap; justify-content:center; perspective:600px; position:relative; padding-bottom:.5em; }
   .tok { padding:14px 12px; border:4px dashed transparent; border-radius:10px; min-width:64px; white-space:pre; min-height:96px; display:flex; align-items:center; justify-content:center; text-align:center; max-width:320px; transition: background .15s, border-color .15s, max-width .25s, min-width .25s, padding .25s, opacity .25s, transform .25s, color .2s; }
   #arena.targeting .tok:not(.eq) { border-color: var(--muted); background:#ffffff0d; }
@@ -201,6 +205,8 @@
     .tok { min-height:calc(var(--eqSize) * 1.7); min-width:calc(var(--eqSize) * 1.1); padding:6px 5px; border-width:3px; }
     .tok.eq { padding:6px 3px; }
     #step, #msg, #unlock { font-size:13px; }
+    #prompt { font-size:14px; }
+    #arena:has(#next.show) #prompt { display:none; }
     /* In the flow on phones, so it sits under the solve message instead of on top of it. */
     #next { position:static; font-size:12px; }
     #arena:has(#next.show) #foe, #arena:has(#next.show) #enemyBox { display:none; }
@@ -246,6 +252,8 @@
     .tok { min-height:calc(var(--eqSize) * 1.6); min-width:calc(var(--eqSize) * 1.1); padding:4px 5px; border-width:3px; }
     .tok.eq { padding:4px 3px; }
     #step, #msg, #unlock { font-size:12px; min-height:0; }
+    #prompt { font-size:13px; }
+    #arena:has(#next.show) #prompt { display:none; }
     #next { position:static; font-size:12px; }
     #arena:has(#next.show) #foe, #arena:has(#next.show) #enemyBox { display:none; }
     #equation.solved { padding-bottom:0; } #equation.solved .tok { min-height:0; }
@@ -285,6 +293,7 @@
     <div id="foe"></div>
     <!-- stand-in enemy art (swap for PNGs later) -->
     <div id="enemyBox"></div>
+    <div id="prompt"></div>
     <div id="equation"></div>
     <div id="step"></div>
     <div id="msg"></div>
@@ -758,6 +767,34 @@ function renderEquation(s) {
   const el = $('equation'); if (typeof clearNotes === 'function') clearNotes(); el.innerHTML = '';
   tokensFor(s).forEach(t => el.appendChild(tokEl(t)));
 }
+// ---------- Test-style prompt ----------
+// Every problem gets one instruction line above it, worded the way a math test would ask it. The
+// wording is picked once when the problem appears (from a few real-test phrasings for its type) and
+// stays put while the player works, even when the state changes shape (e.g. |x| splitting into cases).
+const PROMPTS = {
+  equation:  v => [`Solve for ${v}.`, `Find ${v}.`, 'Solve.', 'Solve the equation.'],
+  ineq:      v => ['Solve the inequality.', `Solve for ${v}.`, 'Solve and graph.', 'Solve. Graph the solution on a number line.'],
+  compound:  v => ['Solve the compound inequality.', 'Solve and graph.', `Solve for ${v}.`],
+  absEq:     v => ['Solve.', 'Solve the absolute value equation.', `Find all values of ${v}.`, `Solve for ${v}.`],
+  absIneq:   v => ['Solve the inequality.', 'Solve and graph.', 'Solve. Graph the solution on a number line.'],
+};
+function promptKind(s) {
+  if (s.board || s.chain) return 'compound';     // a board at the start is an "or" compound; Act 3 abs only becomes a board after Split
+  if (s.abs) return s.rel === '=' ? 'absEq' : 'absIneq';
+  if (s.rel && s.rel !== '=') return 'ineq';
+  return 'equation';
+}
+function problemPrompt(s, skills = []) {
+  if (s.k4) return window.ACT4 && ACT4.prompt ? ACT4.prompt(s) : '';   // Act 4 words its own questions
+  const v = `<i>${s.v || 'x'}</i>`, kind = promptKind(s);
+  // "Find x." promises an x exists, so it's left off when the answer is no solution / every number.
+  const all = PROMPTS[kind](v).filter(t => !(skills.includes('special') && t.startsWith('Find')));
+  const fresh = all.filter(t => t !== lastPrompt[kind]);       // don't ask the same way twice in a row
+  return (lastPrompt[kind] = pick(fresh.length ? fresh : all));
+}
+const lastPrompt = {};
+function showPrompt(html) { $('prompt').innerHTML = html || ''; }
+
 function sideTexts(s) {
   const left = [], right = []; let onRight = false;
   for (const t of tokensFor(s)) { if (t.role === 'eq') { onRight = true; continue; } (onRight ? right : left).push(t.text); }
@@ -1179,8 +1216,9 @@ function startPhase() {
   $('enemyBox').classList.remove('dead', 'hit');
   renderFoe();
   caption(''); setMsg(''); $('unlock').textContent = '';
+  cur.prompt = problemPrompt(cur.state, cur.skills); showPrompt(cur.prompt);
   renderEquation(cur.state); dealHand(); busy = false;
-  for (const id of ['foe', 'enemyBox', 'equation']) { const e = $(id); e.classList.remove('arrive'); void e.offsetWidth; e.classList.add('arrive'); }
+  for (const id of ['foe', 'enemyBox', 'prompt', 'equation']) { const e = $(id); e.classList.remove('arrive'); void e.offsetWidth; e.classList.add('arrive'); }
 }
 
 function renderFoe() {
