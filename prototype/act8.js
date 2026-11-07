@@ -46,7 +46,7 @@
   const ORD = q => (q === 2 ? 'square' : q === 3 ? 'cube' : q + 'th');
   const SUPD = '⁰¹²³⁴⁵⁶⁷⁸⁹';
   const supT = n => (n < 0 ? '⁻' : '') + String(Math.abs(n)).split('').map(d => SUPD[+d]).join('');
-  const supFT = f => (f.d === 1 ? supT(f.n) : supT(f.n) + 'ᐟ' + supT(f.d).replace('⁻', ''));
+  const supFT = f => (f.d === 1 ? supT(f.n) : `^(${fracText(f)})`);
   // Exponents and root indexes are written in <sup class="nonum">, so "Do the math" doesn't ask for them.
   const supH = n => `<sup class="nonum e8">${numText(n)}</sup>`;
   const supFH = f => `<sup class="nonum e8">${f.d === 1 ? numText(f.n) : (f.n < 0 ? MINUS : '') + Math.abs(f.n) + '/' + f.d}</sup>`;
@@ -492,7 +492,7 @@
     switch (c.rf) {
       case 'in': return rootOf(q, pw(p), true);
       case 'out': return p === 1 ? rootOf(q, X, true) : `(${rootOf(q, X, true)})${supH(p)}`;
-      case 'swap': return rootOf(p, pw(q), true);
+      case 'swap': return p === 1 ? pw(q) : rootOf(p, pw(q), true);
       case 'exp': return X + supFH(F(p, q));
       case 'expswap': return X + supFH(F(q, p));
       case 'expmul': return X + supH(p * q);
@@ -504,7 +504,7 @@
     switch (c.rf) {
       case 'out': return p === 1 ? rootOf(q, b, true) : `(${rootOf(q, b, true)})${supH(p)}`;
       case 'in': return rootOf(q, b + (p === 1 ? '' : supH(p)), true);
-      case 'swap': return q === 1 ? rootOf(p, b, true) : `(${rootOf(p, b, true)})${supH(q)}`;
+      case 'swap': return p === 1 ? (c.b < 0 ? `(${b})` : b) + supH(q) : q === 1 ? rootOf(p, b, true) : `(${rootOf(p, b, true)})${supH(q)}`;
       case 'mul': return `${b} ${TIMES} ${p}/${q}`;
     }
     return '?';
@@ -1147,7 +1147,7 @@
   async function animNeg(c, s, ns) {
     const e = evOf(s), t = evTok();
     mark([t], 'hot8'); t.classList.add('spin');
-    const n = await written(`1 / ${parenF(e.b, true)}${supFH(fNeg(e.e))}`, [t], `Negative exponent: b${supT(-1)}ⁿ = 1/bⁿ. It goes under 1 and the exponent turns positive`);
+    const n = await written(`1 / ${parenF(e.b, true)}${supFH(fNeg(e.e))}`, [t], 'Negative exponent: b⁻ⁿ = 1/bⁿ. It goes under 1 and the exponent turns positive');
     dropNote(n); t.classList.remove('spin');
     await result(ns, ['V'], `${parenF(e.b, false)}${supFT(e.e)} = 1/${parenF(e.b, false)}${supFT(fNeg(e.e))}`);
   }
@@ -1157,7 +1157,7 @@
     const sup = t.querySelector('sup.e8'); if (sup) sup.classList.add('lift8');
     const n = await written(`${q} → ${ORD(q)} root${p > 1 ? `, ${p} → power ${p}` : ''}`, [t], `A fraction exponent p/q: the bottom (${q}) is the root, the top (${p}) is the power`);
     dropNote(n);
-    await result(ns, ['V'], `${parenF(e.b, false)}${supFT(e.e)} = ${evHtml(nsEv(ns) || { ...e, form: 'out' }, false)}`);
+    await result(ns, ['V'], `${evHtml(e, false)} = ${evHtml(nsEv(ns) || { ...e, form: 'out' }, false)}`);
   }
   async function animRoot(c, s, ns) {
     const e = evOf(s), t = evTok(), q = e.e.d;
@@ -1326,7 +1326,7 @@
         st = rxState([Tm(Fc(L >= 2 && chance(0.4) ? rand(2, 5) : 1, n, xi))]);
       } else if (cs === 'mul') {
         const a = rand(2, [15, 20, 30, 30][L]), b = rand(2, [15, 20, 30, 30][L]);
-        if (a === b || sqPart(a) > 1 || sqPart(b) > 1 || sqPart(a * b) === 1 || a * b > [120, 300, 600, 900][L]) continue;
+        if (a === b || sqPart(a) > 1 || sqPart(b) > 1 || sqPart(a * b) === 1 || a * b > [60, 150, 300, 500][L]) continue;
         const k1 = L && chance(0.5) ? rand(2, 5) : 1, k2 = L && chance(0.5) ? rand(2, 5) * sgnP(L >= 2 ? 0.3 : 0) : 1;
         st = rxState([Tm(Fc(k1, a), Fc(k2, b))]);
       } else if (cs === 'add') {
@@ -1369,7 +1369,8 @@
         const q = pick(Qs), p = rand(cs === 'neg' ? 1 : 2, q === 2 ? 5 : 4);
         if (!coprime(p, q) || p === q) continue;
         const b = base(q), r = rootF(b, q);
-        if (!r || Math.abs(fv(powF(r, p))) > 1500 || powF(r, p).d > 1000) continue;
+        const big = [64, 300, 1000, 1500][L];
+        if (!r || Math.abs(fv(powF(r, p))) > big || powF(r, p).d > big) continue;
         st = evalState(b, F(cs === 'neg' ? -p : p, q));
       } else if (cs === 'rewrite') {
         const toRad = chance(0.5), q = rand(2, [4, 5, 7, 7][L]), p = rand(toRad ? 2 : 1, [3, 5, 6, 7][L]);
@@ -1377,7 +1378,7 @@
         st = rwState(toRad ? 'torad' : 'toexp', F(p, q));
       } else if (cs === 'rules') {
         const form = pick(L >= 2 ? ['prod', 'quot', 'pow', 'mix'] : ['prod', 'quot', 'pow']);
-        const fr = () => { const q = rand(2, [4, 6, 6, 8][L]); return F(rand(1, q + (L ? 3 : 1)), q); };
+        const fr = () => { for (;;) { const q = rand(2, [4, 6, 6, 8][L]), f = F(rand(1, q + (L ? 3 : 1)), q); if (f.d > 1) return f; } };
         let num = [], den = [], g = null;
         if (form === 'prod') num = [fr(), fr()];
         if (form === 'quot') { num = [fr()]; den = [fr()]; }
@@ -1534,11 +1535,11 @@
     .tok.a4.f8 { padding:4px 4px; min-width:0; white-space:nowrap; }
     .tok.a4.s8 { padding:4px 3px; min-width:0; color:var(--muted); border-color:transparent !important; background:none !important; }
     .tok.a4.side8, .tok.a4.v8, .tok.a4.o8, .tok.a4.c8, .tok.a4.p8 { padding:4px 6px; white-space:nowrap; }
-    .w8 { display:inline-flex; align-items:center; white-space:nowrap; }
+    .w8 { display:inline-block; white-space:nowrap; }
     sup.e8 { font-size:.5em; vertical-align:.85em; line-height:0; margin-left:.05em; }
     .rt8 { display:inline-flex; align-items:flex-start; white-space:nowrap; margin:0 .04em; }
     .rt8 .rs8 { display:inline-block; transform-origin:bottom; transition: opacity .35s, transform .35s; }
-    .rt8 .rr8 { border-top:.07em solid currentColor; padding:0 .08em; margin-left:-.02em; margin-top:.12em; line-height:1.1; display:inline-flex; align-items:center; }
+    .rt8 .rr8 { border-top:.07em solid currentColor; padding:0 .08em; margin-left:-.02em; margin-top:.12em; line-height:1.1; display:inline-block; white-space:nowrap; }
     .rt8 sup.ri8 { font-size:.45em; margin-right:-.35em; margin-top:.25em; line-height:1; z-index:1; }
     .rt8 .peel8, .peel8 { opacity:0; transform: translateY(-.4em) rotate(-25deg); transition: opacity .4s, transform .4s; }
     .frac.f8 { font-size:.8em; }
@@ -1570,7 +1571,7 @@
     .unote.n8 { font-size:max(.42em, 14px); }
     .unote.n8 .rt8 .rr8 { border-top-width:.08em; }
     .card .clong.l8 { white-space:normal; display:block; line-height:1.1; }
-    .card .clong.l8 sup { font-size:.6em; }
+    .card .clong.l8 sup { font-size:.75em; }
     .card .clong.l8 .frac.f8c { font-size:.75em; display:inline-flex; vertical-align:middle; }
     .card .clong.l8 .rt8 .rr8 { border-top-width:.08em; }
     @media (max-width: 640px) {
