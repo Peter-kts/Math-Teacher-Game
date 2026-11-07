@@ -166,7 +166,7 @@
 
   // ---------------------------------------------------------------- text
   const XV = '<i class="xv">x</i>';
-  function body(it, html) {      // the term without its sign
+  function body(it, html, sign) {      // the term without its sign
     if (it.t === 'n') return html ? fracHtml(fAbs(it.k)) : fracText(fAbs(it.k));
     if (it.t === 'x') {
       const { n, d } = fAbs(it.k);
@@ -174,14 +174,17 @@
       if (d === 1) return top;
       return html ? `<span class="frac"><span>${top}</span><span class="den">${d}</span></span>` : `${top}/${d}`;
     }
-    const m = fAbs(it.m), mm = fIs(m, 1) ? '' : (html ? fracHtml(m) : fracText(m));
+    // The sign of a group's multiplier goes inside .gm, so Distribute highlights "−4" as one unit (it used to
+    // light up only the 4, which read as if the 4 was multiplied in, not −4).
+    const m = fAbs(it.m), mm = (sign || '') + (fIs(m, 1) ? '' : (html ? fracHtml(m) : fracText(m)));
     const inner = it.items.map((t, j) => (html ? `<span class="gi">${termStr(t, j === 0, true)}</span>` : termStr(t, j === 0, false))).join(' ');
     // One wrapper span: .tok is a flex box, which would drop the spaces between loose spans.
     return html ? `<span class="gw"><span class="gm">${mm}</span><span class="gp">(</span>${inner}<span class="gp">)</span></span>` : `${mm}(${inner})`;
   }
   function termStr(it, first, html) {
-    const neg = (it.t === 'g' ? it.m : it.k).n < 0;
-    return (neg ? (first ? MINUS : MINUS + ' ') : (first ? '' : '+ ')) + body(it, html);
+    const neg = (it.t === 'g' ? it.m : it.k).n < 0, sign = neg ? (first ? MINUS : MINUS + ' ') : (first ? '' : '+ ');
+    if (it.t === 'g' && html && neg) return body(it, html, sign);
+    return sign + body(it, html);
   }
   const sideStr = (side, html) => (side.length ? side.map((it, i) => termStr(it, i === 0, html)).join(' ') : '0');
   const eqText = e => (e.result === 'none' ? 'No solution' : e.result === 'all' ? 'Every number works' : `${sideStr(e.L)} = ${sideStr(e.R)}`);
@@ -807,23 +810,26 @@
     }
     return e;
   }
-  function applyDifficulty2(g, regen, opts = {}) {   // opts.noXadd: no x-term added to both sides (Act 3 uses it to keep a needed flip)
+  function applyDifficulty2(g, regen, opts = {}) {   // opts (Act 3): noXadd = no x-term added to both sides (it would hide a needed flip); keepAnswer, messyOK: see below
     const D = difficulty;
     for (let tries = 0; tries < 40; tries++, g = regen()) {
       let e = clone(g.eq);
       const f = D.level >= 2 ? rand(2, 4) : D.level === 1 ? rand(1, 2) : 1;
       // Every level teaches all the material: Easy also gets some (small) negative answers and every level
       // gets some simple fraction answers (x = 3/2); Expert's are messy (x = −17/6).
-      e = scaleNums(e, f * (Math.random() < (D.neg ? 0.5 : 0.15) ? -1 : 1));
-      const end = pathFrom(e).end, wantFrac = !D.fracAnswers && Math.random() < 0.15;
-      if ((D.fracAnswers || wantFrac) && !end.result) { const sd = numSide(e); if (sd) { const side = sideOf(e, sd); let k; do k = fAdd(side[0].k, F(nonZero(-5, 5))); while (fZero(k)); side[0] = N(k); } }
+      // opts.keepAnswer (Act 3): the generator already chose the answer's kind (its case), so no random sign
+      // flip or fraction nudge; opts.messyOK lets Expert nudge a fraction case into a messy fraction.
+      const keep = !!opts.keepAnswer;
+      e = scaleNums(e, f * (!keep && Math.random() < (D.neg ? 0.5 : 0.15) ? -1 : 1));
+      const end = pathFrom(e).end, wantFrac = !keep && !D.fracAnswers && Math.random() < 0.15;
+      if (((D.fracAnswers && (!keep || opts.messyOK)) || wantFrac) && !end.result) { const sd = numSide(e); if (sd) { const side = sideOf(e, sd); let k; do k = fAdd(side[0].k, F(nonZero(-5, 5))); while (fZero(k)); side[0] = N(k); } }
       // Review fix (line above): the nudge used to cancel the number to 0 sometimes, leaving "3x + 0" and a "+0" card.
       if (D.steps) e = addSteps(e, D.steps, opts);
       const c = makeEquation2(e);
       if (c.path.length >= 12 || allNums(e).some(k => Math.abs(k.n) > D.max * 2)) continue;
-      if (!c.end.result && !D.fracAnswers && c.answer.d !== 1 && !(wantFrac && c.answer.d <= 4)) continue;
-      if (!c.end.result && !D.level && Math.abs(c.answer.n / c.answer.d) > 9 && c.answer.n < 0) continue;   // Easy: small negatives
-      if (!c.end.result && D.fracAnswers && c.answer.d === 1 && Math.random() < 0.6) continue;
+      if (!keep && !c.end.result && !D.fracAnswers && c.answer.d !== 1 && !(wantFrac && c.answer.d <= 4)) continue;
+      if (!keep && !c.end.result && !D.level && Math.abs(c.answer.n / c.answer.d) > 9 && c.answer.n < 0) continue;   // Easy: small negatives
+      if (!keep && !c.end.result && D.fracAnswers && c.answer.d === 1 && Math.random() < 0.6) continue;
       return { ...g, eq: e };
     }
     return g;

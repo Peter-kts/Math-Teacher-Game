@@ -10,7 +10,9 @@
 //   single  Act 2's equation model plus a relation: { L, R, result: null, rel: '<'|'≤'|'>'|'≥'|'=', owe }
 //           Act 2's engine does the algebra (apply, the expected path, hands, animations); this file adds the sign.
 //   chain   a three-part compound: { chain: true, lo, rel1, coef, b, constFirst, rel2, hi, owe }
-//   abs     before the split: { abs: true, m, a, b, c, rel, d }  meaning  m|ax + b| + c  rel  d
+//   abs     before the split: { abs: true, m, a, b, c, rel, d, result }  meaning  m|ax + b| + c  rel  d
+//           Once the bars are alone: Split (=), Between (< ≤) or Outside (> ≥) if d > 0; if d < 0, the
+//           verdict No solution (= < ≤) or All x (> ≥), which sets result.
 //   board   two cases joined by "or": { board: true, join: 'or', branches: [single, single], active }
 //
 // The flip is its own move. Multiplying or dividing by a negative leaves the sign as it was and marks
@@ -48,6 +50,28 @@
   const FLIP_CARD = { op: 'flip', scope: 'part', ref: 'rel' };
   const showHint = () => typeof difficulty !== 'undefined' && difficulty.highlight === 'on';
   const fLess = (a, b) => a.n * b.d < b.n * a.d;
+  // Split comes in three: two cases for |u| = d, "between" (one chain) for |u| < d, "outside" (two cases)
+  // for |u| > d. For inequalities both Between and Outside are in the hand, and choosing is the skill.
+  const gtRel = rel => rel === '>' || rel === '≥';
+  const wayFor = rel => (rel === '=' ? 'two' : gtRel(rel) ? 'outside' : 'between');
+  const SPLIT = (way, d, incl) => ({ op: 'split', scope: 'part', ref: 'abs', way, d, incl });
+  // Review fix: ≤ and ≥ read "at most" / "at least", not "less than" / "more than".
+  const awayWord = rel => ({ '<': 'Less than', '≤': 'At most', '>': 'More than', '≥': 'At least' })[rel] || 'Less than';
+
+  // Cases. Every difficulty covers every case of a stage (the difficulty only changes how hard each one
+  // is to solve). Normal fights go through them with index.html's shared cycle (SKILL.cases + cycled():
+  // the generator gets the case, and a stage isn't mastered until each case is solved once).
+  // applyDifficulty3 checks that a question is still its case after the difficulty changes.
+  const CASES = {
+    ineq: ['keep-pos', 'keep-neg', 'keep-frac', 'flip-pos', 'flip-neg', 'flip-frac'],
+    compound: ['keep-pos', 'keep-neg', 'keep-frac', 'flip-pos', 'flip-neg', 'flip-frac', 'or'],
+    absval: ['two-int', 'two-frac', 'none'],
+    absineq: ['between-int', 'between-frac', 'outside-int', 'outside-frac', 'none', 'all'],
+  };
+  // Elites and boss phases pick a case at random (they don't take one from the cycle).
+  const anyCase = (skill, only = () => true) => pick(CASES[skill].filter(only));
+  // pos / neg / frac for a set of answer numbers: frac if any is a fraction, neg if any is negative.
+  const ansKind = vs => (vs.some(v => !isInt(v)) ? 'frac' : vs.some(v => v.n < 0) ? 'neg' : 'pos');
 
   // Path skills: plain steps (+ − × ÷ and Flip) practise the fight's own stage, so its mastery goes there.
   // Act 2 moves (Distribute, Combine, x on both sides) keep their own skill.
@@ -103,7 +127,7 @@
     : `${c.op === '/' ? 'Divide both sides by' : 'Multiply both sides by'} ${byText(c)}`);
   function label(c) {
     if (isFlip(c)) return '<span class="clong">Flip ⇅</span>';
-    if (c.op === 'split') return '<span class="clong">Split | |</span>';
+    if (c.op === 'split') return `<span class="clong">${c.way === 'between' ? 'Between' : c.way === 'outside' ? 'Outside' : 'Split | |'}</span>`;
     if (c.op === 'trap' && c.trap === 'flip negative') return `${scaleBase({ ...c, op: c.scaleOp })}<span class="ftag">and flip</span>`;
     if (c.op === 'trap' && c.trap === 'drop bars') return '<span class="clong">Drop | |</span>';
     return null;
@@ -111,7 +135,13 @@
   // Stage 11: every ⇔ card on a chain says it hits all three parts.
   function text(c) {
     if (isFlip(c)) return c.parts3 ? 'Flip both signs' : 'Flip the inequality sign';
-    if (c.op === 'split') return 'Split into cases';
+    if (c.op === 'split') {
+      if (!c.d) return c.way === 'between' ? 'Split: between (one chain)' : c.way === 'outside' ? 'Split: outside (two cases)' : 'Split into two cases';
+      const d = fracText(c.d), nd = fracText(fMul(c.d, F(-1))), inc = c.incl ? ', ends in' : '';
+      if (c.way === 'between') return `Split: between ${nd} and ${d}${inc}`;
+      if (c.way === 'outside') return `Split: below ${nd} or above ${d}${inc}`;
+      return 'Split into two cases';
+    }
     if (c.op === 'trap') return c.text || null;
     if (c.parts3 && (c.op === '+' || c.op === '-')) return c.op === '+' ? `Add ${c.n} to all three parts` : `Subtract ${c.n} from all three parts`;
     if (c.parts3) return scaleText(c);
@@ -132,12 +162,15 @@
     return out;
   }
   const numsOf = e => new Set([...e.L, ...e.R].flatMap(it => (it.t === 'g' ? [it.m, ...it.items.map(t => t.k)] : [it.k])).filter(f => isInt(f) && f.n).map(f => Math.abs(f.n)));
-  // Expert trap: the classic mix-up of flipping because a negative number shows up, when the division is by a positive.
+  // The classic mix-up of flipping because a negative number shows up, when the division is by a positive.
+  // It's a rule decoy: in the hand at every difficulty (outside tutorials) whenever the answer is negative.
   function flipNegTrap(correct, before, after, parts3) {
     const by = byText(correct);
     return { op: 'trap', trap: 'flip negative', scaleOp: correct.op, n: correct.n, d: correct.d, parts3,
-      text: `${scaleText({ ...correct, parts3 })} and flip (the number is negative)`,
-      why: `<p>Only multiplying or dividing by a <b>negative</b> number flips the sign. Here you ${correct.op === '*' ? 'multiply' : 'divide'} by ${by}, which is positive, so the sign stays: ${before} becomes ${after}. A negative number on the other side doesn't matter: x &lt; ${MINUS}4 is a perfectly good answer.</p>` };
+      // Review fix: shorter text (the old one overflowed 6-card hands on phones), and "divide" only for ÷
+      // (a reciprocal ×3/2 used to say "divide").
+      text: `${correct.op === '/' ? 'Divide' : 'Multiply'} by ${by}, then flip`,
+      why: `<p>Only multiplying or dividing by a <b>negative</b> number flips the sign. Here you ${correct.op === '/' ? 'divide' : 'multiply'} by ${by}, which is positive, so the sign stays: ${before} becomes ${after}. A negative number on the other side doesn't matter: x &lt; ${MINUS}4 is a perfectly good answer.</p>` };
   }
   // plain: a case on a board (one x-term, one number each side), where Act 2's Combine, Distribute and
   // x-term decoys make no sense; number cards fill in instead.
@@ -147,7 +180,7 @@
     if (e.owe) return shuffle([FLIP_CARD, ...decoys(numsOf(e), size - 1, [FLIP_CARD])]);
     let hand = A2.makeHand(e, correct, e.rel === '=' ? size : size - 1).filter(keep);
     if (e.rel !== '=') hand.push(FLIP_CARD);
-    if (!tut && e.rel !== '=' && difficulty.level >= 3 && SCALE_OPS.includes(correct.op) && !negScale(correct) && !correct.lcd) {
+    if (!tut && e.rel !== '=' && SCALE_OPS.includes(correct.op) && !negScale(correct) && !correct.lcd) {
       const after = sApply(e, correct), sol = solution(after);
       if (sol && sol.v.n < 0) hand.push(flipNegTrap(correct, eqText(e), eqText(after), false));
     }
@@ -181,7 +214,7 @@
     const P = t => `<p>${t}</p>`, out = [];
     if (isFlip(card)) {
       if (e.owe) return P('Flip was the right card. It goes on the sign itself, so drop it right on the &lt; or &gt;.');
-      out.push(P(`The sign only flips right after multiplying or dividing by a <b>negative</b> number: ${FLIP_IDEA}. Nothing like that has happened since the last flip, so ${eqH(e)} keeps its sign.`));
+      out.push(P(`The sign only flips right after multiplying or dividing by a <b>negative</b> number: ${FLIP_IDEA}. Nothing like that has just happened, so ${eqH(e)} keeps its sign.`));
     } else if (e.owe) {
       out.push(P(`The last move ${'multiplied or divided'} by a negative number, and ${FLIP_IDEA}. Right now ${eqH(e)} has the old sign, so it isn't true yet. Flip comes first, before anything else.`));
       out.push(P('<b>What works here:</b> drop Flip on the sign.'));
@@ -197,7 +230,7 @@
     else if (m.x) how = `x is on both sides. ${A2.text(m)} so x is left on one side only. Adding or subtracting never flips the sign.`;
     else if (m.op === '+' || m.op === '-') how = `Get the x-term alone first: ${cardText(m).toLowerCase()}. Adding or subtracting the same number on both sides keeps the sign as it is.`;
     else if (negScale(m)) how = `x has a negative number in front of it. ${scaleText(m)}, then play Flip on the sign: ${FLIP_IDEA}.`;
-    else how = `x is alone apart from the number in front of it. ${cardText(m)} turns it into 1. It's a positive number, so the sign stays ${e.rel}.`;
+    else how = `x is alone apart from the number in front of it. ${cardText(m)} turns it into 1.${e.rel === '=' ? '' : ` It's a positive number, so the sign stays ${e.rel}.`}`;   // review fix: no "the sign stays =" on equation cases
     out.push(P(`<b>What works here:</b> ${how}`));
     return out.join('');
   }
@@ -394,7 +427,7 @@
     if (e.owe) hand = [FLIP_CARD, ...decoys(new Set([e.lo, e.hi, e.b, e.coef].filter(f => isInt(f) && f.n).map(f => Math.abs(f.n))), size - 1, [FLIP_CARD])];
     else {
       hand = [...makeHand(toS(e), correct, size - 1), FLIP_CARD];
-      if (!isTutorial() && difficulty.level >= 3 && SCALE_OPS.includes(correct.op) && !negScale(correct)) {
+      if (!isTutorial() && SCALE_OPS.includes(correct.op) && !negScale(correct)) {
         const after = chainApply(e, correct);
         if (chainSteps(after) === 0 && after.lo.n < 0) {
           hand.push(flipNegTrap(correct, chainText(e), chainText(after), true));
@@ -415,7 +448,7 @@
     const P = t => `<p>${t}</p>`, out = [];
     if (isFlip(card)) {
       if (e.owe) return P('Flip was the right card. It goes on the signs, so drop it on the &lt; or ≤.');
-      out.push(P(`The signs only flip right after multiplying or dividing by a <b>negative</b> number: ${FLIP_IDEA}. Nothing like that has happened, so ${chainH(e)} keeps its signs.`));
+      out.push(P(`The signs only flip right after multiplying or dividing by a <b>negative</b> number: ${FLIP_IDEA}. Nothing like that has just happened, so ${chainH(e)} keeps its signs.`));
     } else if (e.owe) {
       out.push(P(`The last move ${'multiplied or divided'} by a negative number, and ${FLIP_IDEA}. Look at ${chainH(e)}: the left number is now bigger than the right one, so it can't be true. Both signs flip first, and then it reads from the other end.`));
       out.push(P('<b>What works here:</b> drop Flip on a sign.'));
@@ -501,18 +534,25 @@
   // the equation, and the answer is drawn on the number line once every case is done.
   const AB = (m, a, b, c, rel, d) => ({ abs: true, m: F(m), a: F(a), b: F(b), c: F(c), rel, d: F(d) });
   const absS = e => ({ coef: e.m, b: e.c, c: e.d, xLeft: true, constFirst: false });     // the bars as "x", for Act 1's hand builder
-  const absSteps = e => (e.c.n !== 0 ? 1 : 0) + (fIs(e.m, 1) ? 0 : 1) + 1;
+  const absSteps = e => (e.result ? 0 : (e.c.n !== 0 ? 1 : 0) + (fIs(e.m, 1) ? 0 : 1) + 1);
+  const barsAlone = e => e.c.n === 0 && fIs(e.m, 1);
+  // A distance from 0 is never negative. With the bars alone and a negative number on the other side,
+  // |u| = −5 and |u| < −5 have no solution, and |u| > −5 is true for every number.
+  const negVerdict = e => (gtRel(e.rel) ? 'all' : 'none');
   const innerTokens = e => tokensFor(toS({ coef: e.a, b: e.b, constFirst: false })).filter(t => t.role !== 'eq' && t.role !== 'other');
   const innerText = e => innerTokens(e).map(t => t.text).join(' ').replace(/(\d) x/g, '$1x');
-  const innerHtml = e => innerTokens(e).map(t => t.html || t.text).join(' ');
+  // Review fix: no space between the number and x inside the bars ("|2x − 7|", not "|2 x − 7|").
+  const innerHtml = e => innerTokens(e).map((t, i, a) => (i && !(a[i - 1].role === 'coef' && t.role === 'x') ? ' ' : '') + (t.html || t.text)).join('');
   const innerSide = e => noZero([X(e.a), N(e.b)]);
   function absText(e) {
+    if (e.result) return e.result === 'none' ? 'No solution' : 'Every number works';
     const m = fIs(e.m, 1) ? '' : fracText(e.m), c = e.c.n === 0 ? '' : ` ${e.c.n < 0 ? MINUS : '+'} ${fracText(fAbs(e.c))}`;
     return `${m}|${innerText(e)}|${c} ${e.rel} ${fracText(e.d)}`;
   }
   const absH = e => `<span class="whyEq">${absText(e).replace(/\|([^|]*)\|/, (_, i) => `|${innerHtml(e)}|`)}</span>`;
   function absApply(e, c) {
     const r = { ...e };
+    if (isDeclare(c)) return { ...e, result: c.op };
     if (c.op === 'split') {
       const u = innerSide(e), d = e.d, nd = fMul(d, F(-1));
       // Review fix: with nothing added inside the bars (|x| > 3), both cases are already solved. The board
@@ -530,10 +570,15 @@
     return r;
   }
   const absCanon = e => (e.c.n !== 0 ? (e.c.n > 0 ? { op: '-', n: e.c.n } : { op: '+', n: -e.c.n })
-    : !fIs(e.m, 1) ? correctMove({ coef: e.m, b: F(0) }) : { op: 'split', scope: 'part', ref: 'abs' });
+    : !fIs(e.m, 1) ? correctMove({ coef: e.m, b: F(0) })
+    : e.d.n < 0 ? { op: negVerdict(e), scope: 'part' } : e.d.n === 0 ? null : SPLIT(wayFor(e.rel), e.d));
   function absCorrect(e, c, target) {
-    if (c.op === 'trap' || isFlip(c) || (isPart(c) && c.op !== 'split')) return false;
-    if (c.op === 'split') return e.c.n === 0 && fIs(e.m, 1) && roleOf(target) === 'abs';
+    // Review fix: × or ÷ by a negative on the bars is rejected. It used to be accepted and flip the sign by
+    // itself (3|x − 6| < 6 ÷(−3) gave −1|x − 6| > −2), against the Flip rule; the number in front is positive anyway.
+    if (c.op === 'trap' || isFlip(c) || negScale(c)) return false;
+    if (isDeclare(c)) return barsAlone(e) && e.d.n < 0 && c.op === negVerdict(e);
+    if (c.op === 'split') return barsAlone(e) && e.d.n > 0 && (c.way || 'two') === wayFor(e.rel) && roleOf(target) === 'abs';
+    if (isPart(c)) return false;
     const a = absApply(e, c);
     if (!isInt(a.c) || !isInt(a.d)) return false;
     if (absSteps(a) < absSteps(e)) return true;
@@ -573,8 +618,14 @@
     }).join('');
     box.classList.add('show');
   }
+  const verdictSegs = e => (e.result === 'all' ? [{ lo: -Infinity, hi: Infinity }] : []);
   function renderAbs(e) {
     const el = $('equation'); if (typeof clearNotes === 'function') clearNotes(); el.innerHTML = '';
+    if (e.result) {     // the verdict, with an empty number line (no solution) or a fully shaded one (every number)
+      el.appendChild(tokEl({ role: 'other', text: absText(e), html: absText(e) }));
+      clearCases(); fit(); drawLine(verdictSegs(e), false);
+      return;
+    }
     if (!fIs(e.m, 1)) el.appendChild(tokEl({ role: 'coef', text: fracText(e.m), html: fracHtml(e.m) }));
     const t = tokEl({ role: 'abs', text: `|${innerText(e)}|`, html: `<span class="bar">|</span>${innerHtml(e)}<span class="bar">|</span>` });
     t.classList.add('absTok'); el.appendChild(t);
@@ -599,46 +650,81 @@
   }
 
   // Hands
+  // The classic mistake with bars: dropping them. It's a rule decoy, in the hand at every difficulty
+  // (outside tutorials) once the bars are alone.
+  // Review fix: scope 'part', so it shows ◎ like the real Split (the ⇔ badge used to give it away).
+  function dropBars(e) {
+    const u = innerText(e), dt = fracText(e.d), nd = fracText(fMul(e.d, F(-1)));
+    const lost = e.d.n < 0 ? `that would give ${u} ${e.rel} ${dt}, but a distance from 0 can't be negative, so the bars change everything here`
+      : e.rel === '=' ? `x would only get one answer. ${dt} and ${nd} are both ${dt} away from 0, so ${u} can be either one: there are two cases`
+      : e.rel === '<' || e.rel === '≤' ? `it would lose the left end. Being ${awayWord(e.rel).toLowerCase()} ${dt} away from 0 means ${u} is between ${nd} and ${dt}, not just below ${dt}`
+      : `it would lose half the answer. Being ${awayWord(e.rel).toLowerCase()} ${dt} away from 0 means ${u} is above ${dt} <b>or</b> below ${nd}`;
+    return { op: 'trap', trap: 'drop bars', scope: 'part', text: `Remove the bars: ${u} ${e.rel} ${dt}`,
+      why: `<p>The bars mean "distance from 0", so they can't just be removed. Removing them, ${lost}.</p>` };
+  }
   function absHand(e, correct, size) {
-    const tut = isTutorial();
+    const tut = isTutorial(), alone = barsAlone(e);
+    const nums = new Set([e.d, e.a, e.b, e.c, e.m].filter(f => f.n && isInt(f)).map(f => Math.abs(f.n)));
+    // Review fix: the numbers go on the Split cards only once the bars are alone with a positive number.
+    // fAbs(e.d) used to show "between −2 and 2" on |x − 3| < −2, or the current right side before the bars were alone.
+    const sd = alone && e.d.n > 0 ? e.d : null, incl = e.rel === '≤' || e.rel === '≥';
+    const splits = e.rel === '=' ? [SPLIT('two', sd)] : [SPLIT('between', sd, incl), SPLIT('outside', sd, incl)];
     let hand;
-    if (correct.op === 'split') {
-      // Wrong cards: + − × ÷ by numbers in it. They're all legal on the bars, and none of them helps.
-      const nums = new Set([e.d, e.a, e.b].filter(f => f.n && isInt(f)).map(f => Math.abs(f.n)));
-      hand = [correct, ...decoys(nums, size - 1, [correct])];
-      // Expert trap: drop the bars and keep only the positive case.
-      if (!tut && difficulty.level >= 3 && size > 2) {
-        const u = innerText(e), dt = fracText(e.d), nd = fracText(fMul(e.d, F(-1)));
-        const lost = e.rel === '=' ? `x would only get one answer. ${dt} and ${nd} are both ${dt} away from 0, so ${u} can be either one: there are two cases`
-          : e.rel === '<' || e.rel === '≤' ? `it would lose the left end. Being less than ${dt} away from 0 means ${u} is between ${nd} and ${dt}, not just below ${dt}`
-          : `it would lose half the answer. Being more than ${dt} away from 0 means ${u} is above ${dt} <b>or</b> below ${nd}`;
-        hand[1] = { op: 'trap', trap: 'drop bars', text: `Remove the bars: ${u} ${e.rel} ${dt}`,
-          why: `<p>The bars mean "distance from 0", so they can't just be removed. Removing them, ${lost}.</p>` };
-      }
+    if (alone) {
+      // In order of importance, so trimming to the hand size drops number cards first: the right card, the
+      // other Split (choosing is the skill), the other verdict, the dropped-bars mistake, then numbers.
+      hand = [correct];
+      for (const sp of splits) if (sp.way !== correct.way) hand.push(sp);
+      if (isDeclare(correct)) hand.push({ op: correct.op === 'none' ? 'all' : 'none', scope: 'part' });
+      else if (!tut && Math.random() < 0.4) hand.push({ op: e.rel === '=' || !gtRel(e.rel) ? 'none' : pick(['none', 'all']), scope: 'part' });
+      if (!tut) hand.push(dropBars(e));
+      hand = hand.slice(0, size);
+      hand.push(...decoys(nums, size - hand.length, hand));
     } else {
-      // Before the split the bars are one block, like x: Act 1's hand builder fits. Split is a wrong card until they're alone.
-      hand = [...makeHand(absS(e), correct, size - 1), { op: 'split', scope: 'part' }];
+      // Before the bars are alone they are one block, like x: Act 1's hand builder fits. A Split is a wrong card until then.
+      hand = [...makeHand(absS(e), correct, size - 1), pick(splits)];
     }
     return shuffle(hand);
   }
   function absWhyWrong(e, card, target) {
+    const alone = barsAlone(e), d = fracText(e.d), u = `|${innerText(e)}|`;
     if (card.op === 'trap') return `That's a trap: the bars can't just be dropped. Tap Why? to see why.`;
-    if (card.op === 'split') return e.c.n !== 0 || !fIs(e.m, 1) ? 'Get the bars alone on their side before splitting.' : 'Drop Split on the bars.';
-    if (e.c.n === 0 && fIs(e.m, 1)) return `That's allowed, but the bars are alone now: split them into cases.`;
+    if (isDeclare(card)) {
+      if (!alone) return 'Get the bars alone first, then look at the number on the other side.';
+      if (e.d.n > 0) return `${u} ${e.rel} ${d} has answers: split the bars into cases.`;
+      return gtRel(e.rel) ? `A distance is never negative, so ${u} is always more than ${d}: every number works.`
+        : `A distance is never negative, so ${u} can't ${e.rel === '=' ? 'be' : 'be less than'} ${d}: no solution.`;
+    }
+    if (card.op === 'split') {
+      if (!alone) return 'Get the bars alone on their side before splitting.';
+      if (e.d.n < 0) return `A distance from 0 can't be negative, so there's nothing to split: ${negVerdict(e) === 'none' ? 'no number works' : 'every number works'}.`;
+      if ((card.way || 'two') !== wayFor(e.rel)) return gtRel(e.rel) ? `${awayWord(e.rel)} ${d} away from 0 is outside: below ${fracText(fMul(e.d, F(-1)))} or above ${d}. Use Outside.`
+        : `${awayWord(e.rel)} ${d} away from 0 is between ${fracText(fMul(e.d, F(-1)))} and ${d}. Use Between.`;
+      return 'Drop Split on the bars.';
+    }
+    if (alone) return e.d.n < 0 ? `That's allowed, but look at the number: ${u} ${e.rel} ${d}. Can a distance be negative?` : `That's allowed, but the bars are alone now: split them into cases.`;
     if (e.c.n !== 0 && SCALE_OPS.includes(card.op)) return `That's allowed, but undo the + or ${MINUS} first, then the ${TIMES} or ${DIV}.`;
     return `That's allowed, but the bars still aren't alone: ${absText(absApply(e, card))}`;
   }
   function explainAbs(e, card, correct) {
-    const P = t => `<p>${t}</p>`, out = [];
+    const P = t => `<p>${t}</p>`, out = [], d = fracText(e.d), nd = fracText(fMul(e.d, F(-1))), u = innerText(e);
+    const BETWEEN = `${awayWord(e.rel)} ${d} away from 0 means <b>between</b> ${nd} and ${d}: one chain, ${nd} ${e.rel} ${u} ${e.rel} ${d}.`;
+    const OUTSIDE = `${awayWord(e.rel)} ${d} away from 0 means <b>outside</b>: ${u} ${FLIP[e.rel]} ${nd} or ${u} ${e.rel} ${d}, two cases.`;
+    const NEVER = `|${u}| is a distance from 0, and a distance is never negative.`;
     if (isFlip(card)) out.push(P('Flip only comes right after multiplying or dividing by a negative number. Nothing like that has happened here.'));
-    else if (card.op === 'split') out.push(P(e.c.n !== 0 || !fIs(e.m, 1)
-      ? `Split works on the bars only once they are alone on their side. Here the bars still have ${fIs(e.m, 1) ? '' : `${fracText(e.m)} in front`}${!fIs(e.m, 1) && e.c.n ? ' and ' : ''}${e.c.n ? `${e.c.n < 0 ? MINUS : '+'} ${fracText(fAbs(e.c))} next to them` : ''}. Undo those first, treating |${innerText(e)}| as one block, like x.`
-      : 'Split goes on the bars themselves.'));
-    else out.push(P(`${cardText(card)} is allowed, but it turns it into ${absH(absApply(e, card))}, which doesn't get the bars alone.`));
+    else if (isDeclare(card)) out.push(P(!barsAlone(e) ? 'Get the bars alone first. Only then does the number on the other side tell you if there is no solution.'
+      : e.d.n > 0 ? `${d} is positive, so |${u}| ${e.rel} ${d} does have answers. ${e.rel === '=' ? `${u} can be ${d} or ${nd}.` : gtRel(e.rel) ? OUTSIDE : BETWEEN}`
+      : `${NEVER} So it ${gtRel(e.rel) ? `is always bigger than ${d}, whatever x is: every number works` : `can never ${e.rel === '=' ? 'equal' : 'be below'} ${d}: no number works`}.`));
+    else if (card.op === 'split') {
+      if (!barsAlone(e)) out.push(P(`Split works on the bars only once they are alone on their side. Here the bars still have ${fIs(e.m, 1) ? '' : `${fracText(e.m)} in front`}${!fIs(e.m, 1) && e.c.n ? ' and ' : ''}${e.c.n ? `${e.c.n < 0 ? MINUS : '+'} ${fracText(fAbs(e.c))} next to them` : ''}. Undo those first, treating |${u}| as one block, like x.`));
+      else if (e.d.n < 0) out.push(P(`${NEVER} Splitting |${u}| ${e.rel} ${d} into cases would treat ${d} like a real distance. Look at the sign of the number instead.`));
+      else if ((card.way || 'two') !== wayFor(e.rel)) out.push(P(gtRel(e.rel) ? `${OUTSIDE} Between is for "less than": it would keep the numbers close to 0, the opposite of what ${e.rel} asks.` : `${BETWEEN} Outside is for "more than": it would keep the numbers far from 0, the opposite of what ${e.rel} asks.`));
+      else out.push(P('Split goes on the bars themselves.'));
+    } else out.push(P(`${cardText(card)} is allowed, but it turns it into ${absH(absApply(e, card))}, which doesn't get the bars alone.`));
     let how;
-    if (correct.op === 'split') how = e.rel === '=' ? `The bars are alone. |${innerText(e)}| = ${fracText(e.d)} means ${innerText(e)} is ${fracText(e.d)} away from 0, so it is ${fracText(e.d)} or ${fracText(fMul(e.d, F(-1)))}. Drop Split on the bars to make the two cases.`
-      : e.rel === '<' || e.rel === '≤' ? `The bars are alone. Less than ${fracText(e.d)} away from 0 means between ${fracText(fMul(e.d, F(-1)))} and ${fracText(e.d)}. Drop Split on the bars to write that.`
-      : `The bars are alone. More than ${fracText(e.d)} away from 0 means above ${fracText(e.d)} or below ${fracText(fMul(e.d, F(-1)))}. Drop Split on the bars to make the two cases.`;
+    if (isDeclare(correct)) how = `${NEVER} So |${u}| ${e.rel} ${d} is ${correct.op === 'all' ? 'true for every number: play All x' : 'never true: play No solution'}.`;
+    else if (correct.op === 'split') how = e.rel === '=' ? `The bars are alone. |${u}| = ${d} means ${u} is ${d} away from 0, so it is ${d} or ${nd}. Drop Split on the bars to make the two cases.`
+      : gtRel(e.rel) ? `The bars are alone. ${OUTSIDE} Drop Outside on the bars.` : `The bars are alone. ${BETWEEN} Drop Between on the bars.`;
     else if (correct.op === '+' || correct.op === '-') how = `Treat the bars as one block and undo the number added to it: ${cardText(correct).toLowerCase()}.`;
     else how = `Treat the bars as one block. ${cardText(correct)} leaves them alone on their side.`;
     out.push(P(`<b>What works here:</b> ${how}`));
@@ -669,8 +755,8 @@
     const t = roleEl('abs'), bars = t ? [...t.querySelectorAll('.bar')] : [];
     const d = fracText(s.d), nd = fracText(fMul(s.d, F(-1))), u = innerText(s);
     caption(s.rel === '=' ? `|${u}| = ${d}: ${u} is ${d} away from 0, so it is ${d} or ${nd}`
-      : s.rel === '<' || s.rel === '≤' ? `Less than ${d} away from 0 means between ${nd} and ${d}`
-      : `More than ${d} away from 0 means above ${d} or below ${nd}`);
+      : s.rel === '<' || s.rel === '≤' ? `${awayWord(s.rel)} ${d} away from 0 means between ${nd} and ${d}`
+      : `${awayWord(s.rel)} ${d} away from 0 means above ${d} or below ${nd}`);
     mark(bars, 'glow'); await quick(500);
     mark(bars, 'fade'); await quick(350);
     await hold();
@@ -683,6 +769,33 @@
       caption('Two cases: solve each one');
       await hold();
     }
+  }
+  // No solution: a crack runs through the equation and it falls apart. Every number: it glows. Then the
+  // number line shows the answer, empty or shaded all the way.
+  async function verdictAnim(card, s, ns) {
+    const el = $('equation'), toks = [...el.querySelectorAll('.tok')], d = fracText(s.d), u = `|${innerText(s)}|`;
+    if (card.op === 'none') {
+      caption(`${u} is a distance from 0, and a distance is never negative: ${u} ${s.rel} ${d} never happens, so there is no solution`);
+      const box = el.getBoundingClientRect(), r = toks[0].getBoundingClientRect(), last = toks[toks.length - 1].getBoundingClientRect();
+      const w = last.right - r.left, h = r.height, svgNS = 'http://www.w3.org/2000/svg', svg = document.createElementNS(svgNS, 'svg');
+      svg.setAttribute('class', 'a2crack'); svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+      Object.assign(svg.style, { left: (r.left - box.left + el.scrollLeft) + 'px', top: (r.top - box.top) + 'px', width: w + 'px', height: h + 'px' });
+      let path = `M0,${h / 2}`;
+      for (let k = 1; k <= 8; k++) path += ` L${(w * k) / 8},${h / 2 + (k % 2 ? -1 : 1) * h * 0.22}`;
+      svg.innerHTML = `<path d="${path}"/>`;
+      el.appendChild(svg); kickClass(el, 'shake');
+      await quick(700); svg.remove();
+      toks.forEach(t => { t.style.transform = `translate(${rand(-50, 50)}px, ${rand(60, 140)}px) rotate(${rand(-70, 70)}deg)`; t.style.opacity = '0'; });
+      await quick(600);
+    } else {
+      caption(`${u} is a distance from 0, so it is never negative: it is always more than ${d}, whatever x is. Every number works`);
+      mark(toks, 'glow'); await quick(800);
+    }
+    await hold();
+    renderAbs(ns);
+    caption(ns.result === 'none' ? 'No number works, so nothing is shaded' : 'Every number works, so the whole line is shaded');
+    drawLine(verdictSegs(ns), true);
+    await quick(900); await hold();
   }
   // On a board, the active case plays its usual animation; when it's done, the next case comes up.
   async function boardAnim(card, s, ns, ref) {
@@ -708,25 +821,35 @@
   //   plain  |ax + b| rel d          front  |ax + b| + c rel d + c       times  m|ax + b| rel m·d
   //   both   m|ax + b| + c rel m·d + c                       (|3x| = 12 has b = 0)
   // Difficulty: Normal and up use bigger spreads and more steps in front; Expert can land on fractions.
-  function absCore(D) {
-    for (;;) {
-      const a = pick([1, 1, 2, 3]), x1 = rand(D.neg ? -9 : -4, 5), gap = rand(1, D.level >= 2 ? 8 : 5) * (a % 2 ? 2 : 1);
-      const x2 = x1 + gap, d = (a * gap) / 2, b = d - a * x2;     // a·x2 + b = d and a·x1 + b = −d
-      if (D.fracAnswers && a > 1 && Math.random() < 0.6) return { a, b, d: d + 1 };   // the answers land on fractions
-      return { a, b, d };
-    }
+  // want picks the case: two-int / two-frac (stage 12), between-* / outside-* (stage 13), none, all. Fraction
+  // answers and the no-solution cases come up at every difficulty; harder levels only change the numbers
+  // and the steps in front of the bars.
+  function absCore(D, frac) {
+    const a = frac ? pick([2, 3]) : pick([1, 1, 2, 3]), x1 = rand(D.neg ? -9 : -5, 5), gap = rand(1, D.level >= 2 ? 8 : 5) * (a % 2 ? 2 : 1);
+    const x2 = x1 + gap, d = (a * gap) / 2, b = d - a * x2;     // a·x2 + b = d and a·x1 + b = −d
+    return frac ? { a, b, d: d + 1 } : { a, b, d };                // d + 1: the answers land on fractions
   }
-  // Review fix: the shape and the tutorial flag are separate. Elites ask for the 'both' shape, and that used
-  // to force Easy numbers on every difficulty.
-  function genAbsWith(rel, type, tut = !!type) {
-    const D = tut || isTutorial() ? DIFFICULTIES[0] : difficulty;
-    const { a, b, d } = absCore(D);
+  function genAbsWith(rel, type, tut, want) {
+    const D = tut ? DIFFICULTIES[0] : difficulty;
+    const neg = want === 'none' || want === 'all', { a, b, d } = absCore(D, /frac/.test(want || ''));
+    const dd = neg ? -rand(1, 6) : d;                              // with the bars alone, |u| rel dd
     const t = type || pick(D.level ? ['plain', 'front', 'times', 'both', 'both'] : ['plain', 'plain', 'front', 'times']);
-    const m = t === 'times' || t === 'both' ? rand(2, D.level >= 2 ? 5 : 3) : 1, c = t === 'front' || t === 'both' ? nonZero(-9, 9) * (D.level >= 2 ? 2 : 1) : 0;
-    return AB(m, a, b, c, rel, m * d + c);
+    const m = t === 'times' || t === 'both' ? rand(2, D.level >= 2 ? 5 : 3) : 1;
+    let c = t === 'front' || t === 'both' ? nonZero(-9, 9) * (D.level >= 2 ? 2 : 1) : 0;
+    if (c && m * dd + c === 0) c += c > 0 ? 1 : -1;              // keep the right side off 0, so it doesn't look like |u| = 0
+    // Review note: dd (the number once the bars are alone) is never 0 here. Split and the verdicts have no
+    // rule for |u| rel 0, so a 0 would leave no card that works; absCanon guards it too.
+    return AB(m, a, b, c, rel, m * dd + c);
   }
-  const genAbsEq = (type, tut) => ({ ineq: { ...genAbsWith('=', type, tut), skill: 'absval' }, enemy: 'mirrorling' });
-  const genAbsIneq = (type, rel, tut) => ({ ineq: { ...genAbsWith(rel || pick(RELS), type, tut), skill: 'absineq' }, enemy: 'mirrorling' });
+  function genAbsEq(type, want, tut = isTutorial()) {
+    const w = want || (tut ? 'two-int' : anyCase('absval'));
+    return { ineq: { ...genAbsWith('=', type, tut, w), skill: 'absval' }, enemy: 'mirrorling' };
+  }
+  function genAbsIneq(type, want, tut = isTutorial()) {
+    const w = want || (tut ? 'between-int' : anyCase('absineq'));
+    const rel = /^between|^none/.test(w) ? pick(['<', '≤']) : pick(['>', '≥']);
+    return { ineq: { ...genAbsWith(rel, type, tut, w), skill: 'absineq' }, enemy: 'mirrorling' };
+  }
   // Stage 11 also gets "or" compounds now that boards exist: 2x + 1 < −3 or 3x − 2 > 7.
   function genOrCompound() {
     const p = rand(-6, 1), q = p + rand(2, 6), a1 = rand(1, 4), b1 = nonZero(-8, 8), a2 = rand(1, 4), b2 = nonZero(-8, 8);
@@ -744,24 +867,32 @@
   // About half of normal fights need a flip, since that's the new idea. The variety system writes about
   // half of them the other way round (9 > 2x + 1).
   const FLIPS = ['negx', 'negmul', 'negtwo', 'negtwo2', 'negdiv'], KEEPS = ['add', 'sub', 'mul', 'div', 'two', 'twom'];
-  function genIneq(type) {
-    const tut = !!type;
+  // want = a stage 10 case, keep/flip and pos/neg/frac (see CASES); without one, the run's least-seen case.
+  // A fraction answer needs a number in front of x: x = 3/2 comes from 2x < 3.
+  const FRAC_OK = ['mul', 'two', 'twom', 'negmul', 'negtwo', 'negtwo2'];
+  function genIneq(type, want, tut = isTutorial()) {
+    const w = want || (type || tut ? null : anyCase('ineq'));
+    const [fk, ak] = w ? w.split('-') : [null, tut ? 'pos' : pick(['pos', 'neg'])];
     for (;;) {
-      const t = type || (Math.random() < 0.55 ? pick(FLIPS) : pick(KEEPS));
-      const x = tut ? rand(1, 8) : nonZero(-8, 9), a = rand(2, 6), b = rand(1, 12), rel = pick(RELS);
-      const enemy = FLIPS.includes(t) ? 'flipjack' : 'tilter';
+      const pool = (fk === 'flip' ? FLIPS : fk === 'keep' ? KEEPS : [...FLIPS, ...KEEPS]).filter(t => ak !== 'frac' || FRAC_OK.includes(t));
+      const t = type || pick(pool);
+      const a = rand(2, ak === 'frac' ? 4 : 6), b = rand(1, 12), rel = pick(RELS);
+      let x;     // the answer
+      if (ak === 'frac') { let k; do k = nonZero(-3 * a, 3 * a); while (k % a === 0); x = F(k, a); }
+      else x = F(ak === 'neg' ? -rand(1, 8) : rand(1, 8));
+      const ax = fMul(F(a), x), sgn = x.n < 0 ? -1 : 1, enemy = FLIPS.includes(t) ? 'flipjack' : 'tilter';
       let e;
-      if (t === 'add') e = I([X(1), N(b)], [N(x + b)], rel);
-      else if (t === 'sub') e = I([X(1), N(-b)], [N(x - b)], rel);
-      else if (t === 'mul') e = I([X(a)], [N(a * x)], rel);
-      else if (t === 'div') e = I([X(F(1, a))], [N(rand(1, 9) * (x > 0 ? 1 : -1))], rel);
-      else if (t === 'two') e = I([X(a), N(b)], [N(a * x + b)], rel);
-      else if (t === 'twom') e = I([X(a), N(-b)], [N(a * x - b)], rel);
-      else if (t === 'negx') e = I([X(-1)], [N(-x)], rel);
-      else if (t === 'negmul') e = I([X(-a)], [N(-a * x)], rel);
-      else if (t === 'negtwo') e = I([N(b), X(-a)], [N(b - a * x)], rel);
-      else if (t === 'negtwo2') e = I([X(-a), N(b)], [N(-a * x + b)], rel);
-      else e = I([X(F(-1, a))], [N(rand(1, 9) * pick([1, -1]))], rel);
+      if (t === 'add') e = I([X(1), N(b)], [N(fAdd(x, F(b)))], rel);
+      else if (t === 'sub') e = I([X(1), N(-b)], [N(fAdd(x, F(-b)))], rel);
+      else if (t === 'mul') e = I([X(a)], [N(ax)], rel);
+      else if (t === 'div') e = I([X(F(1, a))], [N(rand(1, 9) * sgn)], rel);
+      else if (t === 'two') e = I([X(a), N(b)], [N(fAdd(ax, F(b)))], rel);
+      else if (t === 'twom') e = I([X(a), N(-b)], [N(fAdd(ax, F(-b)))], rel);
+      else if (t === 'negx') e = I([X(-1)], [N(fMul(x, F(-1)))], rel);
+      else if (t === 'negmul') e = I([X(-a)], [N(fMul(ax, F(-1)))], rel);
+      else if (t === 'negtwo') e = I([N(b), X(-a)], [N(fAdd(F(b), fMul(ax, F(-1))))], rel);
+      else if (t === 'negtwo2') e = I([X(-a), N(b)], [N(fAdd(fMul(ax, F(-1)), F(b)))], rel);
+      else e = I([X(F(-1, a))], [N(rand(1, 9) * -sgn)], rel);
       if ([...e.L, ...e.R].length < 2) continue;
       return { ineq: e, enemy };
     }
@@ -771,8 +902,8 @@
   //   −2(x − 3) < 10    3x − 5x + 4 ≥ 10    2x + 5 > 5x − 4 (written so the x-term left over is negative)
   function genStacked3() {
     // Once compound inequalities are open, some elites are a chain that needs a flip, with bigger numbers.
-    if (isUnlocked('compound') && Math.random() < 0.35) { const g = genCompound(pick(FLIPS_C)); return { ...g, enemy: 'boundwarden' }; }
-    if (isUnlocked('absval') && Math.random() < 0.35) { const g = isUnlocked('absineq') && Math.random() < 0.5 ? genAbsIneq('both', undefined, false) : genAbsEq('both', false); return { ...g, enemy: 'boundwarden' }; }
+    if (isUnlocked('compound') && Math.random() < 0.35) { const g = genCompound(null, anyCase('compound', k => k.startsWith('flip'))); return { ...g, enemy: 'boundwarden' }; }
+    if (isUnlocked('absval') && Math.random() < 0.35) { const g = isUnlocked('absineq') && Math.random() < 0.5 ? genAbsIneq('both', null, false) : genAbsEq('both', null, false); return { ...g, enemy: 'boundwarden' }; }
     for (;;) {
       const t = pick(['distneg', 'distneg', 'dist', 'like', 'xboth']);
       const x = nonZero(-6, 8), rel = pick(RELS);
@@ -790,20 +921,29 @@
   //   div   lo ≤ x/a + b < hi        neg  lo < b − ax ≤ hi (flip)   negmul  lo ≤ −ax < hi (flip)
   //   negx  lo < b − x < hi (flip)
   const FLIPS_C = ['neg', 'negmul', 'negx'], KEEPS_C = ['one', 'mul', 'two', 'div'];
-  function genCompound(type) {
-    if (!type && Math.random() < 0.25) return genOrCompound();        // "or" compounds: two cases
-    const tut = !!type, t = type || (Math.random() < 0.5 ? pick(FLIPS_C) : pick(KEEPS_C));
+  // want = a stage 11 case (see CASES). The answer runs from P to Q: whole numbers above 0 (pos), starting
+  // below 0 (neg), or fractions with a number in front of x (frac, e.g. 3/2 < x ≤ 9/2 from 3 < 2x ≤ 9).
+  function genCompound(type, want, tut = isTutorial()) {
+    const w = want || (type || tut ? null : anyCase('compound'));
+    if (w === 'or') return genOrCompound();
+    const [fk, ak] = w ? w.split('-') : [null, tut ? 'pos' : pick(['pos', 'neg'])];
+    const pool = (fk === 'flip' ? FLIPS_C : fk === 'keep' ? KEEPS_C : [...FLIPS_C, ...KEEPS_C]).filter(t => ak !== 'frac' || ['mul', 'two', 'neg', 'negmul'].includes(t));
+    const t = type || pick(pool);
     const a = rand(2, 5), b = nonZero(-9, 9), relP = pick(['<', '≤']), relQ = pick(['<', '≤']);
-    let p = tut ? rand(1, 4) : rand(-6, 4), q = p + rand(2, tut ? 5 : 7);
-    if (t === 'div') { p *= a; q *= a; }
+    let P;
+    if (ak === 'frac') { let k; do k = nonZero(-2 * a, 3 * a); while (k % a === 0); P = F(k, a); }
+    else P = F(ak === 'neg' ? rand(-8, -1) : rand(1, 4));
+    let Q = fAdd(P, F(rand(2, tut ? 5 : 7)));
+    if (t === 'div') { P = fMul(P, F(a)); Q = fMul(Q, F(a)); }
+    const A = F(a), aP = fMul(A, P), aQ = fMul(A, Q), neg = v => fMul(v, F(-1));
     let e;
-    if (t === 'one') e = CH(p + b, relP, 1, b, relQ, q + b);
-    else if (t === 'mul') e = CH(a * p, relP, a, 0, relQ, a * q);
-    else if (t === 'two') e = CH(a * p + b, relP, a, b, relQ, a * q + b);
-    else if (t === 'div') e = CH(p / a + b, relP, F(1, a), b, relQ, q / a + b);
-    else if (t === 'neg') { const bb = Math.abs(b); e = CH(bb - a * q, relQ, -a, bb, relP, bb - a * p, true); }
-    else if (t === 'negmul') e = CH(-a * q, relQ, -a, 0, relP, -a * p);
-    else { const bb = rand(3, 12); e = CH(bb - q, relQ, -1, bb, relP, bb - p, true); }
+    if (t === 'one') e = CH(fAdd(P, F(b)), relP, 1, b, relQ, fAdd(Q, F(b)));
+    else if (t === 'mul') e = CH(aP, relP, a, 0, relQ, aQ);
+    else if (t === 'two') e = CH(fAdd(aP, F(b)), relP, a, b, relQ, fAdd(aQ, F(b)));
+    else if (t === 'div') e = CH(fAdd(fMul(P, F(1, a)), F(b)), relP, F(1, a), b, relQ, fAdd(fMul(Q, F(1, a)), F(b)));
+    else if (t === 'neg') { const bb = Math.abs(b); e = CH(fAdd(F(bb), neg(aQ)), relQ, -a, bb, relP, fAdd(F(bb), neg(aP)), true); }
+    else if (t === 'negmul') e = CH(neg(aQ), relQ, -a, 0, relP, neg(aP));
+    else { const bb = rand(3, 12); e = CH(fAdd(F(bb), neg(Q)), relQ, -1, bb, relP, fAdd(F(bb), neg(P)), true); }
     return { ineq: { ...e, skill: 'compound' }, enemy: 'clamp' };
   }
   // Difficulty: Normal and up multiply the numbers (and so the answer) by 2 or 3, and may turn the
@@ -811,8 +951,10 @@
   function chainDifficulty(g, regen) {
     const D = difficulty;
     for (let tries = 0; tries < 30; tries++, g = regen()) {
-      if (!g.ineq || !g.ineq.chain) return applyDifficulty3(g, regen);    // a mixed generator (an elite) re-rolled something else
+      if (!g.ineq || !g.ineq.chain) return prepare3(g, regen);    // a mixed generator (an elite) re-rolled something else
       let e = { ...g.ineq };
+      let end0 = e; for (const p of chainPath(e, 'compound')) end0 = chainApply(end0, p.move);
+      const fracOK = !isInt(end0.lo) || !isInt(end0.hi);     // the generator asked for a fraction case
       const f = D.level >= 2 ? rand(2, 3) : D.level === 1 ? rand(1, 2) : 1;
       e.lo = fMul(e.lo, F(f)); e.hi = fMul(e.hi, F(f)); e.b = fMul(e.b, F(f));
       if (D.neg && Math.random() < 0.5) e = { ...e, lo: fMul(e.hi, F(-1)), hi: fMul(e.lo, F(-1)), b: fMul(e.b, F(-1)), rel1: e.rel2, rel2: e.rel1, constFirst: e.constFirst && Math.random() < 0.5 };
@@ -822,7 +964,7 @@
       let end = e; for (const p of chainPath(e, 'compound')) end = chainApply(end, p.move);
       if (!fLess(end.lo, end.hi)) continue;                  // the ends must stay in order
       if ([e.lo, e.hi, e.b].some(k => Math.abs(k.n) > D.max * 2)) continue;
-      if (!D.fracAnswers && (!isInt(end.lo) || !isInt(end.hi))) continue;
+      if (!D.fracAnswers && !fracOK && (!isInt(end.lo) || !isInt(end.hi))) continue;
       return { ...g, ineq: e };
     }
     return g;
@@ -841,7 +983,7 @@
   function isSolved(e) {
     switch (kindOf(e)) {
       case 'board': return boardSolved(e);
-      case 'abs': return false;
+      case 'abs': return !!e.result;
       case 'chain': return chainSteps(e) === 0;
       default: return sSolved(e);
     }
@@ -852,8 +994,9 @@
       case 'board': return e.branches.slice(e.active).flatMap(b => sPath(b, main));
       case 'chain': return chainPath(e, main);
       case 'abs': {
+        if (e.result) return [];
         const path = []; let s = e;
-        for (let i = 0; i < 4 && s.abs; i++) { const m = absCanon(s); path.push({ state: s, move: m, skill: main }); s = absApply(s, m); }
+        for (let i = 0; i < 4 && s.abs && !s.result; i++) { const m = absCanon(s); if (!m) break; path.push({ state: s, move: m, skill: main }); s = absApply(s, m); }
         return path.concat(pathOf(s, main));
       }
       default: return sPath(e, main);
@@ -863,8 +1006,22 @@
     const k = kindOf(e);
     if (k === 'board') return boardAnswer(e);
     if (k === 'chain') return `${fracText(e.lo)} ${e.rel1} x ${e.rel2} ${fracText(e.hi)}`;
+    if (k === 'abs') return absText(e);
     const sol = solution(e);
     return sol ? `x ${sol.rel} ${fracText(sol.v)}` : textOf(e);
+  }
+  // Which case of its stage a question is (see CASES), worked out from its path and its answer.
+  function caseOf(main, start, path, end) {
+    const flip = path.some(p => isFlip(p.move)) ? 'flip' : 'keep';
+    const ends = e => (kindOf(e) === 'chain' ? [e.lo, e.hi] : kindOf(e) === 'board' ? e.branches.map(b => solution(b).v) : kindOf(e) === 'single' ? [solution(e).v] : []);
+    const split = path.find(p => p.move.op === 'split');
+    if (main === 'absval' || main === 'absineq') {
+      if (end.result) return end.result;
+      const k = ansKind(ends(end)) === 'frac' ? 'frac' : 'int';
+      return main === 'absval' ? `two-${k}` : `${split && split.move.way === 'between' ? 'between' : 'outside'}-${k}`;
+    }
+    if (main === 'compound' && kindOf(start) === 'board') return 'or';
+    return `${flip}-${ansKind(ends(end))}`;
   }
   function makeEquation3(eq, enemy) {
     const main = eq.skill || 'ineq', path = pathOf(eq, main);
@@ -923,7 +1080,7 @@
     return async (c, s, ns, ref) => {
       switch (kindOf(s)) {
         case 'board': return boardAnim(c, s, ns, ref);
-        case 'abs': return c.op === 'split' ? splitAnim(c, s, ns) : absStepAnim(c, s, ns);
+        case 'abs': return c.op === 'split' ? splitAnim(c, s, ns) : isDeclare(c) ? verdictAnim(c, s, ns) : absStepAnim(c, s, ns);
         case 'chain': return chainAnim(c, s, ns);
         default: return singleAnim(c, s, ns, ref, false);
       }
@@ -944,7 +1101,19 @@
   // Difficulty: single inequalities use Act 2's rules (bigger numbers, negatives, extra steps, fraction
   // answers on Expert); they only scale plain numbers, so a negative x-coefficient (the flip) stays.
   // Chains have their own; absolute value generators read the difficulty themselves.
+  function caseOfG(g) {
+    const main = g.ineq.skill || 'ineq', path = pathOf(g.ineq, main);
+    let end = g.ineq; for (const p of path) end = apply(end, p.move, p.move.ref);
+    return caseOf(main, g.ineq, path, end);
+  }
+  // A question from the case cycle keeps its case: re-roll until the harder numbers still give it.
   function applyDifficulty3(g, regen) {
+    if (!g.case) return prepare3(g, regen);
+    let out = g;
+    for (let i = 0; i < 30; i++) { out = prepare3(i ? regen() : g, regen); if (caseOfG(out) === g.case) return out; }
+    return out;
+  }
+  function prepare3(g, regen) {
     const k = kindOf(g.ineq);
     if (k === 'chain') return chainDifficulty(g, regen);
     if (k !== 'single') return g;
@@ -956,7 +1125,9 @@
     const want = flips(g.ineq);
     let out;
     for (let i = 0; i < 25; i++) {
-      const { eq, ...rest } = A2.applyDifficulty(asEq(g), again, { noXadd: want });
+      // Review fix: only questions made for a case keep their answer. Elites and the boss's stacked phase
+      // have no case, and keeping theirs took every fraction answer away from Expert elites.
+      const { eq, ...rest } = A2.applyDifficulty(asEq(g), again, { noXadd: want, keepAnswer: !!g.case, messyOK: !!g.case && /frac/.test(g.case) });
       out = { ...rest, ineq: { ...eq, rel: eq.rel || g.ineq.rel } };
       if (!want || flips(out.ineq)) return out;
     }
@@ -968,33 +1139,33 @@
     const act3 = list.filter(id => (SKILL[id].act || 1) === 3);
     if (node.type === 'elite') return { phases: [genStacked3], handSize: difficulty.hand, enemy: 'boundwarden' };
     // Boss: an inequality that keeps its sign, one that needs a flip, one phase per later Act 3 stage, then a stacked one.
-    const phases = [() => genIneq(pick(KEEPS)), () => genIneq(pick(FLIPS))];
+    const phases = [() => genIneq(null, anyCase('ineq', k => k.startsWith('keep'))), () => genIneq(null, anyCase('ineq', k => k.startsWith('flip')))];
     for (const id of act3.slice(1)) phases.push(SKILL[id].gen);
     phases.push(genStacked3);
     return { phases, handSize: difficulty.hand, enemy: 'leaningtower' };
   }
   // ---------------------------------------------------------------- skills, enemies, act
   SKILLS.push(
-    { id: 'ineq', stage: 10, act: 3, name: 'Inequalities', gen: () => genIneq(),
+    { id: 'ineq', stage: 10, act: 3, name: 'Inequalities', cases: CASES.ineq, gen: cycled('ineq', c => genIneq(null, c)),
       title: 'Stage 10: Inequalities',
       intro: 'An inequality uses &lt;, &gt;, ≤ or ≥ instead of =, and its answer is a whole range of numbers. Solve it the same way as an equation, with one new rule: after multiplying or dividing both sides by a <b>negative</b> number, the sign has to flip. That is its own move: drop the new ◎ Flip card on the sign. Flipping at any other time is a wrong move. The answer is then shaded on a number line.',
       example: '2x + 1 &lt; 9<br>Subtract 1 from both sides → 2x &lt; 8<br>Divide both sides by 2 → x &lt; 4<br><br>−3x ≥ 12<br>Divide both sides by −3 → x ≥ −4 (not true yet!)<br>Flip the sign → x ≤ −4',
-      tutorial: [() => genIneq('two'), () => genIneq('negmul')] },
-    { id: 'compound', stage: 11, act: 3, name: 'Compound inequalities', gen: () => genCompound(),
+      tutorial: [() => genIneq('two', null, true), () => genIneq('negmul', null, true)] },
+    { id: 'compound', stage: 11, act: 3, name: 'Compound inequalities', cases: CASES.compound, gen: cycled('compound', c => genCompound(null, c)),
       title: 'Stage 11: Compound inequalities',
       intro: 'A compound inequality squeezes x between two numbers: −3 &lt; 2x + 1 ≤ 7 means 2x + 1 is above −3 <b>and</b> at most 7. It has three parts, and every card now does the same thing to all three. After a negative × or ÷, Flip turns both signs around, and the chain is read from the other end so the smaller number comes first. Some are "or" compounds instead: two cases, solved one after the other.',
       example: '−3 &lt; 2x + 1 ≤ 7<br>Subtract 1 from all three parts → −4 &lt; 2x ≤ 6<br>Divide all three parts by 2 → −2 &lt; x ≤ 3<br><br>1 ≤ 7 − 2x &lt; 5<br>Subtract 7 → −6 ≤ −2x &lt; −2<br>Divide by −2 → 3 ≤ x &lt; 1 (can\'t be true)<br>Flip both signs → 3 ≥ x &gt; 1, which reads 1 &lt; x ≤ 3',
-      tutorial: [() => genCompound('two'), () => genCompound('neg')] },
-    { id: 'absval', stage: 12, act: 3, name: 'Absolute value', gen: () => genAbsEq(),
+      tutorial: [() => genCompound('two', null, true), () => genCompound('neg', null, true)] },
+    { id: 'absval', stage: 12, act: 3, name: 'Absolute value', cases: CASES.absval, gen: cycled('absval', c => genAbsEq(null, c)),
       title: 'Stage 12: Absolute value equations',
-      intro: 'The bars | | mean distance from 0: |5| = 5 and |−5| = 5. So |x − 3| = 5 means x − 3 is 5 away from 0, which is 5 <b>or</b> −5. First get the bars alone, treating them as one block. Then drop the new ◎ Split card on the bars: it makes two cases, and you solve each one.',
-      example: '|x − 3| = 5<br>Split → x − 3 = 5 or x − 3 = −5<br>Case 1: add 3 → x = 8<br>Case 2: add 3 → x = −2<br>Answer: x = 8 or x = −2',
-      tutorial: [() => genAbsEq('plain'), () => genAbsEq('front')] },
-    { id: 'absineq', stage: 13, act: 3, name: 'Abs. inequalities', gen: () => genAbsIneq(),
+      intro: 'The bars | | mean distance from 0: |5| = 5 and |−5| = 5. So |x − 3| = 5 means x − 3 is 5 away from 0, which is 5 <b>or</b> −5. First get the bars alone, treating them as one block. Then drop the new ◎ Split card on the bars: it makes two cases, and you solve each one. One catch: a distance is never negative, so if the bars end up equal to a negative number, like |x − 3| = −5, nothing works. Declare No solution instead of splitting.',
+      example: '|x − 3| = 5<br>Split → x − 3 = 5 or x − 3 = −5<br>Case 1: add 3 → x = 8<br>Case 2: add 3 → x = −2<br>Answer: x = 8 or x = −2<br><br>|x − 3| + 8 = 3<br>Subtract 8 → |x − 3| = −5<br>A distance can\'t be −5 → No solution',
+      tutorial: [() => genAbsEq('plain', 'two-int', true), () => genAbsEq('front', 'two-int', true)] },
+    { id: 'absineq', stage: 13, act: 3, name: 'Abs. inequalities', cases: CASES.absineq, gen: cycled('absineq', c => genAbsIneq(null, c)),
       title: 'Stage 13: Absolute value inequalities',
-      intro: 'Split works on inequalities too. Less than 7 away from 0 means <b>between</b> −7 and 7, so |u| &lt; 7 splits into one chain, −7 &lt; u &lt; 7. More than 7 away means <b>outside</b>: |u| &gt; 7 splits into two cases, u &lt; −7 or u &gt; 7. The number line shows the answer between or outside.',
-      example: '|2x − 1| &lt; 7<br>Split → −7 &lt; 2x − 1 &lt; 7<br>Add 1 → −6 &lt; 2x &lt; 8<br>Divide by 2 → −3 &lt; x &lt; 4<br><br>|x + 2| ≥ 4<br>Split → x + 2 ≤ −4 or x + 2 ≥ 4<br>→ x ≤ −6 or x ≥ 2',
-      tutorial: [() => genAbsIneq('plain', '<'), () => genAbsIneq('plain', '>')] },
+      intro: 'For inequalities there are two Split cards, and you choose. Less than 7 away from 0 means <b>between</b> −7 and 7, so drop ◎ Between on |u| &lt; 7 to get one chain, −7 &lt; u &lt; 7. More than 7 away means <b>outside</b>, so drop ◎ Outside on |u| &gt; 7 to get two cases, u &lt; −7 or u &gt; 7. If the number is negative, a distance is never below it (|u| &lt; −2: No solution) and always above it (|u| &gt; −2: All x).',
+      example: '|2x − 1| &lt; 7<br>Between → −7 &lt; 2x − 1 &lt; 7<br>Add 1 → −6 &lt; 2x &lt; 8<br>Divide by 2 → −3 &lt; x &lt; 4<br><br>|x + 2| ≥ 4<br>Outside → x + 2 ≤ −4 or x + 2 ≥ 4<br>→ x ≤ −6 or x ≥ 2<br><br>|x − 1| ≥ −3 → All x',
+      tutorial: [() => genAbsIneq('plain', 'between-int', true), () => genAbsIneq('plain', 'outside-int', true)] },
   );
   for (const s of SKILLS) SKILL[s.id] = s;
   progress = loadProgress();     // the save was first read before this skill existed
@@ -1069,5 +1240,5 @@
 
   window.ACT3 = { apply, isSolved, solution, segmentsOf, drawLine, clearLine: () => { clearLine(); clearCases(); }, makeEquation: makeEquation3, refreshPath, render, prefit,
     eqText: textOf, makeHand: makeHand3, isCorrect, whyWrong, animFor, applyDifficulty: applyDifficulty3, label, text, kind, kindOf,
-    buildFight: buildFight3, genStacked: genStacked3, gens: { ineq: genIneq, compound: genCompound, absval: genAbsEq, absineq: genAbsIneq } };
+    buildFight: buildFight3, genStacked: genStacked3, caseOf: caseOfG, gens: { ineq: genIneq, compound: genCompound, absval: genAbsEq, absineq: genAbsIneq } };
 })();
