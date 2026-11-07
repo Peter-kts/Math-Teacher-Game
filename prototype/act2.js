@@ -35,7 +35,7 @@
   const clone = e => JSON.parse(JSON.stringify(e));
   const sideOf = (e, s) => (s === 'L' ? e.L : e.R);
   const parseRef = ref => [ref[0], +ref.slice(1)];
-  const swapSides = e => ({ L: e.R, R: e.L, result: e.result });
+  const swapSides = e => ({ ...e, L: e.R, R: e.L });
   const maybeSwap = (e, p = 0.3) => (Math.random() < p ? swapSides(e) : e);
   const constOf = side => { const c = side.find(i => i.t === 'n'); return c ? c.k : F(0); };
   const isPart = c => c.scope === 'part';
@@ -145,7 +145,7 @@
     let answer = F(0), answerText;
     if (end.result === 'none') answerText = 'No solution';
     else if (end.result === 'all') answerText = 'Every number works';
-    else { const other = end.L.length === 1 && end.L[0].t === 'x' ? end.R : end.L; answer = constOf(other); answerText = 'x = ' + fracText(answer); }
+    else { const other = end.L.length === 1 && end.L[0].t === 'x' ? end.R : end.L; answer = constOf(other); answerText = (eq.v || 'x') + ' = ' + fracText(answer); }
     return { start: eq, end, path, answer, answerText, enemy, skills: [...new Set(path.map(p => p.skill))], act2: true };
   }
   // After each move the rest of the path is worked out again, because a ◎ card can be played on any
@@ -165,12 +165,15 @@
   }
 
   // ---------------------------------------------------------------- text
-  const XV = '<i class="xv">x</i>';
+  // The variable is x unless the equation names another letter (e.v): Act 4 hands Act 2 equations in b, t or y.
+  let V = 'x';
+  const xv = () => `<i class="xv">${V}</i>`;
+  const setV = e => { V = (e && e.v) || 'x'; };
   function body(it, html, sign) {      // the term without its sign
     if (it.t === 'n') return html ? fracHtml(fAbs(it.k)) : fracText(fAbs(it.k));
     if (it.t === 'x') {
       const { n, d } = fAbs(it.k);
-      const top = html ? (n === 1 ? '' : `<span class="cf">${n}</span>`) + XV : (n === 1 ? '' : n) + 'x';
+      const top = html ? (n === 1 ? '' : `<span class="cf">${n}</span>`) + xv() : (n === 1 ? '' : n) + V;
       if (d === 1) return top;
       return html ? `<span class="frac"><span>${top}</span><span class="den">${d}</span></span>` : `${top}/${d}`;
     }
@@ -187,11 +190,12 @@
     return sign + body(it, html);
   }
   const sideStr = (side, html) => (side.length ? side.map((it, i) => termStr(it, i === 0, html)).join(' ') : '0');
-  const eqText = e => (e.result === 'none' ? 'No solution' : e.result === 'all' ? 'Every number works' : `${sideStr(e.L)} = ${sideStr(e.R)}`);
+  const eqText = e => (setV(e), e.result === 'none' ? 'No solution' : e.result === 'all' ? 'Every number works' : `${sideStr(e.L)} = ${sideStr(e.R)}`);
   const plain = it => termStr(it, true, false);
 
   // ---------------------------------------------------------------- rendering
   function render(e) {
+    setV(e);
     const el = $('equation'); if (typeof clearNotes === 'function') clearNotes(); el.innerHTML = ''; el.classList.add('a2');
     // Long equations (lots of terms) get a smaller font so they stay on one or two lines on phones.
     el.classList.toggle('a2long', e.L.length + e.R.length > 4 || [...e.L, ...e.R].some(i => i.t === 'g') && e.L.length + e.R.length > 2);
@@ -260,7 +264,7 @@
     if (c.op === 'dist') return '<span class="clong">Distribute</span>';
     if (c.op === 'none') return '<span class="clong">No solution</span>';
     if (c.op === 'all') return '<span class="clong">All x</span>';
-    if (c.x) return opSym(c.op) + (c.n === 1 ? '' : c.n) + 'x';
+    if (c.x) return opSym(c.op) + (c.n === 1 ? '' : c.n) + V;
     return null;
   }
   function text(c) {
@@ -270,7 +274,7 @@
     if (c.op === 'dist') return 'Multiply into the parentheses';
     if (c.op === 'none') return 'Declare: no solution';
     if (c.op === 'all') return 'Declare: every number works';
-    if (c.x) { const t = (c.n === 1 ? '' : c.n) + 'x'; return c.op === '+' ? `Add ${t} to both sides` : `Subtract ${t} from both sides`; }
+    if (c.x) { const t = (c.n === 1 ? '' : c.n) + V; return c.op === '+' ? `Add ${t} to both sides` : `Subtract ${t} from both sides`; }
     return null;
   }
   function kind(c) {
@@ -362,6 +366,7 @@
       why: `<p>A minus in front of parentheses hits <b>every</b> term inside, not just the first one. Multiply each term by ${fracText(g.m)}: ${plain(g)} = ${right}. Here the second sign was left as it was, so ${wrong} is wrong.</p>` };
   }
   function makeHand2(e, correct, size) {
+    setV(e);
     const base = steps(e);
     const useful = c => {
       if (isDeclare(c)) return isStatement(e) && (c.op === 'all') === statementTrue(e);
@@ -468,8 +473,8 @@
   //   5x + 3 = 2x + 12, subtract 2x  ->  "− 2x" under 5x and under 2x  ->  2x cancels, 5x − 2x = 3x
   async function animAddBoth(card, s, ns) {
     const kindT = card.x ? 'x' : 'n', delta = F(card.op === '+' ? card.n : -card.n);
-    const chipT = (card.op === '+' ? '+ ' : MINUS + ' ') + (card.x ? (card.n === 1 ? '' : card.n) + XV : card.n);
-    const chipPlain = (card.op === '+' ? '+' : MINUS) + (card.x ? (card.n === 1 ? '' : card.n) + 'x' : card.n);
+    const chipT = (card.op === '+' ? '+ ' : MINUS + ' ') + (card.x ? (card.n === 1 ? '' : card.n) + xv() : card.n);
+    const chipPlain = (card.op === '+' ? '+' : MINUS) + (card.x ? (card.n === 1 ? '' : card.n) + V : card.n);
     caption(text(card) || cardText(card));
     const marks = [];
     for (const sd of ['L', 'R']) {
@@ -734,6 +739,7 @@
   // Elites stack two recent concepts in one equation; the newest Act 2 concept decides the shape.
   function genStacked2(recent) {
     const newest = [...recent].reverse().find(id => (SKILL[id].act || 1) === 2);
+    if (newest === 'formulas' && window.ACT4) return ACT4.genFormulaStacked();
     for (;;) {
       const x = nonZero(-5, 9);
       if (newest === 'liketerms') {        // like terms whose total is negative: 2x − 5x + 4 = 13
@@ -767,8 +773,9 @@
     const act2 = list.filter(id => (SKILL[id].act || 1) === 2);
     if (node.type === 'elite') return { phases: [() => genStacked2(list.slice(-2))], handSize: difficulty.hand, enemy: 'bracketknight' };
     // Boss: one phase per Act 2 stage (sides swap from phase 2), then two concepts at once.
-    const phases = act2.map((id, i) => () => { const g = SKILL[id].gen(); if (i > 0) g.eq = swapSides(g.eq); return g; });
-    phases.push(() => { const g = genStacked2(list.slice(-2)); if (Math.random() < 0.5) g.eq = swapSides(g.eq); return g; });
+    // Stage 9's formulas (act4.js) come back as { fn }, not { eq }, so only Act 2 equations get swapped.
+    const phases = act2.map((id, i) => () => { const g = SKILL[id].gen(); if (i > 0 && g.eq) g.eq = swapSides(g.eq); return g; });
+    phases.push(() => { const g = genStacked2(list.slice(-2)); if (Math.random() < 0.5 && g.eq) g.eq = swapSides(g.eq); return g; });
     if (act2.length === 1) phases.splice(1, 0, () => { const g = genStacked2(list.slice(-2)); return g; });
     return { phases, handSize: difficulty.hand, enemy: 'archivist' };
   }
