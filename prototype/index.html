@@ -647,6 +647,7 @@ function enemySvg(key) {
 // =====================================================================
 const opSym = op => ({ '+': '+', '-': MINUS, '*': TIMES, '/': DIV })[op];
 function cardLabel(c) {
+  if (window.ACT5 && ACT5.label(c)) return ACT5.label(c);
   if (window.ACT4 && ACT4.label(c)) return ACT4.label(c);
   if (window.ACT3 && ACT3.label(c)) return ACT3.label(c);
   if (window.ACT2 && ACT2.label(c)) return ACT2.label(c);
@@ -662,6 +663,7 @@ function chipHtml(c) {   // how a card reads once it's written into the equation
   return opSym(c.op) + ' ' + paren(F(c.n));
 }
 function cardText(c) {
+  if (window.ACT5 && ACT5.text(c)) return ACT5.text(c);
   if (window.ACT4 && ACT4.text(c)) return ACT4.text(c);
   if (window.ACT3 && ACT3.text(c)) return ACT3.text(c);
   if (window.ACT2 && ACT2.text(c)) return ACT2.text(c);
@@ -670,7 +672,7 @@ function cardText(c) {
             '/': `Divide both sides by ${n}`, neg: `Multiply both sides by ${MINUS}1`,
             frac: `Multiply both sides by ${fracText(F(c.n ?? 1, c.d ?? 1))}` })[c.op];
 }
-const cardKind = c => (window.ACT4 && ACT4.kind(c)) || (window.ACT3 && ACT3.kind(c)) || (window.ACT2 && ACT2.kind(c)) || ({ '+': 'Add', '-': 'Subtract', '*': 'Multiply', '/': 'Divide', neg: `Multiply by ${MINUS}1`, frac: 'Reciprocal' })[c.op];
+const cardKind = c => (window.ACT5 && ACT5.kind(c)) || (window.ACT4 && ACT4.kind(c)) || (window.ACT3 && ACT3.kind(c)) || (window.ACT2 && ACT2.kind(c)) || ({ '+': 'Add', '-': 'Subtract', '*': 'Multiply', '/': 'Divide', neg: `Multiply by ${MINUS}1`, frac: 'Reciprocal' })[c.op];
 const sameCard = (a, b) => cardLabel(a) === cardLabel(b);
 
 // Every card is a legal "do the same thing to both sides" move built from numbers in the equation.
@@ -761,6 +763,8 @@ function renderEquation(s) {
   $('equation').classList.remove('a2long', 'a2'); $('equation').style.removeProperty('--eqSize');
   if (window.ACT3) ACT3.clearLine();   // Act 3's number line and cases panel only show for its own states
   if (window.ACT4) ACT4.clear();       // Act 4's banner and graph panel only show for its own states
+  if (window.ACT5) ACT5.clear();
+  if (s.k5) return ACT5.render(s);     // Act 5 (act5.js): systems of equations and inequalities
   if (s.k4) return ACT4.render(s);     // Act 4 (act4.js): order of operations, functions, slope, lines, formulas
   const act3 = s.rel || s.chain || s.abs || s.board;
   if (s.L || act3) return (act3 ? ACT3 : ACT2).render(s);   // Act 2 equation model (act2.js); with a relation, Act 3's inequalities (act3.js)
@@ -785,6 +789,7 @@ function promptKind(s) {
   return 'equation';
 }
 function problemPrompt(s, skills = []) {
+  if (s.k5) return ACT5.prompt(s);                                      // Act 5 too
   if (s.k4) return window.ACT4 && ACT4.prompt ? ACT4.prompt(s) : '';   // Act 4 words its own questions
   const v = `<i>${s.v || 'x'}</i>`, kind = promptKind(s);
   // "Find x." promises an x exists, so it's left off when the answer is no solution / every number.
@@ -1079,7 +1084,7 @@ const ACT1_LAYOUT = ['fight', 'fight', 'fight', 'elite', 'fight', 'fight', 'figh
 const NODE_ICON = { tutorial: '★', fight: '⚔', elite: '☠', boss: '♛' };
 let hp = MAX_HP, run = null, fight = null, cur = null, hand = [], busy = true;
 // The engine for the current equation: Act 3 (inequalities) and Act 2 share an interface; Act 1 is built in here.
-const eng = () => (cur && cur.act4 ? ACT4 : cur && cur.act3 ? ACT3 : ACT2);
+const eng = () => (cur && cur.act5 ? ACT5 : cur && cur.act4 ? ACT4 : cur && cur.act3 ? ACT3 : ACT2);
 
 // Starting a run first asks for a difficulty.
 function newRun(act) {
@@ -1133,6 +1138,7 @@ function buildFight(node) {
   if (run.act === 2) return ACT2.buildFight(node, list);
   if (run.act === 3) return ACT3.buildFight(node, list);
   if (run.act === 4) return ACT4.buildFight(node, list);
+  if (run.act === 5) return ACT5.buildFight(node, list);
   if (node.type === 'elite') {
     const recent = list.slice(-2);
     const swapped = () => { const g = genOneStep(); g.s.xLeft = false; return g; };
@@ -1202,15 +1208,16 @@ function startPhase() {
     if (g.eq) return ACT2.applyDifficulty(g, gen);
     if (g.ineq) return ACT3.applyDifficulty(g, gen);
     if (g.fn) return ACT4.applyDifficulty(g, gen);
+    if (g.sys) return ACT5.applyDifficulty(g, gen);
     return g;
   };
   const g = freshEquation(gen, { prepare, mirror: !tut });
   const enemy = fight.enemy || g.enemy;
   // Act 3 generators return { ineq } (act3.js: Act 2's model plus a relation), Act 2 ones { eq } (act2.js's equation model), Act 1 ones { s }.
-  cur = g.fn ? ACT4.makeEquation(g.fn, enemy) : g.ineq ? ACT3.makeEquation(g.ineq, enemy) : g.eq ? ACT2.makeEquation(g.eq, enemy) : makeEquation(g.s, enemy);
+  cur = g.sys ? ACT5.makeEquation(g.sys, enemy) : g.fn ? ACT4.makeEquation(g.fn, enemy) : g.ineq ? ACT3.makeEquation(g.ineq, enemy) : g.eq ? ACT2.makeEquation(g.eq, enemy) : makeEquation(g.s, enemy);
   // Playtest fix: Act 4 questions are evaluated, read off a graph or written as a line, not solved for x.
-  $('helpLine').textContent = `Pick the ${cur.act4 && g.fn.k4 !== 'formula' ? 'right next move' : 'move that gets ' + ((g.fn || g.eq || {}).v || 'x') + ' alone'}. Wrong move = 10 damage.`;
-  cur.state = g.fn || g.ineq || g.eq || g.s; cur.step = 0; cur.wrong = 0; cur.moves = 0; cur.lastT = performance.now();
+  $('helpLine').textContent = `Pick the ${cur.act5 || (cur.act4 && g.fn.k4 !== 'formula') ? 'right next move' : 'move that gets ' + ((g.fn || g.eq || {}).v || 'x') + ' alone'}. Wrong move = 10 damage.`;
+  cur.state = g.sys || g.fn || g.ineq || g.eq || g.s; cur.step = 0; cur.wrong = 0; cur.moves = 0; cur.lastT = performance.now();
   cur.case = g.case; cur.caseSkill = g.caseSkill; if (g.case) useCase(g.caseSkill, g.case);
   for (const id of cur.skills) progress.skills[id].attempted++;
   saveProgress();
@@ -1254,6 +1261,7 @@ const CARD_ICONS = {
 // A trap card wears the icon of the move it imitates.
 const TRAP_ICON = { 'add across': 'comb', 'first term only': 'dist', 'first sign only': 'dist', 'no sign flip': null, 'unlike terms': 'comb', 'lost sign': 'div', 'drop bars': 'split' };
 function iconKey(c) {
+  if (window.ACT5 && ACT5.icon(c)) return ACT5.icon(c);
   if (window.ACT4 && ACT4.icon(c)) return ACT4.icon(c);
   if (c.op === 'trap') {
     const k = TRAP_ICON[c.trap]; if (k) return k;
@@ -1279,7 +1287,7 @@ function dealHand() { hand = arrangeHand((cur.act2 ? eng().makeHand : makeHand)(
 // in their dealt order. New acts can add their own named ops to this list.
 const FIXED_SLOTS = ['comb', 'dist', 'lcd', 'flip', 'split', 'none', 'all'];
 const slotKey = c => c.lcd ? 'lcd' : c.op;
-const slotOf = c => { const k = window.ACT4 ? ACT4.slot(c) : null; return k != null ? k : FIXED_SLOTS.indexOf(slotKey(c)); };   // Act 4 cards have their own slots (PEMDAS order)
+const slotOf = c => { const k5 = window.ACT5 ? ACT5.slot(c) : null; if (k5 != null) return k5; const k = window.ACT4 ? ACT4.slot(c) : null; return k != null ? k : FIXED_SLOTS.indexOf(slotKey(c)); };   // Act 4 cards have their own slots (PEMDAS order)
 function arrangeHand(cards) {
   const out = new Array(cards.length).fill(null), rest = [];
   const named = cards.filter(c => slotOf(c) >= 0).sort((a, b) => slotOf(a) - slotOf(b));
@@ -1346,6 +1354,7 @@ let dragging = false;   // only one card can be dragged at a time
 // terms for Combine. Returns the one target (or null when there is none, so the move is wrong wherever it
 // goes), or undefined when there are two or more and the player has to choose.
 function autoTarget(card) {
+  if (window.ACT5 && cur && cur.act5) { const a = ACT5.autoTarget(card); if (a !== 'pass') return a; }   // Act 5 cards pick their own targets
   const q = sel => [...document.querySelectorAll('#equation ' + sel)];
   let things;
   if (card.op === 'flip') things = q('.tok.rel').slice(0, 1);
@@ -1377,6 +1386,7 @@ function startDrag(e, el, card) {
   const targeted = scopeOf(card) === 'part' && auto === undefined;
   $('arena').classList.add(targeted ? 'targeting' : 'anywhere');
   if (window.ACT4) ACT4.onDrag(card, true);
+  if (window.ACT5) ACT5.onDrag(card, true);
   let hover = null;
   const move = ev => {
     if (ev.pointerId !== pid) return;   // ignore other fingers
@@ -1386,7 +1396,7 @@ function startDrag(e, el, card) {
       // Forgiving hit test: within 40px of a box counts, closest box wins.
       let best = Infinity;
       // Act 3's Flip is dropped on the sign. Review fix: only Flip can target it; other ◎ cards used to snap onto it.
-      const sel = (window.ACT4 && ACT4.targetSel(card)) || (card.op === 'flip' ? '#equation .tok:not(.eq), #equation .tok.rel' : '#equation .tok:not(.eq):not(.rel)');
+      const sel = (window.ACT5 && cur && cur.act5 && ACT5.targetSel(card)) || (window.ACT4 && ACT4.targetSel(card)) || (card.op === 'flip' ? '#equation .tok:not(.eq), #equation .tok.rel' : '#equation .tok:not(.eq):not(.rel)');
       for (const t of document.querySelectorAll(sel)) {
         const b = t.getBoundingClientRect();
         const d = Math.hypot(Math.max(b.left - ev.clientX, 0, ev.clientX - b.right), Math.max(b.top - ev.clientY, 0, ev.clientY - b.bottom));
@@ -1409,6 +1419,7 @@ function startDrag(e, el, card) {
     ghost.remove(); el.classList.remove('placeholder');
     $('arena').classList.remove('targeting', 'anywhere');
     if (window.ACT4) ACT4.onDrag(card, false);
+    if (window.ACT5) ACT5.onDrag(card, false);
     if (hover) hover.classList.remove('hover');
     if (hover && drop) playCard(card, targeted ? hover : auto === undefined ? null : auto);
   };
@@ -1637,7 +1648,9 @@ function actCleared() {
     ? `The Archivist's shelves are back in order. ${isUnlocked('ineq') ? 'Act 3, the Leaning Stacks, is open.' : 'Act 3, the Leaning Stacks, opens when No solution / every x reaches 80 mastery.'}`
     : run.act === 3
     ? `The Leaning Tower stands straight again. ${isUnlocked('evalx') ? 'Act 4, the Map Room, is open.' : 'Act 4, the Map Room, opens when the last Act 3 skill reaches 80 mastery.'}`
-    : 'The Cartographer\'s maps are true again. Act 5 is still to be built, so run Act 4 again to keep your skills sharp.';
+    : run.act === 4
+    ? `The Cartographer\'s maps are true again. ${isUnlocked('subst') ? 'Act 5, the Twin Observatory, is open.' : 'Act 5, the Twin Observatory, opens when Lines reaches 80 mastery.'}`
+    : 'The Twin Moons line up at last. Act 6 is still to be built, so run Act 5 again to keep your skills sharp.';
   showOverlay(`<h1>Act ${run.act} cleared!</h1><p>${text}</p>${skillSummaryHtml()}`,
     [['New run', () => newRun(run.act)], ['Title screen', showTitle, true], ['Skills & stats', () => showStats(actCleared), true]]);
 }
@@ -1679,6 +1692,7 @@ window.__game = { get cur() { return cur; }, get hand() { return hand; }, get bu
 <script src="act2.js"></script>
 <script src="act3.js"></script>
 <script src="act4.js"></script>
+<script src="act5.js"></script>
 <script>renderSkills(); updateHud(); showTitle();</script>
 <script src="debug.js"></script>
 </body>
