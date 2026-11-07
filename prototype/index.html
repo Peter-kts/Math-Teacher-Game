@@ -292,7 +292,7 @@
     <div id="celebrate"></div>
     <div id="next">Tap anywhere to continue</div>
   </div>
-  <div class="help">Pick the move that gets x alone. Wrong move = 10 damage.</div>
+  <div class="help" id="helpLine">Pick the move that gets x alone. Wrong move = 10 damage.</div>
   <div class="key"><button id="keyBtn" class="keyBtn">Key</button> <span><span class="badge both">⇔</span> both sides<span class="lbl">: drop anywhere on the enemy</span></span> <span><span class="badge part">◎</span> one part<span class="lbl">: drop on that part of the equation</span></span></div>
   <div id="hand"></div>
 </div>
@@ -1169,6 +1169,8 @@ function startPhase() {
   const enemy = fight.enemy || g.enemy;
   // Act 3 generators return { ineq } (act3.js: Act 2's model plus a relation), Act 2 ones { eq } (act2.js's equation model), Act 1 ones { s }.
   cur = g.fn ? ACT4.makeEquation(g.fn, enemy) : g.ineq ? ACT3.makeEquation(g.ineq, enemy) : g.eq ? ACT2.makeEquation(g.eq, enemy) : makeEquation(g.s, enemy);
+  // Playtest fix: Act 4 questions are evaluated, read off a graph or written as a line, not solved for x.
+  $('helpLine').textContent = `Pick the ${cur.act4 && g.fn.k4 !== 'formula' ? 'right next move' : 'move that gets ' + ((g.fn || g.eq || {}).v || 'x') + ' alone'}. Wrong move = 10 damage.`;
   cur.state = g.fn || g.ineq || g.eq || g.s; cur.step = 0; cur.wrong = 0; cur.moves = 0; cur.lastT = performance.now();
   cur.case = g.case; cur.caseSkill = g.caseSkill; if (g.case) useCase(g.caseSkill, g.case);
   for (const id of cur.skills) progress.skills[id].attempted++;

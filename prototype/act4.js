@@ -241,6 +241,9 @@
       const side = e[s];
       for (let i = 0; i < side.length; i++) for (let j = i + 1; j < side.length; j++) if (keyT(side[i]) === keyT(side[j])) return { op: 'comb', f4: true, scope: 'part', ref: s + i };
     }
+    // Playtest fix: a move that cancels the letter everywhere (2l − 2l, or ÷ w) left no side holding it,
+    // and side[0] was undefined. Such a state can't be solved for the letter, so it is a dead end.
+    if (![...e.L, ...e.R].some(o => hasV(o, v))) return DEAD;
     const ts = e.L.some(o => hasV(o, v)) ? 'L' : 'R', side = e[ts];
     const extra = side.find(o => !hasV(o, v));
     if (extra) return fT(extra.k.n > 0 ? '-' : '+', { ...extra, k: fAbs(extra.k) });
@@ -250,7 +253,8 @@
     if (tt.k.d > 1) return fT('*', T(tt.k.d));
     return fT('/', T(tt.k, rest));
   }
-  function fPath(e) { const out = []; let s = e; while (out.length < 20) { const m = fCanon(s); if (!m) break; out.push({ state: s, move: m }); s = fApply(s, m, m.ref); } return { path: out, end: s }; }
+  const DEAD = { dead: true };
+  function fPath(e) { const out = []; let s = e; while (out.length < 20) { const m = fCanon(s); if (!m) break; if (m.dead) { while (out.length < 99) out.push({ state: s, move: null }); break; } out.push({ state: s, move: m }); s = fApply(s, m, m.ref); } return { path: out, end: s }; }
   const fSteps = e => fPath(e).path.length;
   // Shrinking what multiplies the letter (÷2 on 2rt = d) is real progress too, so it is never dealt as a wrong card.
   function fShrinks(e, c) {
@@ -265,12 +269,17 @@
     return fSteps(a) < fSteps(e) || fShrinks(e, c);
   }
   // ---------------------------------------------------------------- formula text
-  const litHtml = (lit, v) => [...lit].map(ch => (ch === v ? XI(ch) : `<i class="lv">${ch}</i>`)).join('');
+  // Playtest fix: repeated letters (×5hw on 5hlw) showed as "hh"; they now show as powers, h².
+  const SUP = ['', '', '²', '³', '⁴', '⁵', '⁶'];
+  const litRuns = lit => { const out = []; for (const ch of lit) { const r = out[out.length - 1]; if (r && r.ch === ch) r.n++; else out.push({ ch, n: 1 }); } return out; };
+  const litText = lit => litRuns(lit).map(r => r.ch + (r.n === 1 ? '' : SUP[r.n] || '^' + r.n)).join('');
+  const litHtml = (lit, v) => litRuns(lit).map(r => (r.ch === v ? XI(r.ch) : `<i class="lv">${r.ch}</i>`) + (SUP[r.n] || '')).join('');
   function tBody(t, v, html) {
     const k = fAbs(t.k), topNum = k.n === 1 && t.lit ? '' : String(k.n);
-    const top = topNum + (html ? litHtml(t.lit, v) : t.lit), bot = (k.d === 1 ? '' : String(k.d)) + (html ? litHtml(t.den, v) : t.den);
+    const top = topNum + (html ? litHtml(t.lit, v) : litText(t.lit)), bot = (k.d === 1 ? '' : String(k.d)) + (html ? litHtml(t.den, v) : litText(t.den));
     if (!bot) return top;
-    return html ? `<span class="frac"><span>${top}</span><span>${bot}</span></span>` : `${top}/${bot}`;
+    // playtest fix: plain text V/5hw read as (V/5)·h·w; a denominator of more than one factor gets brackets
+    return html ? `<span class="frac"><span>${top}</span><span>${bot}</span></span>` : `${top}/${/^\d+$|^[A-Za-z]$/.test(bot) ? bot : '(' + bot + ')'}`;
   }
   function fTermStr(o, first, html, v) {
     const neg = (o.g ? o.m.k : o.k).n < 0, sign = neg ? (first ? MINUS : MINUS + ' ') : first ? '' : '+ ';
@@ -742,8 +751,8 @@
     if (!tut && L >= 3) sp.traps.slice(0, 1).forEach(tryAdd);
     sp.rule.forEach(tryAdd);
     if (!tut) shuffle(sp.decoys).slice(0, DECOYS[L]).forEach(tryAdd);
-    // icept: both Set cards are right until one intercept is found
-    if (e.k4 === 'icept' && !e.work && e.found.x === null && e.found.y === null) { const other = correct.op === 'setx' ? { op: 'sety' } : { op: 'setx' }; if (hand.length < size) { hand.push(other); seen.add(cardLabel(other)); } }
+    // Playtest fix: icept used to deal both Set x = 0 and Set y = 0 while both were right, breaking the
+    // one-right-card rule. The other Set card is left out (alsoRight) until the first intercept is found.
     shuffle(family(e)).forEach(tryAdd);
     // Still short (small families): any other Act 4 card that isn't right here.
     shuffle([...evalFamily(null), { op: 'rise', scope: 'part' }, { op: 'read', scope: 'part' }, { op: 'write', scope: 'part' }, { op: 'plugpt', scope: 'part' }]).forEach(tryAdd);
@@ -789,7 +798,7 @@
 
   // ================================================================ wrong moves
   const NAMES = { add: 'adding', sub: 'subtracting', mul: 'multiplying', div: 'dividing', pow: 'the power' };
-  const FAM_SYM = { addsub: `a + or ${MINUS}`, muldiv: `a ${TIMES} (written ·) or a fraction bar`, pow: 'a small ² or ³', paren: 'a pair of parentheses' };
+  const FAM_SYM = { addsub: `a + or ${MINUS}`, muldiv: `a ${TIMES} (written ·) or a fraction bar`, pow: 'a small ² or ³', paren: 'a pair of parentheses', undef: 'the fraction bar with 0 underneath', plug: 'the letter' };   // playtest fix: undef and plug had no entry, so a hint read "(undefined)"
   // Why an operation can't be done yet: the first thing under it that has to go first.
   function blocker(tree, p) {
     const n = at(tree, p); if (!n) return null;
@@ -828,7 +837,7 @@
       return long ? P(`There's more than one step inside these brackets. Inside parentheses the usual order still holds, so first ${b ? `do ${treeText(b.node)}` : 'the step inside'}.`) : `Inside the brackets, ${b ? treeText(b.node) : 'that step'} comes first.`;
     }
     if (!node || !OPS.includes(node.t)) {
-      if (node && node.t === 'num') return long ? P(`That's a number on its own. Operation cards go on the symbol: ${FAM_SYM[card.op] || 'the operation'}. ${want ? describeWant(ev, want) : ''}`) : `Drop it on the symbol (${FAM_SYM[card.op]}).`;
+      if (node && node.t === 'num') return long ? P(`That's a number on its own. Operation cards go on the symbol: ${FAM_SYM[card.op] || 'the operation'}. ${want ? describeWant(ev, want) : ''}`) : `Drop it on ${FAM_SYM[card.op] || 'its symbol'}.`;
       return long ? P(`That card goes on ${FAM_SYM[card.op] || 'its symbol'}. ${want ? describeWant(ev, want) : ''}`) : `That card goes on ${FAM_SYM[card.op] || 'its symbol'}.`;
     }
     if (famOf(node) !== card.op) {
@@ -892,11 +901,17 @@
         }
         if (e.b === null && card.op === 'write') return long ? P(`b isn't known yet. Plug the point into y = mx + b to find it.`) : 'Find b first: plug a point in.';
         if (e.b === null && (card.op === 'plugpt' || card.op === 'ptslope')) return long ? P('Drop it on a point the line goes through.') : 'Drop it on the point.';
+        // Playtest fix: on slope-and-point, parallel and perpendicular questions these fell through to
+        // "Start with rise over run", which told the player to use the card they had just played wrongly.
+        if (e.m === null && card.op === 'rise' && (e.q === 'parallel' || e.q === 'perp')) return long ? P(`There's only one point, so there's no rise over run to measure. The slope comes from the given line: ${e.q === 'parallel' ? 'parallel lines have the same slope, so use Same m' : 'perpendicular slopes are negative reciprocals, so use −1/m'} on its slope.`) : `The slope comes from the given line: use ${e.q === 'parallel' ? 'Same m' : '−1/m'}.`;
+        if (e.m !== null && (card.op === 'same' || card.op === 'perp')) return long ? P(`The slope is already known: ${fracText(e.m)}. ${e.q === 'parallel' || e.q === 'perp' ? '' : 'There is no other line here to copy a slope from. '}Now find b.`) : 'The slope is already known. Now find b.';
         if (e.m !== null && card.op === 'rise') return long ? P(`The slope is already known: ${fracText(e.m)}.`) : 'The slope is already known.';
         if (e.b !== null && card.op === 'write') return long ? P('Drop Write the line on y = mx + b.') : 'Drop it on y = mx + b.';
         if (e.b !== null) return long ? P(`Both m and b are known: write the line, y = ${lineTextOf(e.m, e.b)}.`) : 'm and b are known: write the line.';
       }
       if (card.op === 'undef') return long ? P('Declare undefined is for a fraction with 0 underneath, once the slope has been worked out.') : 'Nothing is undefined yet.';
+      if (e.k4 === 'line' && e.m === null && (e.q === 'parallel' || e.q === 'perp')) return long ? P(`Start with the slope: it comes from the given line. Use ${e.q === 'parallel' ? 'Same m' : '−1/m'} on its slope.`) : `Start with the slope of the given line.`;
+      if (e.k4 === 'line' && e.m !== null) return long ? P(`The slope is ${fracText(e.m)}. Next find b: plug the point in.`) : 'Next find b: plug the point in.';
       return long ? P('Start with rise over run between the two points.') : 'Start with rise over run.';
     }
     if (e.k4 === 'icept' && !e.work && OWN.includes(card.op)) {
@@ -973,7 +988,14 @@
       case 'var': put(TOK(XI(n.name), 'var', ref, 'var')); break;
       case 'call': put(TOK(`${n.name}(${fracHtml(n.arg)})`, 'call', ref)); break;
       case 'add': case 'sub': put(nodeEl(n.a, path + 'a', false)); put(TOK(n.t === 'add' ? '+' : MINUS, 'op', ref, 'fam-addsub')); put(nodeEl(n.b, path + 'b', true)); break;
-      case 'mul': put(nodeEl(n.a, path + 'a', false)); if (!implicitMul(n)) put(TOK('·', 'op', ref, 'fam-muldiv')); put(nodeEl(n.b, path + 'b', true)); break;
+      case 'mul': {
+        put(nodeEl(n.a, path + 'a', false));
+        const imp = implicitMul(n); if (!imp) put(TOK('·', 'op', ref, 'fam-muldiv'));
+        const b = nodeEl(n.b, path + 'b', true); put(b);
+        // Playtest fix: 3x and x² showed as "3 x" and "x ²" (each box's padding). Written-together parts sit tight.
+        if (imp) { const f = b.querySelector('.tok'); if (f && !f.classList.contains('r4-par')) f.classList.add('tightL'); }
+        break;
+      }
       case 'div': {
         w.className = 'n4 frac4';
         const top = document.createElement('span'), bot = document.createElement('span');
@@ -982,7 +1004,7 @@
         w.append(top, TOK('<span class="bar4"></span>', 'bar', ref, 'fam-muldiv'), bot);
         break;
       }
-      case 'pow': put(nodeEl(n.a, path + 'a', true)); put(TOK(n.e === 3 ? '³' : '²', 'pow', ref, 'sup4 fam-pow')); break;
+      case 'pow': put(nodeEl(n.a, path + 'a', true)); put(TOK(n.e === 3 ? '³' : '²', 'pow', ref, 'sup4 fam-pow tightL')); break;
       case 'par': put(TOK('(', 'par', ref, 'fam-paren')); put(nodeEl(n.a, path + 'a', false)); put(TOK(')', 'par', ref, 'fam-paren')); break;
       case 'neg': put(TOK(MINUS, 'sign', null)); put(nodeEl(n.a, path + 'a', true)); break;
     }
@@ -1014,7 +1036,7 @@
   }
   const banner = html => { const t = topEl(); t.innerHTML = html; t.classList.add('show'); };
   const ruleHtml = fn => `${fn.name}(${XI(fn.vn)}) = ${treeHtml(fn.rule)}`;
-  const treeHtml = n => treeText(n).replace(/\b([a-z])\b/g, m => XI(m));
+  const treeHtml = n => treeText(n).replace(/(?<![a-z])([a-z])(?![a-z])/g, m => XI(m));   // playtest fix: \b missed the x in "2x"
   function templateToks(e, inTop) {
     const mT = e.m === null ? '<span class="slot4">m</span>' : fIs(e.m, 1) ? '' : fIs(e.m, -1) ? MINUS : fracHtml(e.m);
     const bT = e.b === null ? '+ <span class="slot4">b</span>' : fz(e.b) ? '' : `${e.b.n < 0 ? MINUS : '+'} ${fracHtml(fAbs(e.b))}`;
@@ -1409,10 +1431,14 @@
   }
   // Extra steps: one more term (Normal), then nested parentheses (Hard), then more (Expert).
   function addEvalSteps(tree, k, L) {
+    // Playtest fix: steps used to pile up loose numbers (+ 3 − 1 − 1) and wrap a bare product in brackets
+    // (3(15(x + 14))). A loose number is now added at most once, and only a sum or difference gets nested.
+    let termed = false;
     for (let i = 0; i < k; i++) {
-      const opts = ['xterm', 'term'];
-      if (L >= 2 && i === 0 && tree.t !== 'div') opts.push('nest', 'nest');
+      const opts = termed ? ['xterm'] : ['xterm', 'term'];
+      if (L >= 2 && i === 0 && (tree.t === 'add' || tree.t === 'sub')) opts.push('nest', 'nest');
       const o = pick(opts);
+      if (o === 'term') termed = true;
       if (o === 'term') tree = pm(tree, nonZero(-9, 9));
       else if (o === 'xterm') tree = pmT(tree, mul(num(rand(2, 6)), vr()), Math.random() < 0.5);
       else tree = pm(mul(num(rand(2, 4)), par(tree)), nonZero(-9, 9));
@@ -1431,7 +1457,8 @@
       const res = evaluate(tree, 'x', x);
       if (!res) continue;
       if (L < 3 && !isInt(res)) continue;
-      if (Math.abs(fv(res)) > [60, 150, 400, 800][L]) continue;
+      if (!isInt(res) && res.d > 12) continue;   // playtest fix: Expert gave answers like 1127/2
+      if (Math.abs(fv(res)) > [60, 150, 300, 300][L]) continue;
       if (opCount(tree) > 9) continue;
       return { fn: { ...evalState(tree, x, 'x'), skill: 'evalx' }, enemy: 'plugger' };
     }
@@ -1758,6 +1785,7 @@
     #equation.a4 .tok { flex-shrink:0; }
     .tok.a4 { min-width:0; padding:4px 3px; min-height:calc(var(--eqSize) * 1.35); max-width:none; border-width:3px; }
     .tok.a4.r4-op, .tok.a4.r4-par { padding-left:6px; padding-right:6px; }
+    .tok.a4.tightL { margin-left:-6px; }
     .tok.a4.sup4 { font-size:.55em; align-self:flex-start; min-height:0; padding:2px 3px; margin-top:.25em; }
     .tok.a4 .xv, .tok.a4.var .xv, #a4top .xv, .fm4 .xv { font-style:normal; color:var(--accent); }
     .tok.a4 .lv { font-style:normal; }
