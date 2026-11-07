@@ -865,7 +865,7 @@
     h += rowOf(k => M(e.N[k] || F(0), k), 'nd6');
     e.rows.forEach((r, j) => {
       const top = r.lo + dd, st = j === last ? 'p' : '';
-      h += cell(MINUS, 'mn6', st);
+      h += cell('', 'mn6', st);   // the product row is written already negated, so no extra minus in front
       h += rowOf(k => (k <= top && k >= r.lo ? M(fNeg(r.prod[k] || F(0)), k) : null), 'pr6', st);
       const lo = j === last && e.done ? 0 : Math.max(0, r.lo - 1), hi = top - 1;
       const allZero = (() => { for (let k = hi; k >= lo; k--) if (!fz(r.rem[k] || F(0))) return false; return true; })();
@@ -978,11 +978,11 @@
   const tk = ref => $('equation').querySelector(`.tok[data-ref="${ref}"]`);
   const popRefs = refs => refs.forEach(r => kickClass(tk(r), 'pop'));
   const ORD = n => (n === 2 ? 'square' : n === 3 ? 'cube' : n + 'th power');
-  const moveAt = (s, c, ref) => movesOf(s).find(o => matchCard(o, c) && (o.refs.includes(ref) || o.refs.length === 1));
+  const moveAt = (s, c, ref) => { const ms = movesOf(s).filter(o => matchCard(o, c)); return ms.find(o => o.refs.includes(ref)) || ms[0]; };   // same pick as apply6
   async function result(ns, refs, cap) { render(ns); popRefs(refs); if (cap) caption(cap); await quick(300); await hold(); }
   async function written(html, anchors, cap, cls = 'lift4') {
     if (cap) caption(cap);
-    const n = note(html, anchors); n.classList.add(cls);
+    const n = note(html, anchors); n.classList.add(cls, 'n6');
     await quick(150); await hold();
     return n;
   }
@@ -1087,7 +1087,7 @@
   async function hops(s, numRef, tenRef, v0, p0, k, cap) {
     const nt = tk(numRef); let tt = tenRef ? tk(tenRef) : null;
     caption(cap);
-    const n = note(k > 0 ? `point ${Math.abs(k)} ${Math.abs(k) === 1 ? 'place' : 'places'} ←` : `point ${Math.abs(k)} ${Math.abs(k) === 1 ? 'place' : 'places'} →`, [nt]); n.classList.add('lift4');
+    const n = note(k > 0 ? `point ${Math.abs(k)} ${Math.abs(k) === 1 ? 'place' : 'places'} ←` : `point ${Math.abs(k)} ${Math.abs(k) === 1 ? 'place' : 'places'} →`, [nt]); n.classList.add('lift4', 'n6');
     await quick(150); await hold(); dropNote(n);
     const step = k > 0 ? 1 : -1;
     for (let j = 1; j <= Math.abs(k); j++) {
@@ -1681,7 +1681,8 @@
     @keyframes lift6 { to { transform: translateY(-.6em); opacity:.25; } }
     .tok.a4.sink6 { transform: translateY(.4em) scale(.7); opacity:.2; }
     .tok.ok6 { border-color: var(--good) !important; background:#06d6a022 !important; }
-    .unote.box6n { font-size:.42em; color:var(--ink); }
+    .unote.box6n { font-size:max(.42em, 12px); color:var(--ink); }
+    .unote.n6 { font-size:max(.42em, 14px); }   /* stays readable when a long line is scaled down on a phone */
     .box6t { border-collapse:collapse; margin-top:.3em; background:#0005; }
     .box6t th, .box6t td { border:2px solid var(--muted); padding:.15em .45em; white-space:nowrap; }
     .box6t th { color:#ffc46b; font-weight:bold; }
@@ -1695,11 +1696,12 @@
     .pc6 { display:inline-flex; align-items:center; gap:.15em; margin:0 .1em; }
     .long6, .syn6 { display:grid; column-gap:.55em; row-gap:.08em; align-items:center; font-size:.62em; line-height:1.3; }
     .long6 .c6, .syn6 .c6 { text-align:center; min-width:1.4em; }
-    .long6 .nd6 { border-top:.08em solid var(--ink); }
+    .long6 .nd6 { border-top:.08em solid var(--ink); margin:0 -.28em; padding:0 .28em; }   /* the bar runs unbroken across the column gaps */
     .long6 .dv6 { color:#ffc46b; text-align:right; padding-right:.15em; }
     .long6 .q6 { color:var(--good); }
-    .long6 .pr6, .long6 .mn6 { color:#ff9ad5; border-bottom:.06em solid var(--muted); }
+    .long6 .pr6, .long6 .mn6 { color:#ff9ad5; border-bottom:.06em solid var(--muted); margin:0 -.28em; padding:0 .28em; }
     .long6 .mn6 { border-bottom:none; text-align:right; }
+    .long6 .pr6:empty { border-bottom-color:transparent; }
     .long6 .rm6 { color:var(--ink); }
     .syn6 .sc6 { color:#ffc46b; border-right:.08em solid var(--ink); padding-right:.3em; }
     .syn6 .sp6 { color:#ff9ad5; border-bottom:.08em solid var(--ink); }
