@@ -278,6 +278,28 @@
     .statrow { padding-top:6px; } .statrow dl { font-size:12px; }
     button { font-size:15px; padding:8px 14px; }
   }
+  /* "Do the math" mode: the line before the move, small, above the next line with its new numbers blanked out. */
+  #mathBtn.on { background:var(--accent); color:#000; border-color:#000; }
+  #ciPrev { display:none; font-size:calc(var(--eqSize) * .45); color:var(--muted); align-items:center; justify-content:center; gap:2px; flex-wrap:wrap; }
+  #ciPrev.show { display:flex; }
+  #ciPrev .tok { min-height:0; min-width:0; padding:0 3px; border:0; }
+  #ciPrev svg, #ciPrev .unote { display:none; }
+  .ciBlank { display:inline-flex; align-items:center; justify-content:center; min-width:1.6em; min-height:1.1em; padding:0 .15em; margin:0 .05em;
+             border:3px dashed var(--muted); border-radius:8px; color:var(--ink); font-size:.85em; line-height:1.1; vertical-align:middle; cursor:pointer; }
+  .ciBlank.cur { border-color:var(--accent); border-style:solid; background:#ffd16622; }
+  .ciBlank.ok { border:3px solid var(--good, #06d6a0); color:var(--good, #06d6a0); background:transparent; }
+  .ciBlank.shown { border:3px solid #ef8f5f; color:#ef8f5f; }
+  .ciBlank.bad { animation: shake calc(.35s * var(--k)); border-color:#ef476f; }
+  .ciBlank .frac { font-size:.8em; }
+  #pad { display:none; }
+  #app.computing #hand { display:none; }
+  #app.computing #pad { display:grid; grid-template-columns:repeat(4, minmax(52px, 76px)); gap:6px; justify-content:center; padding-bottom:6px; }
+  #pad button { font-size:22px; padding:8px 0; min-height:46px; touch-action:manipulation; }
+  #pad button.ok { grid-column:span 2; background:var(--accent); color:#000; }
+  @media (orientation: landscape) and (max-height: 520px) {
+    #app.computing #pad { grid-column:2; grid-row:4; grid-template-columns:repeat(4, 50px); gap:4px; align-content:center; }
+    #pad button { font-size:17px; min-height:0; padding:4px 0; }
+  }
 </style>
 </head>
 <body>
@@ -285,6 +307,7 @@
   <header>
     <div class="hpwrap">HP <div class="hpbar"><div class="hpfill" id="hpfill"></div><div class="hptext" id="hptext"></div></div></div>
     <div class="speed"><span class="lbl">Animation speed</span> <button data-speed="0.5">0.5x</button><button data-speed="1">1x</button><button data-speed="2">2x</button></div>
+    <button class="topbtn ghost" id="mathBtn" title="Do the math yourself: after each move, type the new numbers. A wrong number costs 10 HP."><span class="long">Do the math</span><span class="short">🧮</span></button>
     <button class="topbtn ghost" id="statsBtn"><span class="long">Skills &amp; stats</span><span class="short">Stats</span></button>
   </header>
   <div id="map"></div>
@@ -294,6 +317,7 @@
     <!-- stand-in enemy art (swap for PNGs later) -->
     <div id="enemyBox"></div>
     <div id="prompt"></div>
+    <div id="ciPrev"></div>
     <div id="equation"></div>
     <div id="step"></div>
     <div id="msg"></div>
@@ -304,6 +328,7 @@
   <div class="help" id="helpLine">Pick the move that gets x alone. Wrong move = 10 damage.</div>
   <div class="key"><button id="keyBtn" class="keyBtn">Key</button> <span><span class="badge both">⇔</span> both sides<span class="lbl">: drop anywhere on the enemy</span></span> <span><span class="badge part">◎</span> one part<span class="lbl">: drop on that part of the equation</span></span></div>
   <div id="hand"></div>
+  <div id="pad"></div>
 </div>
 <div id="over"><div class="panel" id="overPanel"></div></div>
 <div id="why"><div class="panel"><h2 id="whyTitle">Why that didn't work</h2><div id="whyBody"></div><div class="buttons"><button id="whyClose">Got it</button></div></div></div>
@@ -1199,6 +1224,7 @@ function startNode() {
 }
 
 function startPhase() {
+  if (computing) endCompute(false);   // a jump (debug menu) or new run in the middle of typing numbers
   const gen = fight.phases[fight.phase];
   // Tutorials stay on Easy and keep the shape they teach (no mirroring); they still never repeat.
   const tut = fight.node.type === 'tutorial';
@@ -1463,8 +1489,15 @@ async function doStep(card, target) {
   const note = cur.path.length > 1 && cur.step === 0 && additive ? ` (undo + and ${MINUS} first, then ${TIMES} and ${DIV})` : '';
   const anim = cur.act2 ? eng().animFor(card) : OPERATION_ANIMATIONS[card.op];
   if (cur.act2) eng().prefit(s, ns);   // size the equation once, before the animation
-  animating = true;
-  try { if (anim) await anim(card, s, ns, cur.act2 ? ref : note); } finally { animating = false; }
+  if (computeMode) {
+    // Do the math: the player writes the new numbers instead of watching them worked out.
+    if (!await computeStep(card, s, ns)) return;
+  }
+  if (!computeMode || !$('equation').querySelector('.ciBlank')) {
+    if (computeMode) renderEquation(s);   // nothing new to compute (the move only moved things): play it as usual
+    animating = true;
+    try { if (anim) await anim(card, s, ns, cur.act2 ? ref : note); } finally { animating = false; }
+  }
   cur.state = ns; cur.step++;
   if (cur.act2) eng().refreshPath(cur);
   cur.lastT = performance.now();   // start the next move's clock after the animation, not before it
@@ -1514,6 +1547,208 @@ function equationSolved() {
   if (node.type === 'boss') return waitForNext(actCleared);
   run.i++;
   waitForNext(startNode);
+}
+
+// =====================================================================
+//  "Do the math" mode (optional, saved setting)
+// =====================================================================
+// After a right move, the next line of the equation appears with every newly computed number blanked
+// out, under a small copy of the line before it. The player types each number on a small pad. A wrong
+// number costs 10 HP like a wrong move (and the solve no longer counts as clean, but mastery isn't
+// docked: it's an arithmetic slip, not an algebra one). Two misses on the same number show it.
+// Any equal value is accepted, so a result that doesn't divide evenly can be typed as the unsimplified
+// fraction straight from the operation (14 ÷ 6 -> "14/6"); "7/3", "2.5" and "5/2" all work too.
+// It reads the numbers off the rendered #equation, so it works for every act without engine changes:
+// numbers on each side that weren't on that side before are the ones the player computed.
+let computeMode = false;
+try { computeMode = localStorage.getItem('algebraCards.doTheMath') === '1'; } catch (e) {}
+function setComputeMode(v) {
+  computeMode = v;
+  $('mathBtn').classList.toggle('on', v);
+  $('mathBtn').setAttribute('aria-pressed', String(v));
+  try { localStorage.setItem('algebraCards.doTheMath', v ? '1' : '0'); } catch (e) {}
+}
+$('mathBtn').addEventListener('click', e => {
+  e.stopPropagation(); setComputeMode(!computeMode);
+  if (!computing) setMsg(computeMode ? 'Do the math is on: after each move, type the new numbers. A wrong number costs 10 HP.' : 'Do the math is off.');
+});
+setComputeMode(computeMode);
+
+const NUM_RE = /(−|-)?(\d+(?:\.\d+)?)|([=<>≤≥≠])/g;
+const PLAIN_NUM = /^\s*(−|-)?(\d+(?:\.\d+)?)\s*$/;
+function decFrac(str, neg) {                     // "2.5" -> 5/2
+  const [i, f = ''] = str.split('.');
+  return F((neg ? -1 : 1) * +(i + f), 10 ** f.length);
+}
+const fKey = f => f.n + '/' + f.d;
+// Lists the numbers written in #equation, in order: {value, seg, ...where it is}. seg counts the
+// relation signs before it, so "left side" and "right side" are compared separately.
+function scanNumbers(root) {
+  const out = []; let seg = 0, lastText = null;
+  const skip = el => el.closest && el.closest('svg, .unote, .ciBlank');
+  const walk = node => {
+    if (node.nodeType === 1) {
+      if (skip(node)) return;
+      // A stacked number fraction is one value: the whole thing is one blank.
+      if (node.classList.contains('frac') && node.children.length === 2) {
+        const [a, b] = [...node.children].map(c => c.textContent.match(PLAIN_NUM));
+        if (a && b && !node.querySelector('[data-role]:not(.den)')) {
+          const prev = node.previousSibling, signed = prev && prev.nodeType === 3 && /[−-]$/.test(prev.nodeValue) && !/[−-]\s+[−-]$/.test(prev.nodeValue);
+          const num = decFrac(a[2], !!a[1] !== !!signed), den = decFrac(b[2]);
+          out.push({ value: fMul(num, F(den.d, den.n)), seg, frac: node, signNode: signed ? prev : null });
+          return;
+        }
+      }
+      [...node.childNodes].forEach(walk);
+    } else if (node.nodeType === 3) {
+      const t = node.nodeValue; let m; NUM_RE.lastIndex = 0;
+      const prevText = lastText; if (t.trim()) lastText = node;
+      while ((m = NUM_RE.exec(t))) {
+        if (m[3]) { seg++; continue; }
+        // A minus written in the element just before ("(−" then "4x") still makes it negative.
+        if (!m[1] && m.index === 0 && prevText && /(^|[^\s\d])[−]$/.test(prevText.nodeValue)) {
+          out.push({ value: decFrac(m[2], true), seg, node, start: 0, end: m[0].length, signNode: prevText });
+          continue;
+        }
+        // "−5" (no space) is a negative number; "− 5" is subtracting 5, and the sign stays written.
+        // A minus right before a stacked fraction belongs to the fraction (handled above).
+        if (m[1] && node.nextSibling && node.nextSibling.classList && node.nextSibling.classList.contains('frac') && m.index + m[0].length === t.length) continue;
+        out.push({ value: decFrac(m[2], !!m[1]), seg, node, start: m.index, end: m.index + m[0].length });
+      }
+    }
+  };
+  walk(root);
+  out.rels = seg;
+  return out;
+}
+// The numbers in `after` that the move produced: on each side, anything not already on that side.
+function newNumbers(before, after) {
+  // More relation signs than before means the view changed (a system shown again after one equation
+  // is solved): those numbers were copied, not computed.
+  const rels = list => list.rels;
+  if (rels(after) > rels(before)) return [];
+  const segs = list => new Set(list.map(n => n.seg)).size;
+  const bySide = segs(before) === segs(after) && Math.max(...before.map(n => n.seg), 0) === Math.max(...after.map(n => n.seg), 0);
+  const bags = {};
+  for (const n of before) { const k = (bySide ? n.seg : 0) + '|' + fKey(n.value); bags[k] = (bags[k] || 0) + 1; }
+  return after.filter(n => { const k = (bySide ? n.seg : 0) + '|' + fKey(n.value); if (bags[k]) { bags[k]--; return false; } return true; });
+}
+function parseEntry(t) {
+  t = t.replace(/-/g, '−').trim();
+  const m = t.match(/^(−)?(\d+(?:\.\d+)?)(?:\/(\d+(?:\.\d+)?))?$/);
+  if (!m) return null;
+  const n = decFrac(m[2], !!m[1]); if (!m[3]) return n;
+  const d = decFrac(m[3]); if (d.n === 0) return null;
+  return fMul(n, F(d.d, d.n));
+}
+// Replaces each new number with a blank (last first, so earlier text offsets stay valid).
+function blankOut(items) {
+  const blanks = items.map((it, i) => { const b = document.createElement('span'); b.className = 'ciBlank'; b.dataset.i = i; b.textContent = ' '; return b; });
+  for (let i = items.length - 1; i >= 0; i--) {
+    const it = items[i];
+    if (it.frac) {
+      if (it.signNode) it.signNode.nodeValue = it.signNode.nodeValue.replace(/[−-]$/, '');
+      it.frac.replaceWith(blanks[i]);
+    } else {
+      if (it.signNode) it.signNode.nodeValue = it.signNode.nodeValue.replace(/[−]$/, '');
+      const r = document.createRange(); r.setStart(it.node, it.start); r.setEnd(it.node, it.end);
+      r.deleteContents(); r.insertNode(blanks[i]);
+    }
+  }
+  return blanks;
+}
+
+let computing = null;   // the entry in progress: { blanks, items, i, text, misses, done }
+const PAD_KEYS = ['7', '8', '9', '⌫', '4', '5', '6', '−', '1', '2', '3', '/', '.', '0', 'OK'];
+function renderPad() {
+  $('pad').innerHTML = PAD_KEYS.map(k => `<button class="${k === 'OK' ? 'ok' : 'ghost'}" data-k="${k}">${k === 'OK' ? 'Check' : k}</button>`).join('');
+}
+$('pad').addEventListener('click', e => { const b = e.target.closest('button'); if (b) padKey(b.dataset.k); });
+window.addEventListener('keydown', e => {
+  if (!computing) return;
+  const k = e.key === 'Backspace' ? '⌫' : e.key === 'Enter' ? 'OK' : e.key === '-' ? '−' : e.key;
+  if (PAD_KEYS.includes(k)) { e.preventDefault(); padKey(k); }
+});
+function showBlank() {
+  const c = computing; if (!c) return;
+  c.blanks.forEach((b, j) => b.classList.toggle('cur', j === c.i));
+  const b = c.blanks[c.i];
+  b.textContent = c.text || ' ';
+  if (/^−?\d+(\.\d+)?\/\d+(\.\d+)?$/.test(c.text)) {   // show a typed fraction stacked, like the game writes them
+    const [n, d] = c.text.split('/'); b.innerHTML = `<span class="frac"><span>${n}</span><span>${d}</span></span>`;
+  }
+}
+function padKey(k) {
+  const c = computing; if (!c || c.checking) return;
+  if (k === '⌫') c.text = c.text.slice(0, -1);
+  else if (k === '−') c.text = c.text.startsWith('−') ? c.text.slice(1) : '−' + c.text;
+  else if (k === '/') { if (c.text && !c.text.includes('/')) c.text += '/'; }
+  else if (k === '.') { const part = c.text.split('/').pop(); if (!part.includes('.')) c.text += (part === '' || part === '−' ? '0.' : '.'); }
+  else if (k === 'OK') return checkEntry();
+  else if (c.text.replace(/\D/g, '').length < 7) c.text += k;
+  showBlank();
+}
+async function checkEntry() {
+  const c = computing, b = c.blanks[c.i], it = c.items[c.i];
+  const v = parseEntry(c.text);
+  if (!v) { setMsg('Type a number, like 12, −3, 7/3 or 2.5.'); return; }
+  if (v.n === it.value.n && v.d === it.value.d) {
+    b.classList.remove('cur', 'bad'); b.classList.add('ok');
+    setMsg(fracText(it.value) !== c.text ? `Right: ${c.text} = ${fracText(it.value)}` : 'Right!', 'good');
+    b.innerHTML = fracHtml(it.value);
+    return nextBlank();
+  }
+  // Wrong: -10 HP, same as a wrong move. The blank shakes and stays open.
+  c.misses++; cur.wrong++;
+  const sk = progress.skills[cur.path[Math.min(cur.step, cur.path.length - 1)].skill];
+  if (sk) { sk.wrongByCard.Arithmetic = (sk.wrongByCard.Arithmetic || 0) + 1; saveProgress(); }
+  b.classList.remove('bad'); void b.offsetWidth; b.classList.add('bad');
+  const reveal = c.misses >= 2;
+  takeDamage(reveal ? `It's ${fracText(it.value)}.` : `${c.text} isn't right. Check the arithmetic and try again.`);
+  if (hp <= 0) { endCompute(false); return; }
+  if (reveal) { b.classList.remove('cur'); b.classList.add('shown'); b.innerHTML = fracHtml(it.value); return nextBlank(); }
+  c.text = ''; showBlank();
+}
+async function nextBlank() {
+  const c = computing;
+  c.i++; c.text = ''; c.misses = 0;
+  if (c.i < c.blanks.length) return showBlank();
+  c.checking = true;
+  await hold(700);
+  endCompute(true);
+}
+function endCompute(ok) {
+  const c = computing; if (!c) return;
+  computing = null;
+  $('app').classList.remove('computing');
+  $('ciPrev').classList.remove('show'); $('ciPrev').innerHTML = '';
+  c.done(ok);
+}
+$('equation').addEventListener('click', e => {   // tap a blank to fill that one first
+  const b = e.target.closest('.ciBlank'); const c = computing;
+  if (!b || !c || b.classList.contains('ok') || b.classList.contains('shown')) return;
+  const j = +b.dataset.i; if (j === c.i) return;
+  // Swap it into the current slot so the rest stay in order.
+  [c.blanks[c.i], c.blanks[j]] = [c.blanks[j], c.blanks[c.i]]; [c.items[c.i], c.items[j]] = [c.items[j], c.items[c.i]];
+  c.text = ''; showBlank();
+});
+// Runs the entry for one step. Returns true when there was nothing to compute or it was finished,
+// false when the run ended during it. Leaves ns rendered.
+// Moves that copy numbers instead of computing them (plugging in, writing out a rule, substituting)
+// play as usual: blanks there would only ask the player to copy.
+const COPY_MOVES = new Set(['plug', 'plugf', 'plugv', 'plugpt', 'writeout', 'ptslope', 'same', 'write', 'setx', 'sety', 'read', 'subst', 'lineup', 'readpt']);
+function computeStep(card, s, ns) {
+  if (COPY_MOVES.has(card.op)) return Promise.resolve(true);
+  const before = scanNumbers($('equation'));
+  const prev = $('equation').cloneNode(true);
+  renderEquation(ns);
+  const items = newNumbers(before, scanNumbers($('equation')));
+  if (!items.length) return Promise.resolve(true);
+  const p = $('ciPrev'); p.innerHTML = ''; [...prev.childNodes].forEach(n => p.appendChild(n)); p.classList.add('show');
+  const blanks = blankOut(items);
+  caption(`${cardText(card)}. Type the new number${items.length > 1 ? 's' : ''}.`);
+  renderPad(); $('app').classList.add('computing');
+  return new Promise(done => { computing = { blanks, items, i: 0, text: '', misses: 0, done }; showBlank(); });
 }
 
 // why: the short reason shown under the equation. more: HTML for the "Why?" button (optional).
