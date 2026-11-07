@@ -1765,6 +1765,22 @@ function blankOut(items) {
   return blanks;
 }
 
+// Blanks are wider than most numbers, so the line can outgrow the arena (long polynomials, division
+// layouts on a phone): shrink the equation until its widest part fits again.
+function fitBlanks() {
+  const el = $('equation'), availW = ($('arena').clientWidth || innerWidth) * 0.94;
+  let size = parseFloat(getComputedStyle(el).getPropertyValue('--eqSize')) || 56;
+  el.classList.add('fitting');
+  for (let i = 0; i < 12; i++) {
+    const need = Math.max(el.scrollWidth, ...[...el.querySelectorAll('.tok')].map(t => t.scrollWidth));
+    if (need <= availW) break;
+    size = Math.max(12, Math.floor(size * Math.min(0.97, availW / need)));
+    el.style.setProperty('--eqSize', size + 'px');
+    if (size <= 12) break;
+  }
+  el.classList.remove('fitting');
+}
+
 let computing = null;   // the entry in progress: { blanks, items, i, text, misses, done }
 const PAD_KEYS = ['7', '8', '9', '⌫', '4', '5', '6', '−', '1', '2', '3', '/', '.', '0', 'OK'];
 function renderPad() {
@@ -1853,6 +1869,7 @@ function computeStep(card, s, ns) {
   if (!items.length) return Promise.resolve(true);
   const p = $('ciPrev'); p.innerHTML = ''; [...prev.childNodes].forEach(n => p.appendChild(n)); p.classList.add('show');
   const blanks = blankOut(items);
+  fitBlanks();
   caption(`${cardText(card)}. Type the new number${items.length > 1 ? 's' : ''}.`);
   renderPad(); $('app').classList.add('computing');
   return new Promise(done => { computing = { blanks, items, i: 0, text: '', misses: 0, done }; showBlank(); });
@@ -1996,7 +2013,9 @@ function actCleared() {
     ? `The Leaning Tower stands straight again. ${isUnlocked('evalx') ? 'Act 4, the Map Room, is open.' : 'Act 4, the Map Room, opens when the last Act 3 skill reaches 80 mastery.'}`
     : run.act === 4
     ? `The Cartographer\'s maps are true again. ${isUnlocked('subst') ? 'Act 5, the Twin Observatory, is open.' : 'Act 5, the Twin Observatory, opens when Lines reaches 80 mastery.'}`
-    : 'The Twin Moons line up at last. Act 6 is still to be built, so run Act 5 again to keep your skills sharp.';
+    : run.act === 5
+    ? `The Twin Moons line up at last. ${isUnlocked('exprules') ? 'Act 6, the Power Forge, is open.' : 'Act 6, the Power Forge, opens when the last Act 5 skill reaches 80 mastery.'}`
+    : 'The Forgemaster\'s fires burn steady again. Act 7 is still to be built, so run Act 6 again to keep your skills sharp.';
   showOverlay(`<h1>Act ${run.act} cleared!</h1><p>${text}</p>${skillSummaryHtml()}`,
     [['New run', () => newRun(run.act)], ['Title screen', showTitle, true], ['Skills & stats', () => showStats(actCleared), true]]);
 }
