@@ -1521,6 +1521,7 @@ function takeDamage(why, more = null) {
   hp = Math.max(0, hp - DAMAGE); updateHud();
   setMsg(`-${DAMAGE} HP. ${why}`, 'bad', more);
   const a = $('arena'); a.classList.remove('flash', 'shake'); void a.offsetWidth; a.classList.add('flash', 'shake');
+  window.SFX?.wrong();
   if (hp <= 0) { busy = true; setTimeout(runLost, 600); }
 }
 
@@ -1542,6 +1543,7 @@ function celebrate() {
   box.innerHTML = html;
   const eq = $('equation'); eq.classList.remove('solved'); void eq.offsetWidth; eq.classList.add('solved');
   requestAnimationFrame(placeStamp); setTimeout(placeStamp, 120); setTimeout(placeStamp, 450);
+  window.SFX?.solved();
 }
 function placeStamp() {
   const st = document.querySelector('#celebrate .stamp'); if (!st) return;
@@ -1636,6 +1638,7 @@ function showIntro(id) {
 }
 
 function runLost() {
+  window.SFX?.lost();
   showOverlay(`<h1>Out of HP</h1><p>You reached node ${run.i + 1} of ${run.nodes.length}. Your mastery is saved, so the next run starts with every stage you've unlocked.</p>${skillSummaryHtml()}`,
     [['New run', () => newRun(run.act)], ['Title screen', showTitle, true], ['Skills & stats', () => showStats(runLost), true]]);
 }
@@ -1695,5 +1698,6 @@ window.__game = { get cur() { return cur; }, get hand() { return hand; }, get bu
 <script src="act5.js"></script>
 <script>renderSkills(); updateHud(); showTitle();</script>
 <script src="debug.js"></script>
+<script src="sfx.js"></script>
 </body>
 </html>
