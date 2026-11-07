@@ -59,8 +59,31 @@
   function isStd(eq) {
     if (eq.R.length > 1 || eq.R.some(t => t.g || t.lit)) return false;
     const lits = eq.L.map(t => (t.g ? '?' : t.lit)).join(',');
-    return lits === 'x' || lits === 'y' || lits === 'x,y';
+    return lits === 'x' || lits === 'y' || lits === 'x,y' || lits === 'y,x';
   }
+  // The terms that are on the wrong side for ax + by = c (a letter on the right, a number on the left),
+  // each as the both-sides move that clears it: 3y = 7 − 2x needs "add 2x to both sides".
+  function moveOpts(eq, i) {
+    const out = [];
+    for (const [side, want] of [[eq.L, false], [eq.R, true]]) for (const t of side) {
+      if (t.g || fz(t.k) || !!t.lit !== want) continue;
+      out.push(C5('move', { row: i, sgn: t.k.n > 0 ? '-' : '+', t: { k: fAbs(t.k), lit: t.lit || '', den: '' } }));
+    }
+    return out;
+  }
+  // Adds (or subtracts) a term on both sides of one equation; the left side is kept in x, y order.
+  function moveEq(eq, c) {
+    const q = clone(eq), k = c.sgn === '+' ? c.t.k : fNeg(c.t.k);
+    for (const s of ['L', 'R']) {
+      const side = q[s], j = side.findIndex(o => !o.g && o.lit === c.t.lit && !o.den);
+      if (j >= 0) { const nk = fAdd(side[j].k, k); if (fz(nk)) side.splice(j, 1); else side[j] = { ...side[j], k: nk }; }
+      else side.push(T(k, c.t.lit));
+    }
+    const ord = t => (t.lit === 'x' ? 0 : t.lit === 'y' ? 1 : 2);
+    q.L.sort((a, b) => ord(a) - ord(b));
+    return q;
+  }
+  const moveTerm = c => fTermStr({ k: c.t.k, lit: c.t.lit, den: '' }, true, false, '');
   // The line on the graph: { m, b } or a vertical { x }.
   function lineOf(eq) {
     const { a, b, c } = std(eq);
@@ -146,7 +169,8 @@
   }
   const rowOf = ref => { const m = /^q(\d)/.exec(ref || ''); return m ? +m[1] : -1; };
   const C5 = (op, o = {}) => ({ op, a5: true, scope: op === 'addeq' || op === 'subeq' ? 'both' : 'part', ...o });
-  const ROWCARD = ['iso', 'subst', 'plugv', 'scale', 'lineup', 'solid', 'dashed', 'above', 'below', 'left', 'right', 'test'];
+  const ROWCARD = ['iso', 'subst', 'plugv', 'scale', 'lineup', 'solid', 'dashed', 'above', 'below', 'left', 'right', 'test', 'ttrue', 'tfalse', 'move'];
+  const TVERDICT = ['ttrue', 'tfalse'];
   const VERDICT = ['snone', 'sall', 'sone'];
 
   // ================================================================ the moves that count
@@ -180,14 +204,14 @@
   }
   function elimOpts(e) {
     const ns = [0, 1].filter(i => !isStd(e.eqs[i]));
-    if (ns.length) return ns.map(i => C5('lineup', { row: i }));
+    if (ns.length) return ns.flatMap(i => moveOpts(e.eqs[i], i));
     const o = [], add = sumCols(e.eqs, 1), sub = sumCols(e.eqs, -1);
     if (fz(add.a) || fz(add.b)) o.push(C5('addeq'));
     if (fz(sub.a) || fz(sub.b)) o.push(C5('subeq'));
     if (o.length) return o;
     return scaleOpts(std(e.eqs[0]), std(e.eqs[1]));
   }
-  const lineupOpts = e => [0, 1].filter(i => !isStd(e.eqs[i])).map(i => C5('lineup', { row: i }));
+  const lineupOpts = e => [0, 1].filter(i => !isStd(e.eqs[i])).flatMap(i => moveOpts(e.eqs[i], i));
   function countVerdict(e) {
     const l0 = lineOf(e.eqs[0]), l1 = lineOf(e.eqs[1]);
     if (fEq(l0.m, l1.m)) return fEq(l0.b, l1.b) ? 'sall' : 'snone';
@@ -220,6 +244,8 @@
     const st = e.st[i], r = e.rows[i];
     if (!st.line) return [C5(strict(r.rel) ? 'dashed' : 'solid', { row: i })];
     if (st.shade) return [];
+    // After a test point the player decides: is the inequality true there? That picks the side.
+    if (st.tested) return [C5(inRow(r, st.tested) ? 'ttrue' : 'tfalse', { row: i, p: st.tested })];
     const o = [C5(sideOf(r), { row: i })];
     for (const p of TESTPTS) if (!onLine(r, p)) o.push(C5('test', { row: i, p }));
     // y alone (or a plain x = c): the sign says which side. Otherwise the game expects a test point.
@@ -227,7 +253,10 @@
     return o;
   }
   const inBoth = (e, p) => e.rows.every(r => inRow(r, p));
+  const pendingTest = e => [0, 1].find(i => e.st[i].tested && !e.st[i].shade);
   function optionsI(e) {
+    const pend = pendingTest(e);
+    if (pend !== undefined) return stepI(e, pend);     // a tested point is answered before anything else
     const out = [...stepI(e, 0), ...stepI(e, 1)];
     if (out.length) return out;
     if (e.askPt && !e.ans) return [C5(inBoth(e, e.askPt) ? 'yes' : 'no')];
@@ -254,6 +283,7 @@
     if (c.op === 'plugv') return c.v === o.v && fEq(c.val, o.val);
     if (c.op === 'readpt') return ref === o.ref;
     if (c.op === 'test') return sameP(c.p, o.p);
+    if (c.op === 'move') return c.sgn === o.sgn && c.t.lit === o.t.lit && fEq(c.t.k, o.t.k);
     return true;
   }
   function correct5(e, c, target) {
@@ -288,7 +318,8 @@
       const i = rowOf(ref);
       if (c.op === 'solid' || c.op === 'dashed') r.st[i].line = c.op;
       else if (SHADE.includes(c.op)) r.st[i].shade = c.op;
-      else if (c.op === 'test') { r.st[i].shade = sideOf(e.rows[i]); r.st[i].tested = c.p; }
+      else if (c.op === 'test') r.st[i].tested = c.p;
+      else if (TVERDICT.includes(c.op)) r.st[i].shade = sideOf(e.rows[i]);
       else if (c.op === 'yes' || c.op === 'no') r.ans = c.op;
       return r;
     }
@@ -304,7 +335,7 @@
       case 'subst': { const j = 1 - i; r.work = substA2(e.eqs[i], c.v, exprOf(e.eqs[j], c.v)); r.work.from = j; r.work.into = i; break; }
       case 'plugv': r.work = plugA2(e.eqs[i], c.v, c.val); r.work.into = i; break;
       case 'scale': r.eqs[i] = scaleEq(e.eqs[i], c.k); break;
-      case 'lineup': r.eqs[i] = lineupEq(e.eqs[i]); break;
+      case 'move': r.eqs[i] = moveEq(e.eqs[i], c); break;
       case 'addeq': case 'subeq': r.work = combineA2(e.eqs, c.op === 'addeq' ? 1 : -1); r.work.op = c.op; break;
       case 'slopes': r.shown = true; break;
       case 'sone': case 'snone': case 'sall': r.verdict = c.op; r.done = true; break;
@@ -315,9 +346,9 @@
   }
 
   // ================================================================ path, skills, answers
-  const HOME = { iso: 'subst', subst: 'subst', scale: 'elim', lineup: 'elim', addeq: 'elim', subeq: 'elim',
+  const HOME = { iso: 'subst', subst: 'subst', scale: 'elim', move: 'elim', addeq: 'elim', subeq: 'elim',
     snone: 'special5', sall: 'special5', sone: 'special5', slopes: 'special5', readpt: 'special5',
-    solid: 'sysineq', dashed: 'sysineq', above: 'sysineq', below: 'sysineq', left: 'sysineq', right: 'sysineq', test: 'sysineq', yes: 'sysineq', no: 'sysineq' };
+    solid: 'sysineq', dashed: 'sysineq', ttrue: 'sysineq', tfalse: 'sysineq', above: 'sysineq', below: 'sysineq', left: 'sysineq', right: 'sysineq', test: 'sysineq', yes: 'sysineq', no: 'sysineq' };
   function skillFor(m, main) {
     let home = m.a5 ? HOME[m.op] : null;
     if (!home) home = m.op === 'dist' ? 'distribute' : m.op === 'comb' ? 'liketerms' : m.x ? 'xboth' : m.lcd ? 'clearfrac' : m.f4 ? 'formulas' : main;
@@ -355,7 +386,7 @@
     subst:  c => ({ label: `Sub in ${c.v}`, text: `Put ${c.v}'s expression in for ${c.v} in the other equation`, kind: 'Substitute', icon: 'subst5' }),
     plugv:  c => ({ label: `${c.v} = ${fracText(c.val)}`, text: `Plug ${c.v} = ${fracText(c.val)} back into an equation`, kind: 'Plug back in', icon: 'plug' }),
     scale:  c => ({ label: `Scale ${TIMES}${c.k < 0 ? `(${MINUS}${-c.k})` : c.k}`, text: `Multiply every term of one equation by ${numText(c.k)}`, kind: 'Multiply an equation', icon: 'scale5' }),
-    lineup: () => ({ label: 'Line up', text: 'Line up an equation: x-term, y-term = number', kind: 'Line up', icon: 'lineup5' }),
+    move:   c => ({ label: `${c.sgn === '+' ? '+' : MINUS}${c.t ? moveTerm(c) : ''}`, text: c.t ? `${c.sgn === '+' ? 'Add' : 'Subtract'} ${moveTerm(c)} ${c.sgn === '+' ? 'to' : 'from'} both sides` : 'Move a term across', kind: c.sgn === '+' ? 'Add to both sides' : 'Subtract from both sides', icon: c.sgn === '+' ? 'add' : 'sub' }),
     addeq:  () => ({ label: '① + ②', text: 'Add the two equations, column by column', kind: 'Add the equations', icon: 'addeq5' }),
     subeq:  () => ({ label: '① − ②', text: 'Subtract ② from ①, column by column', kind: 'Subtract the equations', icon: 'subeq5' }),
     snone:  () => ({ label: 'No solution', text: 'Declare: no solution (the lines never meet)', kind: 'Declare no solution', icon: 'none' }),
@@ -370,6 +401,8 @@
     left:   () => ({ label: 'Shade left', text: 'Shade left of the line', kind: 'Shade a side', icon: 'shade5' }),
     right:  () => ({ label: 'Shade right', text: 'Shade right of the line', kind: 'Shade a side', icon: 'shade5' }),
     test:   c => ({ label: `Test ${ptText(c.p)}`, text: `Test ${ptText(c.p)} in the inequality to pick a side`, kind: 'Test point', icon: 'test5' }),
+    ttrue:  c => ({ label: 'True ✓', text: c.p ? `${ptText(c.p)} makes it true: shade its side` : 'The test point makes it true: shade its side', kind: 'Test point is true', icon: 'all' }),
+    tfalse: c => ({ label: 'False ✗', text: c.p ? `${ptText(c.p)} makes it false: shade the other side` : 'The test point makes it false: shade the other side', kind: 'Test point is false', icon: 'none' }),
     yes:    () => ({ label: 'Yes ✓', text: 'The point is a solution: in both shaded regions', kind: 'Declare a solution', icon: 'one5' }),
     no:     () => ({ label: 'No ✗', text: 'The point is not in both shaded regions', kind: 'Declare not a solution', icon: 'none' }),
   };
@@ -380,7 +413,7 @@
   const icon = c => (c && c.op === 'trap' && c.a5 ? c.icon : info(c) ? info(c).icon : null);
   // Fixed slots, counted from the left.
   const SLOT = { iso: 0, subst: 1, plugv: 2, lineup: 0, scale: 1, addeq: 2, subeq: 3, sone: 4, snone: 5, sall: 6, slopes: 0, readpt: 1,
-    solid: 0, dashed: 1, above: 2, below: 3, left: 2, right: 3, test: 4, yes: 5, no: 6 };
+    solid: 0, dashed: 1, above: 2, below: 3, left: 2, right: 3, test: 4, yes: 5, no: 6, ttrue: 2, tfalse: 3 };
   const slot = c => (c && c.a5 && c.op !== 'trap' && c.op !== 'scale' ? SLOT[c.op] ?? null : null);
   const ROWSEL = '#equation .tok[data-row]:not(.eq), #a4top .tok[data-row]';
   function targetSel(c) {
@@ -388,20 +421,21 @@
     if (c.f4 || (!c.a5 && c.op !== 'trap')) return (c.scope || 'both') === 'part' ? '#equation .tok:not(.eq):not(.rel)' : null;
     if ((c.scope || 'both') !== 'part') return null;
     if (c.op === 'readpt') return '#graph .gtarget';
-    if (['solid', 'dashed', 'test', ...SHADE].includes(c.op) || (c.op === 'trap' && c.rowCard)) return ROWSEL + ', #graph .gtarget';
+    if (['solid', 'dashed', 'test', ...TVERDICT, ...SHADE].includes(c.op) || (c.op === 'trap' && c.rowCard)) return ROWSEL + ', #graph .gtarget';
     return ROWSEL;
   }
   // Where a ◎ card could go (its own kind of place), so a card with one place applies by itself.
   function places(e, c) {
     if (e.k5 === 'ineq5') {
       if (c.op === 'solid' || c.op === 'dashed' || (c.op === 'trap' && c.rowCard)) return [0, 1].filter(i => !e.st[i].line);
+      if (TVERDICT.includes(c.op)) return [0, 1].filter(i => e.st[i].tested && !e.st[i].shade);
       if (SHADE.includes(c.op) || c.op === 'test') return [0, 1].filter(i => e.st[i].line && !e.st[i].shade);
       return null;
     }
     if (e.work) return null;
     switch (c.op) {
       case 'subst': return [0, 1].filter(i => hasL(e.eqs[i], c.v) && aloneIn(e.eqs[1 - i], c.v));
-      case 'lineup': return [0, 1].filter(i => !isStd(e.eqs[i]));
+      case 'move': return [0, 1].filter(i => !isStd(e.eqs[i]));
       case 'iso': case 'plugv': case 'scale': return [0, 1];
       case 'trap': return c.rowCard ? [0, 1] : null;
     }
@@ -471,12 +505,16 @@
           P(`${correct.v} is the whole expression ${ex}, so it goes in brackets: ${fracText(k)}(${ex}). Without them, ${fracText(k)} would only multiply the first term.`) + P('<b>The rule:</b> a substituted expression always goes in brackets.'), 'subst5'));
       }
     }
+    if (correct.op === 'move') {      // the classic slip: the term's own sign instead of the opposite one
+      const bad = { ...correct, sgn: correct.sgn === '+' ? '-' : '+' };
+      out.rule.push(bad);
+    }
     if (correct.op === 'scale') {
       const lt = correct.col === 'a' ? 'x' : 'y';
       out.rule.push(trap('one term', `${TIMES}${correct.k} ${lt}-term`, `Multiply only the ${lt}-term by ${correct.k}`,
         P(`Multiplying an equation means <b>every</b> term, on both sides: 2x + y = 5 times 3 is 6x + 3y = 15. Changing only the ${lt}-term makes a different equation (a different line), so the answer would be wrong.`), 'scale5', { rowCard: true }));
     }
-    if (correct.op === 'addeq' || correct.op === 'subeq' || correct.op === 'lineup') {
+    if (correct.op === 'addeq' || correct.op === 'subeq' || correct.op === 'move') {
       out.traps.push(trap('add unlike', 'Add x and y', 'Combine the x- and y-terms: 2x + 3y = 5xy',
         P('x-terms and y-terms are unlike terms: 2x + 3y can\'t be combined. Elimination works column by column, x with x and y with y.'), 'comb'));
     }
@@ -493,13 +531,17 @@
       const f = ['solid', 'dashed', 'above', 'below'].map(op => C5(op));
       if (e.rows.some(r => fz(std(r).b))) f.push(C5('left'), C5('right'));
       f.push(C5('test', { p: O }));
+      const pend = pendingTest(e);
+      if (pend !== undefined) f.push(...TVERDICT.map(op => C5(op, { p: e.st[pend].tested })));
       if (e.askPt) f.push(C5('yes'), C5('no'));
       return f;
     }
-    if (e.work && isStmt(e.work)) return [C5('snone'), C5('sall'), C5('sone'), C5('lineup'), C5('addeq'), C5('subeq')];
+    if (e.work && isStmt(e.work)) return [C5('snone'), C5('sall'), C5('sone'), C5('addeq'), C5('subeq')];
     if (e.ask === 'count') return [C5('iso', { v: 'y' }), C5('iso', { v: 'x' }), C5('slopes'), C5('sone'), C5('snone'), C5('sall'), C5('readpt')];
     if (e.ask === 'graph') return [C5('readpt'), C5('sone'), C5('snone'), C5('sall'), C5('subst', { v: 'y' }), C5('addeq')];
-    const f = [C5('iso', { v: 'x' }), C5('iso', { v: 'y' }), C5('subst', { v: 'x' }), C5('subst', { v: 'y' }), C5('addeq'), C5('subeq'), C5('lineup')];
+    const f = [C5('iso', { v: 'x' }), C5('iso', { v: 'y' }), C5('subst', { v: 'x' }), C5('subst', { v: 'y' }), C5('addeq'), C5('subeq')];
+    // Both-sides moves for the terms of an equation that isn't lined up, with both signs (one is wrong)
+    if (e.method !== 'sub') e.eqs.forEach((q, i) => { if (isStd(q)) return; for (const t of [...q.L, ...q.R]) if (!t.g && !fz(t.k)) for (const sg of ['+', '-']) f.push(C5('move', { sgn: sg, t: { k: fAbs(t.k), lit: t.lit || '', den: '' } })); });
     const ks = new Set([2, 3]);
     for (const q of e.eqs) { const s = std(q); for (const k of [s.a, s.b]) { const n = Math.abs(fv(k)); if (Number.isInteger(n) && n >= 2 && n <= 9) ks.add(n); } }
     ks.forEach(k => f.push(C5('scale', { k })));
@@ -512,6 +554,7 @@
     const hand = [correct], seen = new Set([cardLabel(correct)]);
     const add = c => { if (hand.length >= size) return; const k = cardLabel(c); if (seen.has(k)) return; if (c.op !== 'trap' && alsoRight(e, c)) return; seen.add(k); hand.push(c); };
     const sp = specials(e, correct);
+    if (TVERDICT.includes(correct.op)) add(C5(correct.op === 'ttrue' ? 'tfalse' : 'ttrue', { p: correct.p }));   // true or false: both always in the hand
     if (!tut && L >= 3) sp.traps.slice(0, 1).forEach(add);
     if (!tut) sp.rule.slice(0, DECOYS[L]).forEach(add);
     shuffle(family(e, correct)).forEach(add);
@@ -591,7 +634,7 @@
     }
     if (card.op === 'addeq' || card.op === 'subeq') {
       if (!elimWay) return S(long, 'Use substitution here.', 'This enemy asks for substitution: get a letter alone, then put its expression into the other equation.');
-      if (!e.eqs.every(isStd)) return S(long, 'Line the equations up first.', 'To add or subtract equations, x must sit over x and y over y, with the numbers on the right. Line up the equation that isn\'t in that form first.');
+      if (!e.eqs.every(isStd)) return S(long, 'Line the equations up first.', 'To add or subtract equations, x must sit over x and y over y, with the numbers on the right. Move the terms that are on the wrong side first: add or subtract them on both sides.');
       const s = sumCols(e.eqs, card.op === 'addeq' ? 1 : -1), s0 = std(e.eqs[0]), s1 = std(e.eqs[1]);
       const res = `${fracText(s.a)}x + ${fracText(s.b)}y`.replace('+ ' + MINUS, MINUS + ' ');
       const other_ = sumCols(e.eqs, card.op === 'addeq' ? -1 : 1);
@@ -612,10 +655,18 @@
       return S(long, `${TIMES}${card.k} makes ${fracText(sc.a)}x and ${fracText(sc.b)}y: neither matches ${fracText(o.a)}x or ${fracText(o.b)}y.`,
         `Multiplying ${rowName(i)} by ${card.k} gives ${fracText(sc.a)}x and ${fracText(sc.b)}y. To eliminate, one column must match the other equation's (${fracText(o.a)}x, ${fracText(o.b)}y), same number or opposite. Look for a number that turns one into the other.`);
     }
-    if (card.op === 'lineup') {
-      if (i >= 0 && isStd(e.eqs[i])) return S(long, `${rowName(i)} is already lined up.`);
-      if (!elimWay) return S(long, 'Use substitution here.');
-      return S(long, 'Not needed here.');
+    if (card.op === 'move') {
+      if (i >= 0 && isStd(e.eqs[i])) return S(long, `${rowName(i)} is already lined up: x and y on the left, the number on the right.`);
+      if (!elimWay) return S(long, 'Use substitution here.', 'This enemy asks for substitution: get a letter alone, then put its expression into the other equation. There is nothing to line up.');
+      const q = i >= 0 ? e.eqs[i] : null, tt = moveTerm(card);
+      const on = q ? [...q.L, ...q.R].find(o => !o.g && o.lit === card.t.lit && fEq(fAbs(o.k), card.t.k)) : null;
+      if (on) {
+        const onL = q.L.includes(on), wrongSide = !!on.lit === !onL;
+        if (!wrongSide) return S(long, `${fTermStr(on, true, false, '')} is already on the right side of the equals sign.`, `For elimination each equation reads x-term, y-term = number. ${fTermStr(on, true, false, '')} is already where it belongs, so leave it there and move the term that isn't.`);
+        const sum = fTermStr({ k: fAdd(on.k, card.sgn === '+' ? card.t.k : fNeg(card.t.k)), lit: on.lit, den: '' }, true, false, '');
+        return S(long, `${fTermStr(on, true, false, '')} ${card.sgn === '+' ? '+' : MINUS} ${tt} doesn't cancel: use the opposite sign.`, `To clear ${fTermStr(on, true, false, '')} from its side, do the opposite: ${on.k.n > 0 ? 'subtract' : 'add'} ${tt} on both sides. ${card.sgn === '+' ? 'Adding' : 'Subtracting'} it gives ${sum} instead of 0.`);
+      }
+      return S(long, 'That term isn\'t in this equation.', 'Move a term that is on the wrong side of this equation: a letter on the right, or a number on the left.');
     }
     if (card.op === 'slopes' || card.op === 'readpt') return S(long, 'Solve it with algebra: substitution or elimination.');
     return S(long, 'That card doesn\'t fit here.');
@@ -662,6 +713,15 @@
       return strict(r.rel) ? S(long, `${r.rel} doesn't include the line: draw it dashed.`, `${r.rel} means strictly ${r.rel === '<' ? 'less' : 'greater'}: points on the line don't count, so the boundary is <b>dashed</b>. ≤ and ≥ ("or equal to") get a solid line.`)
         : S(long, `${r.rel} includes the line: draw it solid.`, `${r.rel} means "or equal to", so points on the line count: the boundary is <b>solid</b>. Only < and > get a dashed line.`);
     }
+    const pend = pendingTest(e);
+    if (TVERDICT.includes(card.op)) {
+      if (pend === undefined) return S(long, 'Test a point first.', 'True and False answer a test point: plug a point that is not on the line into the inequality, then say whether it makes it true.');
+      const rr = e.rows[pend], p = e.st[pend].tested, v = inRow(rr, p), { a, b, c: cc } = std(rr);
+      const lhs = `${fracText(a)}(${fracText(p.x)}) + ${fracText(b)}(${fracText(p.y)})`.replace('+ ' + MINUS, MINUS + ' ');
+      const val = fracText(fAdd(fMul(a, p.x), fMul(b, p.y))), cmp = `${val} ${rr.rel} ${fracText(cc)}`;
+      return S(long, `${cmp} is ${v ? 'true' : 'false'}.`, `Plug ${ptText(p)} into ${rowName(pend)}: ${lhs} = ${val}, and ${cmp} is <b>${v ? 'true' : 'false'}</b>. ${v ? `So ${ptText(p)} is on the side to shade.` : `So ${ptText(p)} is on the wrong side: shade the other side.`}`);
+    }
+    if (pend !== undefined) return S(long, `You tested ${ptText(e.st[pend].tested)}: is it true or false?`, `You plugged ${ptText(e.st[pend].tested)} into ${rowName(pend)}. Decide first: does it make the inequality true or false? That tells you which side to shade.`);
     if (SHADE.includes(card.op) || card.op === 'test') {
       if (i < 0) return S(long, 'Drop it on an inequality (or its line).');
       if (!st.line) return S(long, `Draw ${rowName(i)}'s boundary line first.`);
@@ -765,6 +825,7 @@
         const st = e.st[i]; if (!st.line) return;
         lines.push({ ...lineOf(r), dash: st.line === 'dashed', cls: 'g5 g5r' + i, lab: ROWLAB[i], ref: true, tref: 'q' + i });
         if (st.shade) marks.push(halfOf(r, i));
+        else if (st.tested) marks.push({ t: 'dot', x: st.tested.x, y: st.tested.y, lab: ptText(st.tested), cls: 'test5' });
       });
       if (e.st.every(s => s.shade)) marks.push({ t: 'overlap', a: halfOf(e.rows[0], 0), b: halfOf(e.rows[1], 1) });
       if (e.askPt) marks.push({ t: 'dot', x: e.askPt.x, y: e.askPt.y, lab: ptText(e.askPt), cls: 'ask5' });
@@ -900,14 +961,24 @@
     caption(`${rowName(i)} is now ${eqText(q)}: the same line, new numbers`);
     await quick(200); await hold();
   }
-  async function animLineup(c, s, ns, ref) {
-    const i = rowOf(ref), toks = rowToks(i);
-    caption(`Line up ${rowName(i)}: x-term, then y-term, = the number (move terms across by changing their sign)`);
-    mark(toks, 'hot4'); await quick(150); await hold();
-    mark(toks, 'melt4'); await quick(300);
+  // Add or subtract a term on both sides of one equation: the chip is written under each side, the
+  // term it matches cancels, and the other side gains it.
+  async function animMove(c, s, ns, ref) {
+    const i = rowOf(ref), q = s.eqs[i], chip = `${c.sgn === '+' ? '+' : MINUS} ${moveTerm(c)}`;
+    const sideToks = sd => rowToks(i).filter(t => t.dataset.side === sd);
+    const hit = sd => sideToks(sd).find(t => t.dataset.lit === c.t.lit && (() => { const o = q[sd][+t.dataset.ref.slice(-1)]; return o && fEq(fAbs(o.k), c.t.k); })());
+    caption(`${c.sgn === '+' ? 'Add' : 'Subtract'} ${moveTerm(c)} ${c.sgn === '+' ? 'to' : 'from'} both sides of ${rowName(i)}`);
+    const notes_ = ['L', 'R'].map(sd => { const at = hit(sd) || sideToks(sd).slice(-1)[0]; return at ? { sd, at, n: note(chip, [at]) } : null; }).filter(Boolean);
+    await quick(150); await hold();
+    const gone = notes_.filter(m => hit(m.sd));
+    if (gone.length) {
+      caption(`${fTermStr(q[gone[0].sd][+gone[0].at.dataset.ref.slice(-1)], true, false, '')} and ${chip.replace(' ', '')} cancel out`);
+      gone.forEach(m => mark([m.at, m.n], 'cancel')); await quick(380);
+    }
+    notes_.forEach(m => dropNote(m.n));
     $('equation').innerHTML = ''; $('equation').appendChild(rowsEl(ns.eqs)); fit5();
     rowToks(i).forEach(t => kickClass(t, 'pop'));
-    caption(`${rowName(i)}: ${eqText(ns.eqs[i])}`);
+    caption(isStd(ns.eqs[i]) ? `${rowName(i)} is lined up: ${eqText(ns.eqs[i])}` : `${rowName(i)}: ${eqText(ns.eqs[i])}`);
     await quick(200); await hold();
   }
   // Elimination: a line is drawn under the two rows, the columns are added (or subtracted) and the
@@ -977,12 +1048,23 @@
   async function animShade(c, s, ns, ref) {
     const i = rowOf(ref), r = s.rows[i], side = sideOf(r);
     if (c.op === 'test') {
-      const p = c.p, v = inRow(r, p), { a, b, c: cc } = std(r);
+      // The test point drops onto the graph and the numbers go in; the player then calls it true or false.
+      const p = c.p, { a, b, c: cc } = std(r);
       const lhs = `${fracText(a)}(${fracText(p.x)}) + ${fracText(b)}(${fracText(p.y)})`.replace('+ ' + MINUS, MINUS + ' ');
-      drawGraph({ ...graphOf(s), marks: [...graphOf(s).marks, { t: 'dot', x: p.x, y: p.y, lab: ptText(p), cls: 'test5' }] });
-      caption(`Test ${ptText(p)} in ${rowName(i)}: ${lhs} ${r.rel} ${fracText(cc)}? ${fracText(fAdd(fMul(a, p.x), fMul(b, p.y)))} ${r.rel} ${fracText(cc)} is ${v ? 'true' : 'false'}`);
+      drawGraph(graphOf(ns));
+      const dot = document.querySelector('#graph .test5'); if (dot) kickClass(dot, 'anim');
+      mark(rowToks(i), 'hot4');
+      caption(`Test ${ptText(p)} in ${rowName(i)}: ${lhs} ${r.rel} ${fracText(cc)}`);
       await quick(300); await hold();
-      caption(v ? `True, so ${ptText(p)}'s side is shaded: ${side} the line` : `False, so shade the other side, away from ${ptText(p)}: ${side} the line`);
+      caption(`${fracText(fAdd(fMul(a, p.x), fMul(b, p.y)))} ${r.rel} ${fracText(cc)}: true or false?`);
+      await quick(250); await hold();
+      return;
+    }
+    if (TVERDICT.includes(c.op)) {
+      const p = s.st[i].tested;
+      caption(c.op === 'ttrue' ? `True, so ${ptText(p)} is on the right side: shade ${side} the line, where it is` : `False, so ${ptText(p)} is on the wrong side: shade the other side, ${side} the line`);
+      const dot = document.querySelector('#graph .test5'); if (dot) kickClass(dot, c.op === 'ttrue' ? 'ok4' : 'bad5');
+      await quick(300);
     } else caption(`Shade ${side} ${rowName(i)}'s line: those points make ${eqText(r, r.rel)} true`);
     drawGraph(graphOf(ns));
     await quick(750);
@@ -1014,13 +1096,13 @@
         case 'subst': return animSubst(c, s, ns, ref);
         case 'plugv': await animPlugv(c, s, ns, ref); if (ns.done) await animResolve(s, ns, null); return;
         case 'scale': return animScale(c, s, ns, ref);
-        case 'lineup': return animLineup(c, s, ns, ref);
+        case 'move': return animMove(c, s, ns, ref);
         case 'addeq': case 'subeq': await animCombine(c, s, ns); if (ns.vals.x !== s.vals.x || ns.vals.y !== s.vals.y) await animResolve({ ...s, work: ns.work || { L: [], R: [] } }, ns, combineA2(s.eqs, c.op === 'addeq' ? 1 : -1)); return;
         case 'snone': case 'sall': case 'sone': return animVerdict(c, s, ns);
         case 'slopes': return animSlopes(c, s, ns);
         case 'readpt': return animReadPt(c, s, ns, ref);
         case 'solid': case 'dashed': return animLine(c, s, ns, ref);
-        case 'above': case 'below': case 'left': case 'right': case 'test': return animShade(c, s, ns, ref);
+        case 'above': case 'below': case 'left': case 'right': case 'test': case 'ttrue': case 'tfalse': return animShade(c, s, ns, ref);
         case 'yes': case 'no': return animYesNo(c, s, ns);
       }
     };
@@ -1087,9 +1169,9 @@
   // multiply first, both to multiply, and one equation that has to be lined up first.
   const ELIM_CASES = ['add', 'sub', 'scale1', 'scale2', 'lineup'];
   const FRAC5 = [0.1, 0.12, 0.15, 0.25];
-  function unline(eq) {   // the same equation, not lined up: 3y = 7 − 2x, 2x = 7 − 3y, or 3y + 2x = 7
+  function unline(eq) {   // the same equation, not lined up: 3y = 7 − 2x, 2x = 7 − 3y, or 2x + 3y − 7 = 0 style (2x − 7 = −3y)
     const { a, b, c } = std(eq);
-    return pick([EQ([T(b, 'y')], [T(c), T(fNeg(a), 'x')]), EQ([T(a, 'x')], [T(c), T(fNeg(b), 'y')]), EQ([T(b, 'y'), T(a, 'x')], [T(c)])]);
+    return pick([EQ([T(b, 'y')], [T(c), T(fNeg(a), 'x')]), EQ([T(a, 'x')], [T(c), T(fNeg(b), 'y')]), EQ([T(a, 'x'), T(fNeg(c))], [T(fNeg(b), 'y')])]);
   }
   function genElim(cs, tut = isTutorial()) {
     const L = lvl(tut), C = tut ? 5 : COEF[L];
@@ -1278,7 +1360,7 @@
       tutorial: [() => genSub('ysolved', true), () => genSub('iso', true)] },
     { id: 'elim', stage: 19, act: 5, name: 'Elimination', cases: ELIM_CASES, gen: cycled('elim', c => genElim(c)),
       title: 'Stage 19: Elimination',
-      intro: 'Elimination makes one letter cancel. Line the equations up (x over x, y over y, numbers on the right). If a column has opposite numbers, like 3y and −3y, ⇔ ① + ② adds the equations; if it has the same numbers, ⇔ ① − ② subtracts them. If no column matches, drop ◎ Scale on one (or both) to make one match. One letter cancels; solve for the other, then plug it back in.',
+      intro: 'Elimination makes one letter cancel. Line the equations up (x over x, y over y, numbers on the right): if a term is on the wrong side, add or subtract it on both sides of that equation. If a column has opposite numbers, like 3y and −3y, ⇔ ① + ② adds the equations; if it has the same numbers, ⇔ ① − ② subtracts them. If no column matches, drop ◎ Scale on one (or both) to make one match. One letter cancels; solve for the other, then plug it back in.',
       example: '2x + 3y = 12<br>2x − y = 4<br>Subtract → 4y = 8 → y = 2<br>Plug y = 2 into 2x − y = 4 → 2x − 2 = 4 → x = 3',
       tutorial: [() => genElim('add', true), () => genElim('scale1', true)] },
     { id: 'special5', stage: 20, act: 5, name: 'Special systems', cases: SPECIAL_CASES, gen: cycled('special5', c => genSpecial(c)),
@@ -1288,7 +1370,7 @@
       tutorial: [() => genSpecial('nonesub', true), () => genSpecial('count', true)] },
     { id: 'sysineq', stage: 21, act: 5, name: 'Systems of inequalities', cases: INEQ_CASES, gen: cycled('sysineq', c => genIneq(c)),
       title: 'Stage 21: Systems of inequalities',
-      intro: 'Graph each inequality: first its boundary line, solid for ≤ and ≥ (the line counts) or dashed for < and > (it doesn\'t). Then shade the side that works: with y alone, > and ≥ mean above, < and ≤ below. If y isn\'t alone, test a point off the line like (0, 0): if it makes the inequality true, shade its side. The solution of the system is where the two shadings overlap.',
+      intro: 'Graph each inequality: first its boundary line, solid for ≤ and ≥ (the line counts) or dashed for < and > (it doesn\'t). Then shade the side that works: with y alone, > and ≥ mean above, < and ≤ below. If y isn\'t alone, test a point off the line like (0, 0), then say whether it makes the inequality True or False: true means shade its side, false means shade the other side. The solution of the system is where the two shadings overlap.',
       example: 'y > x + 1: dashed line, shade above<br>y ≤ −2x + 4: solid line, shade below<br>The overlap is the solution',
       tutorial: [() => genIneq('yy', true), () => genIneq('yy', true)] },
   );
@@ -1353,7 +1435,7 @@
     #graph .gRef.g5 { stroke-dasharray:none; stroke-width:3; }
     #graph .gLineLab.g5r1 { fill:#ff9ad5; }
     #graph .gHalf.h50 { fill:#7bdff2; } #graph .gHalf.h51 { fill:#ff9ad5; }
-    #graph .gDot.ask5 { fill:#ffffff; } #graph .gDot.test5 { fill:var(--accent); }
+    #graph .gDot.ask5 { fill:#ffffff; } #graph .gDot.test5 { fill:var(--accent); } #graph .gDot.test5.ok4 { fill:#5ad17a; } #graph .gDot.test5.bad5 { fill:#ff6b6b; }
     @media (max-width: 640px) {
       .tok.t5 { min-height:calc(var(--eqSize) * 1.3); padding:2px 3px; }
       .rows5 .tok.eq { min-height:calc(var(--eqSize) * 1.3); padding:2px 3px; }
