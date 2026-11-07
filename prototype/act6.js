@@ -83,6 +83,11 @@
     }
     if (e.den.length === 1 && e.den[0].t === 'n' && fIs(e.den[0].v, 1)) e.den = [];
     if (!e.num.length) e.num = [N(1)];
+    // brackets that are down to one factor each melt into one product: 15x², not 15 · x²
+    if (!e.sci) for (const s of ['num', 'den']) {
+      const l = e[s], gs = grpsOf(l);
+      if (gs.length > 1 && !l.some(f => f.t === 'g') && gs.every(g => l.filter(f => f.grp === g).length === 1)) l.forEach(f => { f.grp = gs[0]; });
+    }
     return e;
   }
   function layerText(list, sci, grouped) {
@@ -276,7 +281,8 @@
   function apply6(e, c, ref) {
     const r = clone(e);
     if (!c || c.op === 'trap') return r;
-    const m = movesOf(e).find(o => matchCard(o, c) && (o.refs.includes(ref) || o.refs.length === 1));
+    const ms = movesOf(e).filter(o => matchCard(o, c));
+    const m = ms.find(o => o.refs.includes(ref)) || ms[0];   // the move on the targeted part, never the first one of its kind
     if (!m) return r;
     if (e.k6 === 'ex') return tidy(applyEx(r, m, ref));
     if (e.k6 === 'pl') return applyPl(r, m);
@@ -297,7 +303,8 @@
         const L = layerOf(r, r0), i = +r0.slice(1), f = r[L][i], O = L === 'num' ? 'den' : 'num';
         r[L].splice(i, 1);
         if (!r[L].length && L === 'num') r.num = [N(1)];
-        r[O].push(Pw(f.b, -f.e, r[O].length ? r[O][r[O].length - 1].grp : 0)); break;
+        { const at = r[O].findIndex(o => o.t === 'p' && o.b > f.b), np = Pw(f.b, -f.e, r[O].length ? r[O][r[O].length - 1].grp : 0);   // letters stay in a-z order
+          if (at < 0) r[O].push(np); else { np.grp = r[O][at].grp; r[O].splice(at, 0, np); } } break;
       }
       case 'muln6': case 'prod6': {
         const L = m.refs[0][0] === 'n' ? 'num' : 'den', is = m.refs.map(x => +x.slice(1)), first = r[L][is[0]];
@@ -510,7 +517,7 @@
       if (has('prod6')) {
         const m = ms.find(o => o.op === 'prod6'), fs = m.refs.map(r => at(e, r)), b = fs[0].b;
         const es = fs.map(f => f.e), prodE = es.reduce((a, x) => a * x, 1), sumE = es.reduce((a, x) => a + x, 0);
-        if (prodE !== sumE) out.rule.push(trap('multiply exponents', 'prod6', `${TIMES} exponents`, `${fs.map(f => facText(f)).join(' · ')} = ${b}${supText(prodE)}: multiply the powers`,
+        if (prodE !== sumE) out.rule.push(trap('multiply exponents', 'prod6', `${TIMES} exponents`, (e.sci || fs.length > 2 ? 'Same base: multiply the powers' : `${fs.map(f => facText(f)).join(' · ')} = ${b}${supText(prodE)}: multiply the powers`),
           P(`${fs.map(f => facText(f)).join(' · ')} means ${es.map(x => `${x} ${b}'s`).join(' times ')} multiplied together: that's ${sumE} ${b}'s in a row, so ${b}${supText(sumE)}. Multiplying same bases <b>adds</b> the exponents. You multiply exponents only for a power of a power, like (${b}${supText(es[0])})${supText(es[1] || 2)}.`), 'prod6'));
       }
       const g = lay.find(f => f.t === 'g' && f.e > 1);
@@ -1059,7 +1066,7 @@
       `Negative power: ${facText(f)} = ${down ? '1/' + f.b + supText(-f.e) : 'moves to the top as ' + f.b + supText(-f.e)}. It crosses the fraction bar and the exponent turns positive`);
     dropNote(n);
     render(ns);
-    const O = down ? 'd' : 'n', list = down ? ns.den : ns.num, j = list.length - 1, dest = tk(O + j);
+    const O = down ? 'd' : 'n', list = down ? ns.den : ns.num, fj = list.findIndex(o => o.t === 'p' && o.b === f.b && o.e === -f.e), j = fj < 0 ? list.length - 1 : fj, dest = tk(O + j);
     if (dest) dest.style.opacity = '0';
     await flyRect(`${XV(f.b)}${supHtml(-f.e)}`, from, dest);
     if (dest) { dest.style.opacity = ''; kickClass(dest, 'pop'); }
