@@ -673,6 +673,7 @@ function enemySvg(key) {
 const opSym = op => ({ '+': '+', '-': MINUS, '*': TIMES, '/': DIV })[op];
 function cardLabel(c) {
   if (window.ACT8 && ACT8.label(c)) return ACT8.label(c);
+  if (window.ACT7 && ACT7.label(c)) return ACT7.label(c);
   if (window.ACT6 && ACT6.label(c)) return ACT6.label(c);
   if (window.ACT5 && ACT5.label(c)) return ACT5.label(c);
   if (window.ACT4 && ACT4.label(c)) return ACT4.label(c);
@@ -691,6 +692,7 @@ function chipHtml(c) {   // how a card reads once it's written into the equation
 }
 function cardText(c) {
   if (window.ACT8 && ACT8.text(c)) return ACT8.text(c);
+  if (window.ACT7 && ACT7.text(c)) return ACT7.text(c);
   if (window.ACT6 && ACT6.text(c)) return ACT6.text(c);
   if (window.ACT5 && ACT5.text(c)) return ACT5.text(c);
   if (window.ACT4 && ACT4.text(c)) return ACT4.text(c);
@@ -701,7 +703,7 @@ function cardText(c) {
             '/': `Divide both sides by ${n}`, neg: `Multiply both sides by ${MINUS}1`,
             frac: `Multiply both sides by ${fracText(F(c.n ?? 1, c.d ?? 1))}` })[c.op];
 }
-const cardKind = c => (window.ACT8 && ACT8.kind(c)) || (window.ACT6 && ACT6.kind(c)) || (window.ACT5 && ACT5.kind(c)) || (window.ACT4 && ACT4.kind(c)) || (window.ACT3 && ACT3.kind(c)) || (window.ACT2 && ACT2.kind(c)) || ({ '+': 'Add', '-': 'Subtract', '*': 'Multiply', '/': 'Divide', neg: `Multiply by ${MINUS}1`, frac: 'Reciprocal' })[c.op];
+const cardKind = c => (window.ACT8 && ACT8.kind(c)) || (window.ACT7 && ACT7.kind(c)) || (window.ACT6 && ACT6.kind(c)) || (window.ACT5 && ACT5.kind(c)) || (window.ACT4 && ACT4.kind(c)) || (window.ACT3 && ACT3.kind(c)) || (window.ACT2 && ACT2.kind(c)) || ({ '+': 'Add', '-': 'Subtract', '*': 'Multiply', '/': 'Divide', neg: `Multiply by ${MINUS}1`, frac: 'Reciprocal' })[c.op];
 const sameCard = (a, b) => cardLabel(a) === cardLabel(b);
 
 // Every card is a legal "do the same thing to both sides" move built from numbers in the equation.
@@ -795,7 +797,9 @@ function renderEquation(s) {
   if (window.ACT5) ACT5.clear();
   if (window.ACT6) ACT6.clear();
   if (window.ACT8) ACT8.clear();
+  if (window.ACT7) ACT7.clear();
   if (s.k8) return ACT8.render(s);     // Act 8 (act8.js): radicals and rational exponents
+  if (s.k7) return ACT7.render(s);     // Act 7 (act7.js): factoring, quadratics, complex numbers
   if (s.k6) return ACT6.render(s);     // Act 6 (act6.js): exponents and polynomials
   if (s.k5) return ACT5.render(s);     // Act 5 (act5.js): systems of equations and inequalities
   if (s.k4) return ACT4.render(s);     // Act 4 (act4.js): order of operations, functions, slope, lines, formulas
@@ -823,6 +827,7 @@ function promptKind(s) {
 }
 function problemPrompt(s, skills = []) {
   if (s.k8) return ACT8.prompt(s);                                      // Act 8 too
+  if (s.k7) return ACT7.prompt(s);                                      // Act 7 too
   if (s.k6) return ACT6.prompt(s);                                      // Act 6 too
   if (s.k5) return ACT5.prompt(s);                                      // Act 5 too
   if (s.k4) return window.ACT4 && ACT4.prompt ? ACT4.prompt(s) : '';   // Act 4 words its own questions
@@ -1119,7 +1124,7 @@ const ACT1_LAYOUT = ['fight', 'fight', 'fight', 'elite', 'fight', 'fight', 'figh
 const NODE_ICON = { tutorial: '★', fight: '⚔', elite: '☠', boss: '♛' };
 let hp = MAX_HP, run = null, fight = null, cur = null, hand = [], busy = true;
 // The engine for the current equation: Act 3 (inequalities) and Act 2 share an interface; Act 1 is built in here.
-const eng = () => (cur && cur.act8 ? ACT8 : cur && cur.act6 ? ACT6 : cur && cur.act5 ? ACT5 : cur && cur.act4 ? ACT4 : cur && cur.act3 ? ACT3 : ACT2);
+const eng = () => (cur && cur.act8 ? ACT8 : cur && cur.act7 ? ACT7 : cur && cur.act6 ? ACT6 : cur && cur.act5 ? ACT5 : cur && cur.act4 ? ACT4 : cur && cur.act3 ? ACT3 : ACT2);
 
 // Starting a run first asks for a difficulty.
 function newRun(act) {
@@ -1255,6 +1260,7 @@ function buildFight(node) {
   if (run.act === 5) return ACT5.buildFight(node, list);
   if (run.act === 6) return ACT6.buildFight(node, list);
   if (run.act === 8) return ACT8.buildFight(node, list);
+  if (run.act === 7) return ACT7.buildFight(node, list);
   if (node.type === 'elite') {
     const recent = list.slice(-2);
     const swapped = () => { const g = genOneStep(); g.s.xLeft = false; return g; };
@@ -1329,6 +1335,7 @@ function startPhase() {
     if (g.sys) return ACT5.applyDifficulty(g, gen);
     if (g.ex6) return ACT6.applyDifficulty(g, gen);
     if (g.rad8) return ACT8.applyDifficulty(g, gen);
+    if (g.q7) return ACT7.applyDifficulty(g, gen);
     return g;
   };
   const g = freshEquation(gen, { prepare, mirror: !tut });
@@ -1340,10 +1347,10 @@ function startPhase() {
 function showEquation(g, enemy, saved = null) {
   const plain = JSON.parse(JSON.stringify(g));   // kept for the run save, before any engine touches it
   // Act 3 generators return { ineq } (act3.js: Act 2's model plus a relation), Act 2 ones { eq } (act2.js's equation model), Act 1 ones { s }.
-  cur = g.rad8 ? ACT8.makeEquation(g.rad8, enemy) : g.ex6 ? ACT6.makeEquation(g.ex6, enemy) : g.sys ? ACT5.makeEquation(g.sys, enemy) : g.fn ? ACT4.makeEquation(g.fn, enemy) : g.ineq ? ACT3.makeEquation(g.ineq, enemy) : g.eq ? ACT2.makeEquation(g.eq, enemy) : makeEquation(g.s, enemy);
+  cur = g.rad8 ? ACT8.makeEquation(g.rad8, enemy) : g.q7 ? ACT7.makeEquation(g.q7, enemy) : g.ex6 ? ACT6.makeEquation(g.ex6, enemy) : g.sys ? ACT5.makeEquation(g.sys, enemy) : g.fn ? ACT4.makeEquation(g.fn, enemy) : g.ineq ? ACT3.makeEquation(g.ineq, enemy) : g.eq ? ACT2.makeEquation(g.eq, enemy) : makeEquation(g.s, enemy);
   // Playtest fix: Act 4 questions are evaluated, read off a graph or written as a line, not solved for x.
-  $('helpLine').textContent = `Pick the ${cur.act8 || cur.act6 || cur.act5 || (cur.act4 && g.fn.k4 !== 'formula') ? 'right next move' : 'move that gets ' + ((g.fn || g.eq || {}).v || 'x') + ' alone'}. Wrong move = 10 damage.`;
-  cur.state = g.rad8 || g.ex6 || g.sys || g.fn || g.ineq || g.eq || g.s; cur.step = 0; cur.wrong = 0; cur.moves = 0; cur.lastT = performance.now();
+  $('helpLine').textContent = `Pick the ${cur.act8 || cur.act7 || cur.act6 || cur.act5 || (cur.act4 && g.fn.k4 !== 'formula') ? 'right next move' : 'move that gets ' + ((g.fn || g.eq || {}).v || 'x') + ' alone'}. Wrong move = 10 damage.`;
+  cur.state = g.rad8 || g.q7 || g.ex6 || g.sys || g.fn || g.ineq || g.eq || g.s; cur.step = 0; cur.wrong = 0; cur.moves = 0; cur.lastT = performance.now();
   cur.case = g.case; cur.caseSkill = g.caseSkill;
   // The prompt's wording is picked at random, so a restored fight keeps the one the player saw.
   cur.prompt = saved && typeof saved.prompt === 'string' ? saved.prompt : problemPrompt(cur.state, cur.skills);
@@ -1396,6 +1403,7 @@ const CARD_ICONS = {
 const TRAP_ICON = { 'add across': 'comb', 'first term only': 'dist', 'first sign only': 'dist', 'no sign flip': null, 'unlike terms': 'comb', 'lost sign': 'div', 'drop bars': 'split' };
 function iconKey(c) {
   if (window.ACT8 && ACT8.icon(c)) return ACT8.icon(c);
+  if (window.ACT7 && ACT7.icon(c)) return ACT7.icon(c);
   if (window.ACT6 && ACT6.icon(c)) return ACT6.icon(c);
   if (window.ACT5 && ACT5.icon(c)) return ACT5.icon(c);
   if (window.ACT4 && ACT4.icon(c)) return ACT4.icon(c);
@@ -1423,7 +1431,7 @@ function dealHand() { hand = arrangeHand((cur.act2 ? eng().makeHand : makeHand)(
 // in their dealt order. New acts can add their own named ops to this list.
 const FIXED_SLOTS = ['comb', 'dist', 'lcd', 'flip', 'split', 'none', 'all'];
 const slotKey = c => c.lcd ? 'lcd' : c.op;
-const slotOf = c => { const k6 = window.ACT6 ? ACT6.slot(c) : null; if (k6 != null) return k6; const k5 = window.ACT5 ? ACT5.slot(c) : null; if (k5 != null) return k5; const k = window.ACT4 ? ACT4.slot(c) : null; return k != null ? k : FIXED_SLOTS.indexOf(slotKey(c)); };   // Act 4 cards have their own slots (PEMDAS order)
+const slotOf = c => { const k7 = window.ACT7 ? ACT7.slot(c) : null; if (k7 != null) return k7; const k6 = window.ACT6 ? ACT6.slot(c) : null; if (k6 != null) return k6; const k5 = window.ACT5 ? ACT5.slot(c) : null; if (k5 != null) return k5; const k = window.ACT4 ? ACT4.slot(c) : null; return k != null ? k : FIXED_SLOTS.indexOf(slotKey(c)); };   // Act 4 cards have their own slots (PEMDAS order)
 function arrangeHand(cards) {
   const out = new Array(cards.length).fill(null), rest = [];
   const named = cards.filter(c => slotOf(c) >= 0).sort((a, b) => slotOf(a) - slotOf(b));
@@ -1447,7 +1455,16 @@ function renderHand() {
     d.innerHTML = `${badge}${cardIcon(c)}<span class="clabel">${cardLabel(c)}</span><small>${cardText(c)}</small>`;
     d.addEventListener('pointerdown', e => startDrag(e, d, c));
     el.appendChild(d);
+    fitCard(d);
   });
+}
+// Merge review fix: a few cards (Act 8's long rule decoys, "Rationalize: multiply top and bottom by √3")
+// had more text than the card holds. Shrink the label and the words a step at a time until they fit.
+function fitCard(d) {
+  const parts = [d.querySelector('.clabel'), d.querySelector('small')].filter(Boolean);
+  const base = parts.map(p => parseFloat(getComputedStyle(p).fontSize));
+  const over = () => d.scrollHeight > d.clientHeight + 1 || d.scrollWidth > d.clientWidth + 1;
+  for (let k = 0.92; over() && k >= 0.6; k -= 0.08) parts.forEach((p, i) => { p.style.fontSize = (base[i] * k) + 'px'; });
 }
 
 function renderMap() {
@@ -1491,6 +1508,7 @@ let dragging = false;   // only one card can be dragged at a time
 // goes), or undefined when there are two or more and the player has to choose.
 function autoTarget(card) {
   if (window.ACT8 && cur && cur.act8) { const a = ACT8.autoTarget(card); if (a !== 'pass') return a; }   // Act 8 too
+  if (window.ACT7 && cur && cur.act7) { const a = ACT7.autoTarget(card); if (a !== 'pass') return a; }   // Act 7 too
   if (window.ACT6 && cur && cur.act6) { const a = ACT6.autoTarget(card); if (a !== 'pass') return a; }   // Act 6 too
   if (window.ACT5 && cur && cur.act5) { const a = ACT5.autoTarget(card); if (a !== 'pass') return a; }   // Act 5 cards pick their own targets
   const q = sel => [...document.querySelectorAll('#equation ' + sel)];
@@ -1527,6 +1545,7 @@ function startDrag(e, el, card) {
   if (window.ACT5) ACT5.onDrag(card, true);
   if (window.ACT6) ACT6.onDrag(card, true);
   if (window.ACT8) ACT8.onDrag(card, true);
+  if (window.ACT7) ACT7.onDrag(card, true);
   let hover = null;
   const move = ev => {
     if (ev.pointerId !== pid) return;   // ignore other fingers
@@ -1536,7 +1555,7 @@ function startDrag(e, el, card) {
       // Forgiving hit test: within 40px of a box counts, closest box wins.
       let best = Infinity;
       // Act 3's Flip is dropped on the sign. Review fix: only Flip can target it; other ◎ cards used to snap onto it.
-      const sel = (window.ACT8 && cur && cur.act8 && ACT8.targetSel(card)) || (window.ACT6 && cur && cur.act6 && ACT6.targetSel(card)) || (window.ACT5 && cur && cur.act5 && ACT5.targetSel(card)) || (window.ACT4 && ACT4.targetSel(card)) || (card.op === 'flip' ? '#equation .tok:not(.eq), #equation .tok.rel' : '#equation .tok:not(.eq):not(.rel)');
+      const sel = (window.ACT8 && cur && cur.act8 && ACT8.targetSel(card)) || (window.ACT7 && cur && cur.act7 && ACT7.targetSel(card)) || (window.ACT6 && cur && cur.act6 && ACT6.targetSel(card)) || (window.ACT5 && cur && cur.act5 && ACT5.targetSel(card)) || (window.ACT4 && ACT4.targetSel(card)) || (card.op === 'flip' ? '#equation .tok:not(.eq), #equation .tok.rel' : '#equation .tok:not(.eq):not(.rel)');
       for (const t of document.querySelectorAll(sel)) {
         const b = t.getBoundingClientRect();
         const d = Math.hypot(Math.max(b.left - ev.clientX, 0, ev.clientX - b.right), Math.max(b.top - ev.clientY, 0, ev.clientY - b.bottom));
@@ -1562,6 +1581,7 @@ function startDrag(e, el, card) {
     if (window.ACT5) ACT5.onDrag(card, false);
     if (window.ACT6) ACT6.onDrag(card, false);
     if (window.ACT8) ACT8.onDrag(card, false);
+    if (window.ACT7) ACT7.onDrag(card, false);
     if (hover) hover.classList.remove('hover');
     if (hover && drop) playCard(card, targeted ? hover : auto === undefined ? null : auto);
   };
@@ -2027,7 +2047,11 @@ function actCleared() {
     ? `The Cartographer\'s maps are true again. ${isUnlocked('subst') ? 'Act 5, the Twin Observatory, is open.' : 'Act 5, the Twin Observatory, opens when Lines reaches 80 mastery.'}`
     : run.act === 5
     ? `The Twin Moons line up at last. ${isUnlocked('exprules') ? 'Act 6, the Power Forge, is open.' : 'Act 6, the Power Forge, opens when the last Act 5 skill reaches 80 mastery.'}`
-    : 'The Forgemaster\'s fires burn steady again. Act 7 is still to be built, so run Act 6 again to keep your skills sharp.';
+    : run.act === 6
+    ? `The Forgemaster\'s fires burn steady again. ${isUnlocked('gcf7') ? 'Act 7, the Archery Gallery, is open.' : 'Act 7, the Archery Gallery, opens when the last Act 6 skill reaches 80 mastery.'}`
+    : run.act === 7
+    ? `The Grand Archer lowers the bow. ${(() => { const n = SKILLS.find(k => k.act === 8); return !n ? 'Act 8 is still to be built, so run Act 7 again to keep your skills sharp.' : isUnlocked(n.id) ? `Act 8, ${ACTS[8].name}, is open.` : `Act 8, ${ACTS[8].name}, opens when the last Act 7 skill reaches 80 mastery.`; })()}`
+    : 'Run this act again to keep your skills sharp.';
   showOverlay(`<h1>Act ${run.act} cleared!</h1><p>${text}</p>${skillSummaryHtml()}`,
     [['New run', () => newRun(run.act)], ['Title screen', showTitle, true], ['Skills & stats', () => showStats(actCleared), true]]);
 }
@@ -2075,6 +2099,7 @@ window.__game = { get cur() { return cur; }, get hand() { return hand; }, get bu
 <script src="act4.js"></script>
 <script src="act5.js"></script>
 <script src="act6.js"></script>
+<script src="act7.js"></script>
 <script src="act8.js"></script>
 <script>renderSkills(); updateHud(); if (!resumeRun()) showTitle();</script>
 <script src="debug.js"></script>
