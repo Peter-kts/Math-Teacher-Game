@@ -296,7 +296,7 @@
         add(n.c2, X + (html ? supH(2) : '²')); add(n.c1, X); add(n.c0, '');
         return ts.length ? ts.map((t, i) => (i ? (t.neg ? ` ${MINUS} ` : ' + ') : t.neg ? MINUS : '') + t.s).join('') : '0';
       }
-      case 'fac': return [n.r1, n.r2].map(r => (fz(r) ? X : `(${X} ${r.n < 0 ? '+' : MINUS} ${numH(fAbs(r), html)})`)).join('');
+      case 'fac': return [n.r1, n.r2].sort((a, b) => (fz(b) ? 1 : 0) - (fz(a) ? 1 : 0)).map(r => (fz(r) ? X : `(${X} ${r.n < 0 ? '+' : MINUS} ${numH(fAbs(r), html)})`)).join('');
       case 'ev': return reHtml(n.re, html);
     }
     return '';
@@ -538,7 +538,7 @@
     sq8:     c => ({ label: c.p === 3 ? 'Cube both' : 'Square both', text: c.p === 3 ? 'Cube both sides: (∛u)³ = u' : 'Square both sides: (√u)² = u', kind: c.p === 3 ? 'Cube both sides' : 'Square both sides', icon: 'sq8' }),
     raise8:  c => ({ label: `( )${supFH(c.e)}`, text: `Raise both sides to the ${fracText(c.e)} power`, kind: 'Raise to a power', icon: 'raise8' }),
     expand8: c => ({ label: expandHtml(c), text: `Expand ${nodeText({ t: 'sq', a: FN(c.a), b: FN(c.b) }, false)}`, kind: 'Expand the square', icon: 'sqb6' }),
-    zero8:   c => { const t = linText(Lin(c.a, c.b), true), w = fz(FN(c.a)) || fz(FN(c.b)) ? t : `(${t})`; return { label: `${MINUS} ${w}`, text: `Subtract ${linText(Lin(c.a, c.b), false)} from both sides`, kind: 'Get 0 on one side', icon: 'sub' }; },
+    zero8:   c => { const t = linText(Lin(c.a, c.b), true), w = fz(FN(c.a)) || fz(FN(c.b)) ? t : `(${t})`; return { label: `${MINUS} ${w}`, text: `Subtract ${fz(FN(c.a)) || fz(FN(c.b)) ? linText(Lin(c.a, c.b), false) : '(' + linText(Lin(c.a, c.b), false) + ')'} from both sides`, kind: 'Get 0 on one side', icon: 'sub' }; },
     fac8:    c => ({ label: nodeText({ t: 'fac', r1: FN(c.r1), r2: FN(c.r2) }, true), text: 'Factor the quadratic', kind: 'Factor', icon: 'fac8' }),
     zp8:     () => ({ label: 'Zero product', text: 'Set each factor equal to 0', kind: 'Zero product', icon: 'zp8' }),
     check8:  c => ({ label: `Check ${XV('x')} = ${numH(FN(c.v), true)}`, text: 'Put it into the original equation', kind: 'Check an answer', icon: 'check8' }),
@@ -975,7 +975,7 @@
     col.appendChild(rowEl(cs));
     if (e.pend) {
       const { l, r } = e.pend;
-      col.appendChild(rowEl([TOK(`<div class="sub8">${l.sub} ≟ ${r.sub}</div><div class="val8">${l.out}${l.kind === 'undef' ? ' <small>(not real)</small>' : ''} ≟ ${r.out}</div>`, 'p8', 'C', 'p8')]));
+      col.appendChild(rowEl([TOK(`<div class="sub8 nonum">${l.sub} ≟ ${r.sub}</div><div class="val8">${l.out}${l.kind === 'undef' ? ' <small>(not real)</small>' : ''} ≟ ${r.out}</div>`, 'p8', 'C', 'p8')]));
     } else if (eqDone(e)) col.appendChild(rowEl([sym(eqAnswer(e, true), 'fin8')]));
     el.appendChild(col);
   }
