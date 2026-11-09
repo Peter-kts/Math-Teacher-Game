@@ -413,7 +413,8 @@
       const show = e.rows.slice(-(o.keepRows || 3));
       show.forEach((row, k) => rows.push(rowOf(row, k === show.length - 1)));
       if (e.nl) rows.push(R.rowEl([R.TOK(e.nl, 'nl', 'NL', 'nlTok9')]));
-      if (done && e.ans && !e.noFin) rows.push(R.rowEl([R.sym(e.ans, 'fin9')]));
+      const last = e.rows[e.rows.length - 1], lastT = strip(typeof last === 'string' ? last : last.map(g => g.h).join(' '));
+      if (done && e.ans && !e.noFin && lastT.replace(/\s/g, '') !== strip(e.ans).replace(/\s/g, '')) rows.push(R.rowEl([R.sym(e.ans, 'fin9')]));
       el.appendChild(R.colEl(rows));
     }
     const anchorOf = (e, ref) => { if (ref) return ref; const row = e.rows[e.rows.length - 1]; return typeof row === 'string' ? 'W' : (row.find(g => g.ref) || {}).ref || 'W'; };
@@ -493,7 +494,7 @@
     .tok.ok9, .tg9.ok9 { border-color: var(--good) !important; background:#06d6a022 !important; }
     .tg9.ok9 { fill:#06d6a033 !important; stroke: var(--good) !important; }
     .unote.n9 { font-size:max(.42em, 14px); }
-    .card .clong.l9 { white-space:normal; display:block; line-height:1.1; }
+    .card .clong.l9 { white-space:normal; display:block; line-height:1.35; }
     .card .clong.l9 sup { font-size:.75em; }
     .card .clong.l9 .frac { font-size:.72em; display:inline-flex; vertical-align:middle; }
     .card .clong.l9 svg.nl9 { width:100%; height:auto; max-height:2.6em; }
