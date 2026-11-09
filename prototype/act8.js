@@ -1511,7 +1511,7 @@
   });
   ACTS[8] = { name: 'The Root Garden', sub: 'Radicals and rational exponents', boss: 'The Elder Root', firstSkill: 'radsimp',
     blurb: 'In the Root Garden everything grows under a radical sign. Simplify roots, turn fraction exponents into roots, and solve radical equations, checking every answer for fakes. Defeat The Elder Root.',
-    cleared: () => 'The Elder Root is tamed and the garden grows straight again. Act 9 is still to be built, so run Act 8 again to keep your skills sharp.' };
+    cleared: () => `The Elder Root is tamed and the garden grows straight again. ${window.KIT9 ? KIT9.nextActText(8) : 'Run Act 8 again to keep your skills sharp.'}` };
 
   const svgI = body => `<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">${body}</svg>`;
   Object.assign(CARD_ICONS, {
