@@ -346,6 +346,106 @@
   const rowEl = els => { const r = document.createElement('span'); r.className = 'row4 row9'; els.filter(Boolean).forEach(x => r.appendChild(x)); return r; };
   const colEl = (rows, cls = '') => { const c = document.createElement('div'); c.className = 'col9 ' + cls; rows.filter(Boolean).forEach(r => c.appendChild(r)); return c; };
 
+  // ================================================================ scripted problems (Acts 11 and 12)
+  // A problem whose moves are worked out by its generator: a list of steps, each one a choice the player
+  // makes from cards (the right one plus the classic mistakes). The state stays plain JSON:
+  //   { [sk]: kind, top, rows: [row], i, steps: [step], ans, ansT, txt, pk, skill, qid, nl?, gr? }
+  //   row:  html string (one token, ref W) or [{ h, ref?, cls? }] (several tokens, some ◎ targets)
+  //   step: { op, v (the right card's face), txt? (its text), ref? (◎: the token it's dropped on),
+  //           row? | rows? (what the work looks like after it), push? (keep the old row above),
+  //           alts: [{ v, op?, txt?, why?, long? }] wrong choices, rule: [...] classic mistakes dealt at every
+  //           level, trap?: { name, v, txt, why } (Expert), why: [short, long] for any other wrong card,
+  //           cap (the animation's caption), note? (written under the work; false for none), after?, fx? }
+  const strip = h => String(h).replace(/<sub[^>]*>(.*?)<\/sub>/g, '_$1').replace(/<sup[^>]*>(.*?)<\/sup>/g, '^$1').replace(/<span class="frac[^"]*"><span>(.*?)<\/span><span>(.*?)<\/span><\/span>/g, '($1)/($2)').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ');
+  function scripted(o) {
+    const OPS = o.OPS, ops = Object.keys(OPS);
+    const BOTH = new Set(ops.filter(k => !OPS[k].part)), COPY = new Set(ops);
+    let A = null;
+    const stepOf = e => e.steps[e.i];
+    const moves = e => { const s = stepOf(e); if (!s) return []; return [{ op: s.op, v: s.v, txt: s.txt, ...(s.ref ? { refs: [s.ref] } : { both: true }) }]; };
+    const ok = (e, m, c) => c.v === m.v;
+    function apply(r, m) {
+      const s = r.steps[r.i]; r.i++;
+      if (s.rows) r.rows = clone(s.rows);
+      else if (s.row !== undefined) { if (s.push) r.rows.push(clone(s.row)); else r.rows[r.rows.length - 1] = clone(s.row); }
+      if (s.nl !== undefined) r.nl = s.nl;
+      if (s.gr !== undefined) r.gr = clone(s.gr);
+      return r;
+    }
+    const CARD = {};
+    ops.forEach(op => { CARD[op] = c => ({ label: c.v, text: c.txt || OPS[op].text, kind: OPS[op].kind, icon: OPS[op].icon }); });
+    const cardOf = (a, op) => A.C(a.op || op, { v: a.v, ...(a.txt ? { txt: a.txt } : {}) });
+    function specials(e) {
+      const s = stepOf(e); if (!s) return { rule: [], traps: [] };
+      return { rule: (s.rule || []).map(a => cardOf(a, s.op)),
+        traps: s.trap ? [A.trap(s.trap.name, s.op, s.trap.v, s.trap.txt, P(s.trap.why), OPS[s.op].icon, s.ref ? 'part' : 'both')] : [] };
+    }
+    function family(e) {
+      const s = stepOf(e); if (!s) return [];
+      const f = (s.alts || []).map(a => cardOf(a, s.op));
+      const nx = e.steps[e.i + 1]; if (nx && !nx.noEarly) f.push(cardOf(nx, nx.op));
+      f.push(...(s.rule || []).map(a => cardOf(a, s.op)));
+      return f;
+    }
+    function filler(e) {   // other steps' cards: done already, or not yet
+      const f = [];
+      e.steps.forEach((t, j) => { if (j === e.i) return; f.push(cardOf(t, t.op)); (t.alts || []).slice(0, 2).forEach(a => f.push(cardOf(a, t.op))); });
+      return shuffle(f).concat(o.filler ? o.filler(e).map(a => cardOf(a, a.op)) : []);
+    }
+    function why(e, card, ref, S) {
+      const s = stepOf(e); if (!s) return S('It\'s solved.');
+      const a = [...(s.alts || []), ...(s.rule || [])].find(x => x.v === card.v);
+      if (a && (a.why || a.long)) return S(a.why || s.why[0], a.long || a.why || s.why[1]);
+      const j = e.steps.findIndex(t => t.v === card.v);
+      if (j > e.i) return S('Not yet.', `Not yet: that comes later. First: ${OPS[s.op].kind.toLowerCase()}.${s.why && s.why[1] ? ' ' + s.why[1] : ''}`);
+      if (j >= 0 && j < e.i) return S('That\'s done already.', `That step is done. Next: ${OPS[s.op].kind.toLowerCase()}.`);
+      return S(s.why ? s.why[0] : 'That isn\'t the move here.', s.why ? s.why[1] || s.why[0] : '');
+    }
+    function render(e, el, R) {
+      const T = (h, ref, cls = '') => R.TOK(R.W9(h), 'x', ref, 't9 ' + cls);
+      const rowOf = (row, cur) => {
+        if (typeof row === 'string') return R.rowEl([cur ? T(row, 'W') : R.sym(row, 'old11')]);
+        return R.rowEl(row.map(g => (g.ref && cur ? T(g.h, g.ref, g.cls || '') : cur ? R.sym(g.h, 'cur11 ' + (g.cls || '')) : R.sym(g.h, 'old11'))));
+      };
+      const rows = [];
+      if (e.top) rows.push(R.rowEl([R.sym(e.top, 'top11')]));
+      const done = e.i >= e.steps.length;
+      const show = e.rows.slice(-(o.keepRows || 3));
+      show.forEach((row, k) => rows.push(rowOf(row, k === show.length - 1)));
+      if (e.nl) rows.push(R.rowEl([R.TOK(e.nl, 'nl', 'NL', 'nlTok9')]));
+      if (done && e.ans && !e.noFin) rows.push(R.rowEl([R.sym(e.ans, 'fin9')]));
+      el.appendChild(R.colEl(rows));
+    }
+    const anchorOf = (e, ref) => { if (ref) return ref; const row = e.rows[e.rows.length - 1]; return typeof row === 'string' ? 'W' : (row.find(g => g.ref) || {}).ref || 'W'; };
+    const newRefs = ns => { const row = ns.rows[ns.rows.length - 1]; return typeof row === 'string' ? ['W'] : row.filter(g => g.ref).map(g => g.ref); };
+    const anim = {};
+    ops.forEach(op => {
+      anim[op] = async (c, s, ns, ref, H) => {
+        const st = s.steps[s.i], at = anchorOf(s, st.ref || ref), t = H.tk(at);
+        if (o.anim && o.anim[op]) return o.anim[op](c, s, ns, at, H, st);
+        H.mark([at]);
+        const fx = st.fx || OPS[op].fx;
+        if (fx && t) t.classList.add(fx);
+        if (st.note === false) { caption(st.cap || cardText(c)); await quick(250); await hold(); }
+        else { const n = await H.written(st.note || c.v, [t], st.cap || cardText(c), OPS[op].part ? 'lift4' : 'lift4'); dropNote(n); }
+        await H.result(ns, newRefs(ns), st.after || '');
+      };
+    });
+    const isSolved = e => e.i >= e.steps.length;
+    const spec = { BOTH, COPY, PARAMS: ['v', 'txt'], moves, ok, apply, CARD, specials, family, filler, places: () => [], why, render, anim,
+      answer: (e, html) => (html ? e.ans : e.ansT || strip(e.ans || '')), textOf: e => e.txt || strip((e.top ? e.top + ' | ' : '') + (typeof e.rows[0] === 'string' ? e.rows[0] : e.rows[0].map(g => g.h).join(' '))),
+      promptKey: e => e.pk };
+    return { spec, bind: a => { A = a; }, isSolved };
+  }
+  const SCRIPT_CSS = `
+    .tok.a4.s9.top11 { font-size:.42em; color:var(--muted); white-space:normal; max-width:min(560px, 86vw); line-height:1.25; }
+    .tok.a4.s9.old11 { font-size:.5em; color:var(--muted) !important; opacity:.8; }
+    .tok.a4.s9.cur11 { color:inherit !important; padding:4px 1px; }
+    .tok.a4.t9.spin11 { animation: pop .5s; }
+    .tok.a4.t9.good11 { color:var(--good); }
+    .tok.a4.t9.bad11 { color:var(--bad); text-decoration: line-through; }
+  `;
+
   // Installs an act: its skills, enemies, act entry, icons and CSS, and registers the engine.
   function install(spec, A) {
     SKILLS.push(...spec.skills);
@@ -420,7 +520,7 @@
   `;
   document.head.appendChild(css);
 
-  window.KIT9 = { makeAct, install, nextActText, svgI, K, P, FN, chance, qid, isTutorial, lvl, supT, supH, XV, numH, parenF, decT, isDec, frH, sgnJoin,
+  window.KIT9 = { scripted, strip, SCRIPT_CSS, makeAct, install, nextActText, svgI, K, P, FN, chance, qid, isTutorial, lvl, supT, supH, XV, numH, parenF, decT, isDec, frH, sgnJoin,
     ptrim, pdeg, pco, padd, pscale, psub, pmul, peval, pEq, P1, fpow, ptext, pterms, numberLine, nlWindow, drawCurves, square, H,
     W9, sym, rowEl, colEl, TOK, EQTOK, refOf, kickClass, clone, fNeg, fSub, fDiv, fEq, fz, fv };
 })();
